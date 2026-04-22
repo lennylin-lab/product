@@ -23,10 +23,25 @@ public class RedisDistributedLock {
         this.redissonClient = redissonClient;
     }
 
+    /**
+     * 只获取锁，lock()才是加锁，lock后看门狗自动续期
+     * 
+     * @param lockKey
+     * @return
+     */
     public RLock getLock(String lockKey) {
         return redissonClient.getLock(lockKey);
     }
 
+    /**
+     * 可配置(waitTime),支持超时放弃
+     * 
+     * @param lockKey
+     * @param waitTime
+     * @param leaseTime
+     * @param unit
+     * @return
+     */
     public boolean tryLock(String lockKey, long waitTime, long leaseTime, TimeUnit unit) {
         try {
             return getLock(lockKey).tryLock(waitTime, leaseTime, unit);
@@ -45,6 +60,7 @@ public class RedisDistributedLock {
     }
 
     public void unlock(RLock lock) {
+        // 确认锁是当前线程持有的才释放
         if (lock != null && lock.isHeldByCurrentThread()) {
             lock.unlock();
         }

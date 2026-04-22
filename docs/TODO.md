@@ -6,6 +6,7 @@
 - 使用 `Map` 进行批次索引，在遍历 ID 集合时通过键值查找替代线性遍历，将复杂度从 `O(n)` 降到 `O(1)`
 - 外部化 `product-server` 的 Redis、MySQL、Token 和 AliOSS 敏感配置，避免仓库内保留明文密钥
 - 排程策略已支持按参数切换最早开始、最早完工、交期优先三种模式
+- 待排任务在进入排程前会统一做空值过滤、重复任务去重、已派工任务排除，并按 `earliestStart + batchId + sequence + taskId` 稳定排序
 
 ## 待优化项
 
@@ -23,7 +24,7 @@
 | `product-server` | 外部化敏感配置，移除明文凭据 | P0 | `product-server/src/main/resources/application.yml` | 仓库内不再出现 OSS、数据库、Redis 等明文敏感配置，且可通过环境变量或外部配置启动 |
 | `product-pps` | 抽象排程策略，支持策略切换 | P1 | `TaskSchedulingCoordinator.java`、`TaskSchedulingCalculator.java` | 同一批任务可通过参数切换最早开始、最早完工、交期优先等策略 |
 | `product-pps` | 扩展资源模型与协同约束 | P1 | `TaskSchedulingQueryService.java`、`TaskSchedulingCalculator.java` | 排程结果能体现机台、模具、人员/工位的协同约束与换型时间 |
-| `product-pps` | 修正待排任务排序与边界行为 | P2 | `TaskSchedulingQueryService.java` | 待排任务排序不再依赖无序 UUID；空任务、重复派工、无可用机台有明确处理 |
+| `product-pps` | 修正待排任务排序与边界行为（已完成） | P2 | `TaskSchedulingQueryService.java` | 待排任务排序不再依赖无序 UUID；空任务、重复派工、无可用机台有明确处理 |
 | `product-pps` | 优化排程编排与进度职责 | P2 | `TaskSchedulingCoordinator.java` | 协调器只负责编排，进度阈值与推送规则可独立调整 |
 | `product-execute` | 补齐任务事件与状态闭环 | P1 | `TaskEventServiceImpl.java`、`TaskEventController.java` | 任务完工后可联动批次/订单状态，异常、暂停、恢复事件可完整记录并参与处理 |
 | `product-demand` | 规范订单状态流转与排程入口约束 | P1 | `CustomerOrderServiceImpl.java` | 已投入生产或已完成订单不可被错误修改，订单状态与生产链路一致 |

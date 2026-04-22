@@ -44,7 +44,8 @@ import java.util.function.Consumer;
  */
 @Slf4j
 @Service
-public class TaskAssignmentServiceImpl extends ServiceImpl<TaskAssignmentMapper, TaskAssignment> implements ITaskAssignmentService {
+public class TaskAssignmentServiceImpl extends ServiceImpl<TaskAssignmentMapper, TaskAssignment>
+        implements ITaskAssignmentService {
     // 采用配置的方式来设置按页加载的数量
     @Value("${product.pps.schedule.batch-size:200}")
     private int scheduleBatchSize;
@@ -66,6 +67,7 @@ public class TaskAssignmentServiceImpl extends ServiceImpl<TaskAssignmentMapper,
     private TransactionTemplate transactionTemplate;
     @Autowired
     private RedisDistributedLock redisDistributedLock;
+
     /**
      * 查询派工/排程结果
      *
@@ -91,7 +93,7 @@ public class TaskAssignmentServiceImpl extends ServiceImpl<TaskAssignmentMapper,
     /**
      * 分页查询派工/排程结果列表
      *
-     * @param page      分页参数
+     * @param page           分页参数
      * @param taskAssignment 查询条件
      * @return 分页结果
      */
@@ -199,12 +201,18 @@ public class TaskAssignmentServiceImpl extends ServiceImpl<TaskAssignmentMapper,
         if (!StatusConstants.READY_OPERATION_TASK.equals(task.getStatus())) {
             return false;
         }
+        // 单任务也需要经过标准化，过滤已派工的任务，避免重复排程
+        List<OperationTask> readyTasks = taskSchedulingQueryService.normalizeReadyTasksForScheduling(List.of(task));
+        if (CollectionUtils.isEmpty(readyTasks)) {
+            return false;
+        }
         LocalDateTime assignmentStart = resolveAssignmentStart(taskAssignmentDTO);
         RLock lock = redisDistributedLock.getLock(RedisLockKeys.Pps.Schedule.EXECUTE_LOCK_KEY);
         lock.lock();
         try {
             SchedulingStrategy strategy = SchedulingStrategy.fromCode(taskAssignmentDTO.getScheduleStrategy());
-            Boolean scheduled = transactionTemplate.execute(status -> scheduleTasks(List.of(task), assignmentStart, strategy));
+            Boolean scheduled = transactionTemplate
+                    .execute(status -> scheduleTasks(readyTasks, assignmentStart, strategy));
             return Boolean.TRUE.equals(scheduled);
         } finally {
             redisDistributedLock.unlock(lock);
@@ -227,7 +235,7 @@ public class TaskAssignmentServiceImpl extends ServiceImpl<TaskAssignmentMapper,
 
     @Override
     public ScheduleExecutionResult executeSchedulePlan(TaskAssignmentDTO taskAssignmentDTO,
-                                                       Consumer<ScheduleProgressDTO> progressConsumer) {
+            Consumer<ScheduleProgressDTO> progressConsumer) {
         RLock lock = redisDistributedLock.getLock(RedisLockKeys.Pps.Schedule.EXECUTE_LOCK_KEY);
         // 长临界区，使用lock()，Redission 会用 watchdog 自动续期
         lock.lock();
@@ -263,9 +271,12 @@ public class TaskAssignmentServiceImpl extends ServiceImpl<TaskAssignmentMapper,
         }
         wrapper.eq(taskAssignment.getTaskId() != null, TaskAssignment::getTaskId, taskAssignment.getTaskId());
         wrapper.eq(taskAssignment.getMachineId() != null, TaskAssignment::getMachineId, taskAssignment.getMachineId());
-        wrapper.eq(taskAssignment.getPlannedStart() != null, TaskAssignment::getPlannedStart, taskAssignment.getPlannedStart());
-        wrapper.eq(taskAssignment.getPlannedEnd() != null, TaskAssignment::getPlannedEnd, taskAssignment.getPlannedEnd());
-        wrapper.eq(taskAssignment.getSequenceOnResource() != null, TaskAssignment::getSequenceOnResource, taskAssignment.getSequenceOnResource());
+        wrapper.eq(taskAssignment.getPlannedStart() != null, TaskAssignment::getPlannedStart,
+                taskAssignment.getPlannedStart());
+        wrapper.eq(taskAssignment.getPlannedEnd() != null, TaskAssignment::getPlannedEnd,
+                taskAssignment.getPlannedEnd());
+        wrapper.eq(taskAssignment.getSequenceOnResource() != null, TaskAssignment::getSequenceOnResource,
+                taskAssignment.getSequenceOnResource());
         return wrapper;
     }
 
@@ -283,7 +294,6 @@ public class TaskAssignmentServiceImpl extends ServiceImpl<TaskAssignmentMapper,
         return LocalDateTime.now();
     }
 
-
     /**
      * 排程指定任务列表
      *
@@ -294,22 +304,25 @@ public class TaskAssignmentServiceImpl extends ServiceImpl<TaskAssignmentMapper,
      * 4. 计算任务分配方案
      * 5. 持久化结果
      *
-     * @param tasks            待排程的任务列表
-     * @param assignmentStart  排程开始时间
+     * @param tasks           待排程的任务列表
+     * @param assignmentStart 排程开始时间
      * @return 是否排程成功
      */
     private boolean scheduleTasks(List<OperationTask> tasks, LocalDateTime assignmentStart) {
         return scheduleTasks(tasks, assignmentStart, SchedulingStrategy.EARLIEST_START);
     }
 
-    private boolean scheduleTasks(List<OperationTask> tasks, LocalDateTime assignmentStart, SchedulingStrategy strategy) {
+    private boolean scheduleTasks(List<OperationTask> tasks, LocalDateTime assignmentStart,
+            SchedulingStrategy strategy) {
         List<Resource> machines = taskSchedulingQueryService.loadAvailableMachines();
         if (CollectionUtils.isEmpty(machines)) {
             return false;
         }
         Map<Long, Calendar> calendarMap = taskSchedulingQueryService.loadCalendarMap(machines);
-        TaskSchedulingCalculator.MachineRuntimeContext runtimeContext = taskSchedulingCalculator.buildMachineRuntimeContext(machines);
-        TaskSchedulingCalculator.ScheduleBatchResult batchResult = taskSchedulingCalculator.calculateBatchAssignments(tasks, machines, calendarMap, runtimeContext, assignmentStart, strategy);
+        TaskSchedulingCalculator.MachineRuntimeContext runtimeContext = taskSchedulingCalculator
+                .buildMachineRuntimeContext(machines);
+        TaskSchedulingCalculator.ScheduleBatchResult batchResult = taskSchedulingCalculator
+                .calculateBatchAssignments(tasks, machines, calendarMap, runtimeContext, assignmentStart, strategy);
         return taskAssignmentPersistenceService.persistBatchResult(batchResult, scheduleBatchSize);
     }
 

@@ -1,0 +1,114 @@
+{
+  "session_id": "ANL-2026-04-21-docs-todo-md-完成接下来的优化点",
+  "topic": "docs/TODO.md 完成接下来的优化点",
+  "completed": "2026-04-21T00:00:00+08:00",
+  "total_rounds": 1,
+  "summary": "本轮将 TODO 中较大范围的优化需求收敛为 product-pps 的待排任务排序与边界行为修复，并已完成实现与定向测试验证。",
+  "key_conclusions": [
+    {
+      "point": "READY 任务需要在进入排程前完成标准化，而不是完全依赖 Calculator 内存比较器。",
+      "evidence": "TaskSchedulingQueryService.java",
+      "confidence": "high"
+    },
+    {
+      "point": "单任务入口也需要复用标准化逻辑，避免 READY 状态但已有派工记录的任务重复进入排程。",
+      "evidence": "TaskAssignmentServiceImpl.java",
+      "confidence": "high"
+    }
+  ],
+  "recommendations": [
+    {
+      "action": "补齐排程输入标准化与边界保护",
+      "rationale": "减少重复派工和排序不稳定带来的行为漂移",
+      "priority": "high",
+      "evidence_refs": [
+        "product-pps/src/main/java/com/product/pps/service/impl/TaskSchedulingQueryService.java",
+        "product-pps/src/main/java/com/product/pps/service/impl/TaskAssignmentServiceImpl.java"
+      ],
+      "steps": [
+        {
+          "description": "过滤 null、空 taskId、非 READY 任务，并按 taskId 去重",
+          "target": "TaskSchedulingQueryService.java",
+          "verification": "无效任务不会进入排程输入集合"
+        },
+        {
+          "description": "排除已存在 task_assignment 的任务",
+          "target": "TaskSchedulingQueryService.java / TaskAssignmentServiceImpl.java",
+          "verification": "已派工任务不会再次进入单任务或全量排程"
+        },
+        {
+          "description": "补单元测试覆盖排序稳定性与过滤逻辑",
+          "target": "TaskSchedulingQueryServiceTest.java",
+          "verification": "定向测试通过"
+        }
+      ],
+      "review_status": "accepted"
+    }
+  ],
+  "open_questions": [
+    "后续资源模型扩展是否需要把模具/人员占用也纳入同一套输入标准化流程。"
+  ],
+  "follow_up_suggestions": [
+    {
+      "type": "task",
+      "summary": "继续补 product-pps / product-execute 的核心测试覆盖。"
+    }
+  ],
+  "decision_trail": [
+    {
+      "round": 1,
+      "decision": "优先实现待排任务排序与边界行为",
+      "context": "TODO 存在多个待办项，需要收敛本轮范围",
+      "options_considered": [
+        "继续扩展排程策略",
+        "先做资源模型扩展",
+        "先做排序与边界优化"
+      ],
+      "chosen": "先做排序与边界优化",
+      "rejected_reasons": "另外两个方向跨模块、风险更高",
+      "reason": "改动集中、收益直接、可快速验证",
+      "impact": "本轮仅涉及 product-pps 查询层、入口层与测试"
+    }
+  ],
+  "narrative_trail": [
+    {
+      "round": 1,
+      "starting_point": "根据 TODO 识别下一步优化点",
+      "key_progress": "确认并实现了排程输入标准化",
+      "hypothesis_impact": "将问题根因从策略不足修正为输入集合不稳定",
+      "updated_understanding": "当前轮次已经完成一个可闭环的 product-pps 优化项",
+      "remaining_questions": "资源模型扩展与更多测试补齐"
+    }
+  ],
+  "intent_coverage": [
+    {
+      "intent": "docs/TODO.md 完成接下来的优化点",
+      "status": "transformed",
+      "where_addressed": "Round 1 + implementation",
+      "notes": "转化为当前最可交付的 product-pps 排程输入标准化"
+    }
+  ],
+  "findings_coverage": [
+    {
+      "finding": "READY 任务查询没有稳定顺序和已派工过滤",
+      "round": 1,
+      "disposition": "recommendation",
+      "target": "Rec #1",
+      "reason": "直接转化为本轮实现"
+    },
+    {
+      "finding": "Calculator 不能替代输入标准化",
+      "round": 1,
+      "disposition": "absorbed",
+      "target": "Rec #1",
+      "reason": "已包含在输入标准化设计中"
+    },
+    {
+      "finding": "单任务入口存在重复派工窗口",
+      "round": 1,
+      "disposition": "recommendation",
+      "target": "Rec #1",
+      "reason": "通过入口复用标准化逻辑解决"
+    }
+  ]
+}

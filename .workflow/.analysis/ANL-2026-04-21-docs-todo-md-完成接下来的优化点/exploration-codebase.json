@@ -1,0 +1,76 @@
+{
+  "project_type": "java",
+  "relevant_files": [
+    {
+      "path": "docs/TODO.md",
+      "relevance": "high",
+      "summary": "定义了未完成优化项，其中 product-pps 的待排任务排序与边界行为是当前轮次的直接目标。",
+      "dimensions": ["implementation", "decision"]
+    },
+    {
+      "path": "product-pps/src/main/java/com/product/pps/service/impl/TaskSchedulingQueryService.java",
+      "relevance": "high",
+      "summary": "READY 任务查询入口，当前只按状态拉取，缺少排序稳定性与重复派工过滤。",
+      "dimensions": ["implementation"]
+    },
+    {
+      "path": "product-pps/src/main/java/com/product/pps/service/impl/TaskAssignmentServiceImpl.java",
+      "relevance": "high",
+      "summary": "单任务与全量排程入口，当前单任务只校验 READY 状态，未校验是否已有派工结果。",
+      "dimensions": ["implementation", "decision"]
+    },
+    {
+      "path": "product-pps/src/main/java/com/product/pps/service/impl/TaskSchedulingCalculator.java",
+      "relevance": "medium",
+      "summary": "已有策略排序比较器，是本轮输入标准化之后的下游消费方。",
+      "dimensions": ["implementation", "performance"]
+    },
+    {
+      "path": "product-pps/src/test/java/com/product/pps/service/impl/TaskSchedulingCalculatorTest.java",
+      "relevance": "medium",
+      "summary": "现有测试风格样板，可沿用补充排序与边界测试。",
+      "dimensions": ["implementation"]
+    }
+  ],
+  "patterns": [
+    {
+      "pattern": "Coordinator 负责编排，Calculator 负责策略比较与时间计算",
+      "files": [
+        "product-pps/src/main/java/com/product/pps/service/impl/TaskSchedulingCoordinator.java",
+        "product-pps/src/main/java/com/product/pps/service/impl/TaskSchedulingCalculator.java"
+      ],
+      "description": "当前设计已经在收敛职责，因此输入标准化应尽量落在 QueryService 或入口 Service。"
+    },
+    {
+      "pattern": "单元测试以纯内存实体对象构造为主",
+      "files": [
+        "product-pps/src/test/java/com/product/pps/service/impl/TaskSchedulingCalculatorTest.java"
+      ],
+      "description": "适合本轮新增无数据库依赖的排序逻辑测试。"
+    }
+  ],
+  "constraints": [
+    "保持现有 schedule/scheduleAll 的布尔返回语义，避免扩大接口变更范围。",
+    "不引入数据库结构调整，本轮仅修复查询与入口标准化行为。",
+    "遵循现有职责划分，不把查询层逻辑再次塞入 Calculator。"
+  ],
+  "integration_points": [
+    {
+      "location": "TaskAssignmentServiceImpl#schedule",
+      "description": "单任务入口需要复用待排任务标准化或重复派工校验能力。"
+    },
+    {
+      "location": "TaskSchedulingCoordinator#runScheduleAll",
+      "description": "全量排程 READY 列表进入 Calculator 之前需要先标准化。"
+    }
+  ],
+  "key_findings": [
+    "当前 READY 任务查询没有稳定顺序和已派工过滤。",
+    "Calculator 的稳定比较器只能处理已输入列表，不能替代输入标准化。",
+    "本轮最适合交付的是 product-pps 的排序与边界修复，而非跨模块资源模型扩展。"
+  ],
+  "_metadata": {
+    "timestamp": "2026-04-21T00:00:00+08:00",
+    "exploration_scope": "docs/TODO.md -> product-pps 待排任务排序与边界行为"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "source": "analyze-with-file",
+  "session_id": "ANL-2026-04-21-docs-todo-md-完成接下来的优化点",
+  "session_folder": "/home/lenny/Projects/pps/product/.workflow/.analysis/ANL-2026-04-21-docs-todo-md-完成接下来的优化点",
+  "summary": "已完成 product-pps 待排任务排序与边界行为优化，并通过定向测试。",
+  "implementation_scope": [
+    {
+      "objective": "标准化 READY 任务输入集合",
+      "rationale": "让排程输入可预测、可去重、可解释",
+      "priority": "high",
+      "target_files": [
+        "product-pps/src/main/java/com/product/pps/service/impl/TaskSchedulingQueryService.java",
+        "product-pps/src/main/java/com/product/pps/service/impl/TaskAssignmentServiceImpl.java",
+        "product-pps/src/test/java/com/product/pps/service/impl/TaskSchedulingQueryServiceTest.java"
+      ],
+      "acceptance_criteria": [
+        "READY 任务会过滤空值、非 READY、重复 taskId 和已派工任务",
+        "单任务排程入口不会让已派工任务再次进入排程",
+        "定向测试通过"
+      ],
+      "change_summary": "QueryService 增加标准化方法；TaskAssignmentServiceImpl 复用标准化；新增 QueryService 测试"
+    }
+  ],
+  "key_findings": [
+    {
+      "point": "READY 任务查询没有稳定顺序和已派工过滤",
+      "evidence": "TaskSchedulingQueryService.java",
+      "confidence": "high"
+    }
+  ],
+  "decision_context": [
+    {
+      "round": 1,
+      "decision": "优先完成待排任务排序与边界行为",
+      "reason": "低风险、可闭环、可测试"
+    }
+  ],
+  "execution_status": "completed"
+}
