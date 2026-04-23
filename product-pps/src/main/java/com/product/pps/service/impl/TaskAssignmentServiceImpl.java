@@ -206,11 +206,14 @@ public class TaskAssignmentServiceImpl extends ServiceImpl<TaskAssignmentMapper,
         if (CollectionUtils.isEmpty(readyTasks)) {
             return false;
         }
+        // 获取任务开始时间
         LocalDateTime assignmentStart = resolveAssignmentStart(taskAssignmentDTO);
         RLock lock = redisDistributedLock.getLock(RedisLockKeys.Pps.Schedule.EXECUTE_LOCK_KEY);
         lock.lock();
         try {
+            // 获取排程策略
             SchedulingStrategy strategy = SchedulingStrategy.fromCode(taskAssignmentDTO.getScheduleStrategy());
+            // 使用 transactionTemplate 控制事物边界
             Boolean scheduled = transactionTemplate
                     .execute(status -> scheduleTasks(readyTasks, assignmentStart, strategy));
             return Boolean.TRUE.equals(scheduled);

@@ -7,6 +7,7 @@
 - 外部化 `product-server` 的 Redis、MySQL、Token 和 AliOSS 敏感配置，避免仓库内保留明文密钥
 - 排程策略已支持按参数切换最早开始、最早完工、交期优先三种模式
 - 待排任务在进入排程前会统一做空值过滤、重复任务去重、已派工任务排除，并按 `earliestStart + batchId + sequence + taskId` 稳定排序
+- 补充了 `product-pps` 排程排序与 `product-execute` 任务事件流转的核心单元测试，并修正任务无派工记录时的事件空指针问题
 
 ## 待优化项
 

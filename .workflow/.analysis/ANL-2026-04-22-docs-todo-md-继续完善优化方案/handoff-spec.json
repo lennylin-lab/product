@@ -1,0 +1,93 @@
+{
+  "source": "analyze-with-file",
+  "session_id": "ANL-2026-04-22-docs-todo-md-继续完善优化方案",
+  "session_folder": "/home/lenny/Projects/pps/product/.workflow/.analysis/ANL-2026-04-22-docs-todo-md-继续完善优化方案",
+  "summary": "将 docs/TODO.md 从平铺任务表重构为阶段化 roadmap，并把后续实现主线收敛到资源约束建模、任务事件状态闭环和关键链路测试。",
+  "implementation_scope": [
+    {
+      "objective": "重写 docs/TODO.md 为分阶段 roadmap",
+      "rationale": "先区分已完成、部分完成、待落地事项，避免重复排期和误判进度。",
+      "priority": "high",
+      "target_files": [
+        "docs/TODO.md"
+      ],
+      "acceptance_criteria": [
+        "文档明确区分真实完成状态",
+        "文档按阶段展示依赖关系",
+        "每阶段具备可验证的验收口径"
+      ],
+      "change_summary": "docs/TODO.md: 改写为阶段化 roadmap，重标策略抽象与测试进度"
+    },
+    {
+      "objective": "补资源约束领域模型与排程上下文",
+      "rationale": "没有资源需求和兼容关系，现有策略扩展缺少可靠输入。",
+      "priority": "high",
+      "target_files": [
+        "product-domain",
+        "product-pps/src/main/java/com/product/pps/service/impl/TaskSchedulingQueryService.java",
+        "product-pps/src/main/java/com/product/pps/service/impl/TaskSchedulingCalculator.java"
+      ],
+      "acceptance_criteria": [
+        "任务与资源可表达模具/人员/工位约束",
+        "排程计算会校验协同资源占用",
+        "排程结果能解释延后和不可排原因"
+      ],
+      "change_summary": "product-domain / product-pps: 增补资源需求、兼容关系和换型上下文，并接入排程算法"
+    },
+    {
+      "objective": "扩展 TaskEvent 驱动的业务状态闭环",
+      "rationale": "当前事件已具备状态更新和日志记录能力，适合统一承接批次、订单和资源状态推进。",
+      "priority": "high",
+      "target_files": [
+        "product-execute/src/main/java/com/product/execute/service/impl/TaskEventServiceImpl.java",
+        "product-demand/src/main/java/com/product/demand/service/impl/CustomerOrderServiceImpl.java"
+      ],
+      "acceptance_criteria": [
+        "任务事件驱动批次、订单行、订单状态变化",
+        "普通更新入口不能绕过状态守卫",
+        "暂停、恢复、完工场景具备一致的业务状态表现"
+      ],
+      "change_summary": "product-execute / product-demand: 收敛状态推进逻辑，形成统一业务闭环"
+    },
+    {
+      "objective": "补关键链路测试",
+      "rationale": "需要用回归测试保护资源约束和状态闭环演进。",
+      "priority": "medium",
+      "target_files": [
+        "product-pps/src/test/java",
+        "product-execute/src/test/java",
+        "product-demand/src/test/java"
+      ],
+      "acceptance_criteria": [
+        "资源约束与跨班次场景具备测试",
+        "任务事件到订单状态联动具备测试",
+        "关键状态守卫有回归保护"
+      ],
+      "change_summary": "src/test/java: 新增排程约束、状态联动和状态守卫测试"
+    }
+  ],
+  "key_findings": [
+    {
+      "point": "排程策略切换已具备基础实现",
+      "evidence": "TaskAssignmentDTO、SchedulingStrategy、TaskSchedulingCalculator.orderTasks",
+      "confidence": "high"
+    },
+    {
+      "point": "资源约束模型不完整是现阶段主瓶颈",
+      "evidence": "TaskSchedulingCalculator.chooseMachine 仅消费机台、班次、时长",
+      "confidence": "high"
+    },
+    {
+      "point": "任务事件尚未驱动批次和订单状态闭环",
+      "evidence": "TaskEventServiceImpl 仅更新 OperationTask 并记录事件",
+      "confidence": "high"
+    }
+  ],
+  "decision_context": [
+    {
+      "round": 1,
+      "decision": "先校准 TODO 与代码现状，再决定后续优化主线",
+      "impact": "后续实施范围按阶段重构，而非继续平铺功能项"
+    }
+  ]
+}

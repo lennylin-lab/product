@@ -174,7 +174,7 @@ public class TaskSchedulingQueryService {
             return new ArrayList<>();
         }
         Set<String> existingTaskIds = assignedTaskIds == null ? Collections.emptySet() : assignedTaskIds;
-        // 過濾
+        // 過濾空，非READY,已存在派工記錄的任務
         Map<String, OperationTask> distinctTaskMap = tasks.stream()
                 .filter(Objects::nonNull)
                 .filter(item -> StringUtils.isNotEmpty(item.getTaskId()))
@@ -186,6 +186,7 @@ public class TaskSchedulingQueryService {
             return new ArrayList<>();
         }
         List<OperationTask> orderedTasks = new ArrayList<>(distinctTaskMap.values());
+        // 按任務開始時間、批次id、工序順序、任務id
         orderedTasks.sort(Comparator
                 .comparing(OperationTask::getEarliestStart, Comparator.nullsLast(LocalDateTime::compareTo))
                 .thenComparing(OperationTask::getBatchId, Comparator.nullsLast(String::compareTo))

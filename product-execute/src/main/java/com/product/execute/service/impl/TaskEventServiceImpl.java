@@ -140,84 +140,62 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean start(String taskId) {
-        // 将任务状态改为RUNNING
-        Db.lambdaUpdate(OperationTask.class)
-                .set(OperationTask::getStatus, StatusConstants.RUNNING_OPERATION_TASK)
-                .eq(OperationTask::getTaskId, taskId)
-                .update();
-        // 查询任务资源
-        TaskAssignment assignment = Db.lambdaQuery(TaskAssignment.class)
-                .select(TaskAssignment::getMachineId)
-                .eq(TaskAssignment::getTaskId, taskId)
-                .last("limit 1")
-                .one();
-        // 插入事件
-        TaskEvent taskEvent = new TaskEvent();
-        taskEvent.setTaskId(taskId);
-        taskEvent.setEventType(TaskEventConstants.START_TASK_EVENT);
-        taskEvent.setEventTime(LocalDateTime.now());
-        taskEvent.setResourceId(assignment.getMachineId());
-        return save(taskEvent);
+        return changeTaskStateAndRecordEvent(taskId,
+                StatusConstants.RUNNING_OPERATION_TASK,
+                TaskEventConstants.START_TASK_EVENT);
     }
 
     @Override
     public boolean pause(String taskId) {
-        // 将任务状态改为pause
-        Db.lambdaUpdate(OperationTask.class)
-                .set(OperationTask::getStatus, StatusConstants.PAUSED_OPERATION_TASK)
-                .eq(OperationTask::getTaskId, taskId)
-                .update();
-        TaskAssignment assignment = Db.lambdaQuery(TaskAssignment.class)
-                .select(TaskAssignment::getMachineId)
-                .eq(TaskAssignment::getTaskId, taskId)
-                .last("limit 1")
-                .one();
-        TaskEvent taskEvent = new TaskEvent();
-        taskEvent.setTaskId(taskId);
-        taskEvent.setEventType(TaskEventConstants.PAUSE_TASK_EVENT);
-        taskEvent.setEventTime(LocalDateTime.now());
-        taskEvent.setResourceId(assignment.getMachineId());
-        return save(taskEvent);
+        return changeTaskStateAndRecordEvent(taskId,
+                StatusConstants.PAUSED_OPERATION_TASK,
+                TaskEventConstants.PAUSE_TASK_EVENT);
     }
 
     @Override
     public boolean resume(String taskId) {
-        // 将任务状态改为RUNNING
-        Db.lambdaUpdate(OperationTask.class)
-                .set(OperationTask::getStatus, StatusConstants.RUNNING_OPERATION_TASK)
-                .eq(OperationTask::getTaskId, taskId)
-                .update();
-        TaskAssignment assignment = Db.lambdaQuery(TaskAssignment.class)
-                .select(TaskAssignment::getMachineId)
-                .eq(TaskAssignment::getTaskId, taskId)
-                .last("limit 1")
-                .one();
-        TaskEvent taskEvent = new TaskEvent();
-        taskEvent.setTaskId(taskId);
-        taskEvent.setEventType(TaskEventConstants.RESUME_TASK_EVENT);
-        taskEvent.setEventTime(LocalDateTime.now());
-        taskEvent.setResourceId(assignment.getMachineId());
-        return save(taskEvent);
+        return changeTaskStateAndRecordEvent(taskId,
+                StatusConstants.RUNNING_OPERATION_TASK,
+                TaskEventConstants.RESUME_TASK_EVENT);
     }
 
     @Override
     public boolean complete(String taskId) {
-        // 将任务状态改为DONE
-        Db.lambdaUpdate(OperationTask.class)
-                .set(OperationTask::getStatus, StatusConstants.DONE_OPERATION_TASK)
+        return changeTaskStateAndRecordEvent(taskId,
+                StatusConstants.DONE_OPERATION_TASK,
+                TaskEventConstants.FINISH_TASK_EVENT);
+    }
+
+    boolean changeTaskStateAndRecordEvent(String taskId, String targetStatus, String eventType) {
+        if (StringUtils.isEmpty(taskId) || StringUtils.isEmpty(targetStatus) || StringUtils.isEmpty(eventType)) {
+            return false;
+        }
+        boolean updated = updateTaskStatus(taskId, targetStatus);
+        if (!updated) {
+            return false;
+        }
+        TaskEvent taskEvent = new TaskEvent();
+        taskEvent.setTaskId(taskId);
+        taskEvent.setEventType(eventType);
+        taskEvent.setEventTime(LocalDateTime.now());
+        taskEvent.setResourceId(loadMachineIdByTaskId(taskId));
+        return save(taskEvent);
+    }
+
+    protected boolean updateTaskStatus(String taskId, String targetStatus) {
+        return Db.lambdaUpdate(OperationTask.class)
+                .set(OperationTask::getStatus, targetStatus)
                 .eq(OperationTask::getTaskId, taskId)
                 .update();
+    }
+
+    protected String loadMachineIdByTaskId(String taskId) {
         TaskAssignment assignment = Db.lambdaQuery(TaskAssignment.class)
                 .select(TaskAssignment::getMachineId)
                 .eq(TaskAssignment::getTaskId, taskId)
                 .last("limit 1")
                 .one();
-        TaskEvent taskEvent = new TaskEvent();
-        taskEvent.setTaskId(taskId);
-        taskEvent.setEventType(TaskEventConstants.FINISH_TASK_EVENT);
-        taskEvent.setEventTime(LocalDateTime.now());
-        taskEvent.setResourceId(assignment.getMachineId());
-        return save(taskEvent);
+        return assignment == null ? null : assignment.getMachineId();
     }
 
     /**
@@ -235,7 +213,6 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
         wrapper.eq(taskEvent.getRemark() != null, TaskEvent::getRemark, taskEvent.getRemark());
         return wrapper;
     }
-
 
     private String buildBizId(Object entity) {
         BizIdPrefix annotation = entity.getClass().getAnnotation(BizIdPrefix.class);

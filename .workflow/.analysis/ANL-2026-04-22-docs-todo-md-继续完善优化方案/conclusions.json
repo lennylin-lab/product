@@ -1,0 +1,205 @@
+{
+  "session_id": "ANL-2026-04-22-docs-todo-md-继续完善优化方案",
+  "topic": "基于 docs/TODO.md 继续完善项目优化方案",
+  "completed": "2026-04-22T11:00:00+08:00",
+  "total_rounds": 1,
+  "summary": "当前优化方案应从“功能平铺”改为“事实校准后的阶段化 roadmap”。排程策略切换已基本落地，后续优先级应转向资源约束建模、执行状态闭环，以及覆盖跨模块关键链路的测试与文档。",
+  "key_conclusions": [
+    {
+      "point": "排程策略切换已具备基础实现，TODO 应避免继续将其当作核心未完成项。",
+      "evidence": "TaskAssignmentDTO、SchedulingStrategy、TaskSchedulingCalculator.orderTasks",
+      "confidence": "high"
+    },
+    {
+      "point": "资源约束模型不完整，导致现有排程算法只能在简化场景内工作。",
+      "evidence": "TaskSchedulingCalculator.chooseMachine 仅基于 machine/calendar/stdDurationMin",
+      "confidence": "high"
+    },
+    {
+      "point": "任务事件已具备事务边界，但业务状态没有向批次、订单和资源层闭环。",
+      "evidence": "TaskEventServiceImpl 仅更新 OperationTask 并记录 TaskEvent",
+      "confidence": "high"
+    }
+  ],
+  "recommendations": [
+    {
+      "action": "重写 docs/TODO.md 为分阶段 roadmap",
+      "rationale": "先区分已完成、部分完成和待落地事项，才能让后续迭代与 issue 拆分可信。",
+      "priority": "high",
+      "evidence_refs": [
+        "docs/TODO.md",
+        "product-pps/src/main/java/com/product/pps/enums/SchedulingStrategy.java"
+      ],
+      "steps": [
+        {
+          "description": "将排程策略抽象标记为已完成，将核心测试标记为部分完成。",
+          "target": "docs/TODO.md",
+          "verification": "文档中不再把已落地能力列为主线未完成项。"
+        },
+        {
+          "description": "按阶段拆分为事实校准、领域建模、状态闭环、测试与文档收口。",
+          "target": "docs/TODO.md",
+          "verification": "每个阶段都有明确目标、依赖和验收口径。"
+        }
+      ],
+      "review_status": "accepted"
+    },
+    {
+      "action": "优先补资源约束领域模型，再扩调度目标函数",
+      "rationale": "没有任务资源需求与兼容矩阵时，新增更多策略枚举收益很低。",
+      "priority": "high",
+      "evidence_refs": [
+        "product-pps/src/main/java/com/product/pps/service/impl/TaskSchedulingCalculator.java",
+        "product-domain/src/main/java/com/product/domain/entity/OperationTask.java",
+        "product-domain/src/main/java/com/product/domain/entity/Resource.java"
+      ],
+      "steps": [
+        {
+          "description": "为任务和资源增加模具、人员、工位需求和兼容关系表达。",
+          "target": "product-domain",
+          "verification": "领域层可表达多资源协同约束。"
+        },
+        {
+          "description": "让排程查询层向计算层提供协同资源占用和换型上下文。",
+          "target": "product-pps",
+          "verification": "排程结果能解释资源冲突与延后原因。"
+        }
+      ],
+      "review_status": "accepted"
+    },
+    {
+      "action": "将 TaskEventServiceImpl 扩展为业务状态闭环入口",
+      "rationale": "当前已具备状态更新和事件记录能力，适合收拢批次、订单行、订单与资源状态推进。",
+      "priority": "high",
+      "evidence_refs": [
+        "product-execute/src/main/java/com/product/execute/service/impl/TaskEventServiceImpl.java",
+        "product-demand/src/main/java/com/product/demand/service/impl/CustomerOrderServiceImpl.java"
+      ],
+      "steps": [
+        {
+          "description": "抽出状态推进编排，统一驱动任务、批次、订单行、订单状态更新。",
+          "target": "product-execute / product-demand",
+          "verification": "完工、暂停、恢复等事件可引起一致的业务状态变化。"
+        },
+        {
+          "description": "收敛订单修改入口，避免绕开状态守卫直接更新。",
+          "target": "product-demand",
+          "verification": "已投产和已完成订单无法通过普通更新入口被错误修改。"
+        }
+      ],
+      "review_status": "accepted"
+    },
+    {
+      "action": "补齐跨模块关键链路测试",
+      "rationale": "现有单测覆盖局部逻辑，但不足以保证排程与执行状态闭环正确。",
+      "priority": "medium",
+      "evidence_refs": [
+        "product-pps/src/test/java/com/product/pps/service/impl/TaskSchedulingCalculatorTest.java",
+        "product-execute/src/test/java/com/product/execute/service/impl/TaskEventServiceImplTest.java"
+      ],
+      "steps": [
+        {
+          "description": "补资源约束、跨班次、无协同资源等排程测试。",
+          "target": "product-pps/src/test/java",
+          "verification": "新增约束场景在测试中可稳定复现。"
+        },
+        {
+          "description": "补任务事件驱动批次/订单状态联动测试。",
+          "target": "product-execute/src/test/java, product-demand/src/test/java",
+          "verification": "状态链路具备回归保护。"
+        }
+      ],
+      "review_status": "accepted"
+    }
+  ],
+  "open_questions": [
+    "资源约束是通过新增实体关系表还是扩展 DTO/VO 表达更合适？",
+    "批次、订单行、订单状态的推进规则应集中在 execute 模块还是抽成独立 domain service？",
+    "下一轮是否直接回写 docs/TODO.md，还是先依据 handoff 生成 issue 列表？"
+  ],
+  "follow_up_suggestions": [
+    {
+      "type": "task",
+      "summary": "先回写 docs/TODO.md 为阶段化 roadmap。"
+    },
+    {
+      "type": "task",
+      "summary": "再启动资源约束建模专题，实现任务-资源兼容关系。"
+    },
+    {
+      "type": "task",
+      "summary": "随后推进 TaskEvent 驱动的状态闭环与测试。"
+    }
+  ],
+  "decision_trail": [
+    {
+      "round": 1,
+      "decision": "先校准 TODO 与代码现状，再决定后续优化主线",
+      "context": "原始 TODO 混合了已完成与未完成事项",
+      "options_considered": [
+        "直接实现某个 P1 子项",
+        "仅做文档润色",
+        "跨模块核对后重构建议"
+      ],
+      "chosen": "跨模块核对后重构建议",
+      "rejected_reasons": "直接实现会造成优先级失真；只做文档润色缺少证据支撑",
+      "reason": "需要先建立可信的事实基线",
+      "impact": "后续建议按阶段重构"
+    }
+  ],
+  "narrative_trail": [
+    {
+      "round": 1,
+      "starting_point": "基于 docs/TODO.md 继续完善优化方案",
+      "key_progress": "识别出策略抽象已落地、资源约束与状态闭环是主要缺口",
+      "hypothesis_impact": "将主线从策略扩展转向模型与闭环补齐",
+      "updated_understanding": "当前更需要 roadmap 重构，而不是新增散点功能",
+      "remaining_questions": "资源关系表达方式与状态机归属"
+    }
+  ],
+  "intent_coverage": [
+    {
+      "intent": "基于 docs/TODO.md 继续完善项目优化方案",
+      "status": "addressed",
+      "where_addressed": "Round 1 + Recommendations",
+      "notes": "已完成事实校准与可执行建议收敛"
+    }
+  ],
+  "findings_coverage": [
+    {
+      "finding": "排程策略抽象已基本落地",
+      "round": 1,
+      "disposition": "recommendation",
+      "target": "Rec #1",
+      "reason": "需要回写文档，避免重复排期"
+    },
+    {
+      "finding": "资源协同约束仍未进入算法主路径",
+      "round": 1,
+      "disposition": "recommendation",
+      "target": "Rec #2",
+      "reason": "这是下一阶段最高价值缺口"
+    },
+    {
+      "finding": "任务事件未联动批次/订单/资源状态",
+      "round": 1,
+      "disposition": "recommendation",
+      "target": "Rec #3",
+      "reason": "需要形成业务状态闭环"
+    },
+    {
+      "finding": "订单状态守卫未统一走状态机",
+      "round": 1,
+      "disposition": "absorbed",
+      "target": "Rec #3",
+      "reason": "属于业务状态闭环的一部分"
+    },
+    {
+      "finding": "测试已有基础但缺跨模块场景",
+      "round": 1,
+      "disposition": "recommendation",
+      "target": "Rec #4",
+      "reason": "需要新增关键链路回归保护"
+    }
+  ]
+}
