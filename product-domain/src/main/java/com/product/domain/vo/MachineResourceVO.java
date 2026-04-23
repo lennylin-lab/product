@@ -2,6 +2,7 @@ package com.product.domain.vo;
 
 import com.product.domain.entity.Resource;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 /**
  * @Auther: chuan
@@ -10,6 +11,7 @@ import lombok.Data;
  * @version: 1.0
  */
 @Data
+@EqualsAndHashCode(callSuper = true)
 public class MachineResourceVO extends Resource {
     private String machineId;
     private Integer tonnage;

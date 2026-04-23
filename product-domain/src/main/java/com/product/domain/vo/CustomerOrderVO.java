@@ -2,6 +2,7 @@ package com.product.domain.vo;
 
 import com.product.domain.entity.CustomerOrder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 /**
  * @Auther: chuan
@@ -10,6 +11,7 @@ import lombok.Data;
  * @version: 1.0
  */
 @Data
+@EqualsAndHashCode(callSuper = true)
 public class CustomerOrderVO extends CustomerOrder {
     private String customerName;
 }

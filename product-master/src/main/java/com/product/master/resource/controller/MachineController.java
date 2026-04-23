@@ -8,7 +8,7 @@ import com.product.core.controller.BaseController;
 import com.product.core.utils.ExcelUtil;
 import com.product.domain.dto.MachineResource;
 import com.product.domain.vo.MachineResourceVO;
-import com.product.master.domain.entity.Machine;
+import com.product.domain.entity.Machine;
 import com.product.master.resource.service.IMachineService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;

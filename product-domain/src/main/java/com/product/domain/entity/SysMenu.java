@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,6 +21,7 @@ import java.util.List;
  * @version: 1.0
  */
 @Data
+@EqualsAndHashCode(callSuper = true)
 @TableName("sys_menu")
 public class SysMenu extends BaseEntity {
     private static final long serialVersionUID = 1L;

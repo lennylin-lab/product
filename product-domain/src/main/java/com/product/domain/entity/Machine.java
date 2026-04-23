@@ -1,4 +1,4 @@
-package com.product.master.domain.entity;
+package com.product.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
@@ -23,7 +23,7 @@ public class Machine {
     private static final long serialVersionUID = 1L;
 
     /** 注塑机ID */
-    @TableId(value = "machine_id", type = IdType.ASSIGN_UUID )
+    @TableId(value = "machine_id", type = IdType.ASSIGN_UUID)
     private String machineId;
 
     /** 锁模力 */

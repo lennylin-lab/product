@@ -96,11 +96,6 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
-                <configuration>
-                    <jvmArguments>
-                        -Dcom.sun.management.jmxremote=false
-                    </jvmArguments>
-                </configuration>
             </plugin>
         </plugins>
     </build>

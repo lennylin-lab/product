@@ -130,6 +130,12 @@ cp .env.example .env
 - Kibana：`${KIBANA_PORT}`，默认 `5601`
 - Logstash API：`${LOGSTASH_API_PORT}`，默认 `9600`
 
+启动完成后，脚本会自动检查 MySQL 中 `${MYSQL_DATABASE}` 是否为空库：
+
+- 启动前先将根目录 [schema.sql](/home/lenny/Projects/pps/product/schema.sql:1) 同步到 `deploy/mysql/init/010-schema.sql`
+- 空库时自动导入根目录 [schema.sql](/home/lenny/Projects/pps/product/schema.sql:1)
+- 已有业务表时跳过导入，避免覆盖现有开发数据
+
 如果你不走一键开发脚本，而是想单独启动某个依赖，也可以直接使用模块目录下的配置：
 
 ```bash

@@ -212,7 +212,8 @@ public class MachineServiceImpl extends ServiceImpl<MachineMapper, Machine> impl
             return wrapper;
         }
         wrapper.eq(machine.getTonnage() != null, Machine::getTonnage, machine.getTonnage());
-        wrapper.eq(machine.getDefaultSetupTimeMin() != null, Machine::getDefaultSetupTimeMin, machine.getDefaultSetupTimeMin());
+        wrapper.eq(machine.getDefaultSetupTimeMin() != null, Machine::getDefaultSetupTimeMin,
+                machine.getDefaultSetupTimeMin());
         return wrapper;
     }
 

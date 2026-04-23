@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.toolkit.Db;
 import com.product.domain.entity.*;
 import org.springframework.stereotype.Component;
 
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -55,9 +56,13 @@ public class SysPermissionService {
         if (sysUser.isAdmin()) {
             perms.add("*:*:*");
         } else {
+            Long[] roleIds = sysUser.getRoleIds();
+            if (roleIds == null || roleIds.length == 0) {
+                return perms;
+            }
             Set<Long> menus = Db.lambdaQuery(SysRoleMenu.class)
                     .select(SysRoleMenu::getMenuId)
-                    .in(SysRoleMenu::getRoleId, sysUser.getRoleIds())
+                    .in(SysRoleMenu::getRoleId, Arrays.asList(roleIds))
                     .list()
                     .stream()
                     .map(SysRoleMenu::getMenuId)

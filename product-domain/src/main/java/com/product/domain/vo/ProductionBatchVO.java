@@ -3,6 +3,7 @@ package com.product.domain.vo;
 import com.product.common.annotation.Excel;
 import com.product.domain.entity.ProductionBatch;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 import java.time.LocalDateTime;
 
@@ -13,6 +14,7 @@ import java.time.LocalDateTime;
  * @version: 1.0
  */
 @Data
+@EqualsAndHashCode(callSuper = true)
 public class ProductionBatchVO extends ProductionBatch {
     @Excel(name = "订单id")
     private String orderId;
