@@ -6,11 +6,14 @@ import com.product.common.constant.StatusConstants;
 import com.product.common.utils.StringUtils;
 import com.product.domain.entity.CustomerOrder;
 import com.product.domain.entity.Calendar;
+import com.product.domain.entity.Machine;
+import com.product.domain.entity.MachineMoldCompatibility;
 import com.product.domain.entity.OperationTask;
 import com.product.domain.entity.OrderLine;
 import com.product.domain.entity.ProductionBatch;
 import com.product.domain.entity.Resource;
 import com.product.domain.entity.TaskAssignment;
+import com.product.domain.entity.TaskResourceRequirement;
 import com.product.pps.dto.TaskSchedulingPriorityDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -66,9 +69,11 @@ public class TaskSchedulingQueryService {
             return resources;
         }
         // 过滤掉可能存在的 null 元素（虽然数据库查询通常不会返回 null）
-        return resources.stream()
+        List<Resource> availableMachines = resources.stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
+        attachMachineDetails(availableMachines);
+        return availableMachines;
     }
 
     /**
@@ -121,7 +126,9 @@ public class TaskSchedulingQueryService {
         List<OperationTask> readyTasks = Db.lambdaQuery(OperationTask.class)
                 .eq(OperationTask::getStatus, StatusConstants.READY_OPERATION_TASK)
                 .list();
-        return normalizeReadyTasksForScheduling(readyTasks);
+        List<OperationTask> normalizedTasks = normalizeReadyTasksForScheduling(readyTasks);
+        attachTaskResourceRequirements(normalizedTasks);
+        return normalizedTasks;
     }
 
     /**
@@ -193,6 +200,61 @@ public class TaskSchedulingQueryService {
                 .thenComparing(OperationTask::getSequence, Comparator.nullsLast(Long::compareTo))
                 .thenComparing(OperationTask::getTaskId, Comparator.nullsLast(String::compareTo)));
         return orderedTasks;
+    }
+
+    void attachTaskResourceRequirements(List<OperationTask> tasks) {
+        if (CollectionUtils.isEmpty(tasks)) {
+            return;
+        }
+        List<String> taskIds = tasks.stream()
+                .map(OperationTask::getTaskId)
+                .filter(StringUtils::isNotEmpty)
+                .distinct()
+                .collect(Collectors.toList());
+        if (CollectionUtils.isEmpty(taskIds)) {
+            return;
+        }
+        Map<String, List<TaskResourceRequirement>> requirementMap = Db.lambdaQuery(TaskResourceRequirement.class)
+                .in(TaskResourceRequirement::getTaskId, taskIds)
+                .list()
+                .stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.groupingBy(TaskResourceRequirement::getTaskId));
+        tasks.forEach(task -> task.setResourceRequirementList(requirementMap.getOrDefault(task.getTaskId(), List.of())));
+    }
+
+    private void attachMachineDetails(List<Resource> machines) {
+        if (CollectionUtils.isEmpty(machines)) {
+            return;
+        }
+        List<String> machineIds = machines.stream()
+                .map(Resource::getResourceId)
+                .filter(StringUtils::isNotEmpty)
+                .distinct()
+                .collect(Collectors.toList());
+        if (CollectionUtils.isEmpty(machineIds)) {
+            return;
+        }
+        Map<String, Machine> machineMap = Db.lambdaQuery(Machine.class)
+                .in(Machine::getMachineId, machineIds)
+                .list()
+                .stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toMap(Machine::getMachineId, item -> item, (left, right) -> left));
+        Map<String, List<MachineMoldCompatibility>> compatibilityMap = Db.lambdaQuery(MachineMoldCompatibility.class)
+                .in(MachineMoldCompatibility::getMachineId, machineIds)
+                .list()
+                .stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.groupingBy(MachineMoldCompatibility::getMachineId));
+        machines.forEach(machineResource -> {
+            Machine machine = machineMap.get(machineResource.getResourceId());
+            if (machine == null) {
+                return;
+            }
+            machine.setMoldCompatibilityList(compatibilityMap.getOrDefault(machine.getMachineId(), List.of()));
+            machineResource.setMachine(machine);
+        });
     }
 
     /**

@@ -1,0 +1,90 @@
+{
+  "project_type": "java",
+  "topic": "docs/TODO.md 查看项目当前进度，判断 todo 列表是否需要更新",
+  "relevant_files": [
+    {
+      "path": "docs/TODO.md",
+      "relevance": "high",
+      "summary": "当前任务总览文档，包含已完成优化、待优化项、开发任务表与执行顺序。",
+      "dimensions": ["implementation", "decision"]
+    },
+    {
+      "path": "product-pps/src/main/java/com/product/pps/enums/SchedulingStrategy.java",
+      "relevance": "high",
+      "summary": "定义 EARLIEST_START、EARLIEST_FINISH、DUE_DATE_PRIORITY，直接证明策略切换已落地。",
+      "dimensions": ["implementation"]
+    },
+    {
+      "path": "product-pps/src/main/java/com/product/pps/service/impl/TaskSchedulingQueryService.java",
+      "relevance": "high",
+      "summary": "READY 任务标准化逻辑已实现过滤、去重、排除已派工、稳定排序。",
+      "dimensions": ["implementation"]
+    },
+    {
+      "path": "product-pps/src/main/java/com/product/pps/service/impl/TaskSchedulingCoordinator.java",
+      "relevance": "medium",
+      "summary": "排程编排、进度推送阈值解耦、批量执行已存在，说明职责优化并非完全未开始。",
+      "dimensions": ["architecture", "implementation"]
+    },
+    {
+      "path": "product-pps/src/main/java/com/product/pps/service/impl/TaskSchedulingCalculator.java",
+      "relevance": "high",
+      "summary": "排程算法已按策略排序与选择机台，但仍主要围绕机台和日历，未体现更广泛资源协同约束。",
+      "dimensions": ["architecture", "decision"]
+    },
+    {
+      "path": "product-execute/src/main/java/com/product/execute/service/impl/TaskEventServiceImpl.java",
+      "relevance": "high",
+      "summary": "开始、暂停、恢复、完工事件已具备，说明执行事件链路已有基础闭环。",
+      "dimensions": ["implementation"]
+    },
+    {
+      "path": "product-demand/src/main/java/com/product/demand/service/impl/CustomerOrderServiceImpl.java",
+      "relevance": "medium",
+      "summary": "订单确认时已有已投产/已完成保护，但状态流转尚未形成统一状态机。",
+      "dimensions": ["implementation", "decision"]
+    },
+    {
+      "path": "docs/生产计划与排程计划系统需求说明书.md",
+      "relevance": "medium",
+      "summary": "需求文档已有骨架，但仍缺核心验收内容。",
+      "dimensions": ["decision"]
+    }
+  ],
+  "tests": [
+    "product-pps/src/test/java/com/product/pps/service/impl/TaskSchedulingCalculatorTest.java",
+    "product-pps/src/test/java/com/product/pps/service/impl/TaskSchedulingQueryServiceTest.java",
+    "product-execute/src/test/java/com/product/execute/service/impl/TaskEventServiceImplTest.java"
+  ],
+  "recent_commits": [
+    "42d135a 待排任务进入排程前做过滤",
+    "b99c022 补齐单元测试"
+  ],
+  "key_findings": [
+    "TODO 文档状态滞后于代码现状",
+    "排程策略切换已完成",
+    "READY 任务标准化已完成并有测试",
+    "任务事件链路为部分完成状态",
+    "订单状态守卫存在但未形成统一闭环",
+    "需求文档仍需补齐可验收内容"
+  ],
+  "constraints": [
+    "资源协同约束尚未进入排程算法主路径",
+    "跨模块状态闭环未在单一服务中统一管理",
+    "测试覆盖存在基础但缺系统级与边界场景"
+  ],
+  "integration_points": [
+    {
+      "location": "product-pps -> product-execute",
+      "description": "排程后任务进入执行态，但执行事件尚未反推批次、订单与资源状态。"
+    },
+    {
+      "location": "product-demand -> product-pps",
+      "description": "订单状态与排程入口存在业务约束，但未形成统一状态机。"
+    }
+  ],
+  "_metadata": {
+    "timestamp": "2026-04-25T19:09:08+08:00",
+    "exploration_scope": "docs/TODO.md、相关实现、测试、近 7 天提交与历史分析会话"
+  }
+}

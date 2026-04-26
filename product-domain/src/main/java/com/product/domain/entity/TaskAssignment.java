@@ -5,12 +5,13 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.product.common.annotation.Excel;
+import com.product.common.core.entity.BaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import com.product.common.core.entity.BaseEntity;
+
 import java.time.LocalDateTime;
-import com.fasterxml.jackson.annotation.JsonFormat;
+import java.util.List;
 
 /**
  * 派工/排程结果对象 task_assignment
@@ -53,6 +54,33 @@ public class TaskAssignment  extends BaseEntity {
     @Excel(name = "资源上的顺序号", readConverterExp = "资源上的顺序号（用于甘特图）")
     @TableField(value = "sequence_on_resource")
     private Long sequenceOnResource;
+
+    /** 模具ID */
+    @Excel(name = "模具ID")
+    @TableField(exist = false)
+    private String moldId;
+
+    /** 人员ID */
+    @Excel(name = "人员ID")
+    @TableField(exist = false)
+    private String personId;
+
+    /** 工位ID */
+    @Excel(name = "工位ID")
+    @TableField(exist = false)
+    private String workstationId;
+
+    /** 换型来源任务ID */
+    @TableField(exist = false)
+    private String changeoverSourceTaskId;
+
+    /** 换型时间（分钟） */
+    @TableField(exist = false)
+    private Integer changeoverTimeMin;
+
+    /** 派工关联的资源需求快照 */
+    @TableField(exist = false)
+    private List<TaskResourceRequirement> resourceRequirementList;
 
     /** 批次ID（关联任务） */
     @Excel(name = "批次ID")

@@ -1,12 +1,15 @@
 package com.product.pps.service.impl;
 
+import com.product.common.constant.ResourceConstants;
 import com.product.common.constant.StatusConstants;
 import com.product.common.exception.ServiceException;
 import com.product.common.utils.StringUtils;
 import com.product.domain.entity.Calendar;
+import com.product.domain.entity.Machine;
 import com.product.domain.entity.OperationTask;
 import com.product.domain.entity.Resource;
 import com.product.domain.entity.TaskAssignment;
+import com.product.domain.entity.TaskResourceRequirement;
 import com.product.pps.dto.MachineRuntimeStatsDTO;
 import com.product.pps.dto.TaskSchedulingPriorityDTO;
 import com.product.pps.mapper.TaskAssignmentMapper;
@@ -20,6 +23,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Objects;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -315,6 +319,9 @@ public class TaskSchedulingCalculator {
             if (machine == null) {
                 continue;
             }
+            if (!machineSatisfiesTaskRequirements(task, machine)) {
+                continue;
+            }
 
             // 获取机台关联的日历（包含班次、工作日规则）
             Calendar calendar = calendarMap.get(machine.getCalendarId());
@@ -349,7 +356,13 @@ public class TaskSchedulingCalculator {
             Long sequenceOnResource = runtimeContext.getNextSequence(machine.getResourceId());
 
             // 创建该机台的选择方案
-            MachineChoice choice = new MachineChoice(machine.getResourceId(), window.start, window.end, sequenceOnResource);
+            MachineChoice choice = new MachineChoice(
+                    machine.getResourceId(),
+                    window.start,
+                    window.end,
+                    sequenceOnResource,
+                    estimateSetupCost(task, machine)
+            );
 
             // 比较并选择最优方案
             // 优先级由策略决定
@@ -360,12 +373,72 @@ public class TaskSchedulingCalculator {
         return best;  // 返回最早开始的机台
     }
 
+    private boolean machineSatisfiesTaskRequirements(OperationTask task, Resource machine) {
+        if (task == null || CollectionUtils.isEmpty(task.getResourceRequirementList())) {
+            return true;
+        }
+        for (TaskResourceRequirement requirement : task.getResourceRequirementList()) {
+            if (requirement == null || !isMandatoryRequirement(requirement)) {
+                continue;
+            }
+            if (ResourceConstants.RESOURCE_TYPE_MACHINE.equals(requirement.getResourceType())
+                    && StringUtils.isNotEmpty(requirement.getResourceId())
+                    && !StringUtils.equals(requirement.getResourceId(), machine.getResourceId())) {
+                return false;
+            }
+            if (ResourceConstants.RESOURCE_TYPE_MOLD.equals(requirement.getResourceType())
+                    && StringUtils.isNotEmpty(requirement.getResourceId())
+                    && !machineSupportsMold(machine, requirement.getResourceId())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isMandatoryRequirement(TaskResourceRequirement requirement) {
+        return requirement.getIsMandatory() == null || requirement.getIsMandatory() != 0;
+    }
+
+    private boolean machineSupportsMold(Resource machineResource, String moldId) {
+        Machine machine = machineResource.getMachine();
+        if (machine == null || CollectionUtils.isEmpty(machine.getMoldCompatibilityList())) {
+            return false;
+        }
+        return machine.getMoldCompatibilityList().stream()
+                .filter(Objects::nonNull)
+                .anyMatch(item -> StringUtils.equals(item.getMoldId(), moldId)
+                        && (item.getIsCompatible() == null || item.getIsCompatible() != 0));
+    }
+
+    private Integer estimateSetupCost(OperationTask task, Resource machine) {
+        if (task != null && CollectionUtils.isNotEmpty(task.getResourceRequirementList())) {
+            Integer requirementCost = task.getResourceRequirementList().stream()
+                    .filter(Objects::nonNull)
+                    .filter(this::isMandatoryRequirement)
+                    .map(TaskResourceRequirement::getChangeoverTimeMin)
+                    .filter(Objects::nonNull)
+                    .findFirst()
+                    .orElse(null);
+            if (requirementCost != null) {
+                return requirementCost;
+            }
+        }
+        Machine machineDetail = machine == null ? null : machine.getMachine();
+        return machineDetail == null || machineDetail.getDefaultSetupTimeMin() == null ? 0 : machineDetail.getDefaultSetupTimeMin();
+    }
+
     /**
      * 根据策略构建机台选择比较器。
      * EARLIEST_FINISH：优先选结束时间最早的机台（工期最短）
      * 其他策略：优先选开始时间最早的机台（默认）
      */
     private Comparator<MachineChoice> machineChoiceComparator(SchedulingStrategy strategy) {
+        if (strategy == SchedulingStrategy.LOWEST_COST) {
+            return Comparator.comparing((MachineChoice item) -> item.setupCostMin, Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(item -> item.plannedEnd, Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(item -> item.plannedStart, Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(item -> item.machineId, Comparator.nullsLast(Comparator.naturalOrder()));
+        }
         if (strategy == SchedulingStrategy.EARLIEST_FINISH) {
             return Comparator.comparing((MachineChoice item) -> item.plannedEnd, Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(item -> item.plannedStart, Comparator.nullsLast(Comparator.naturalOrder()))
@@ -387,6 +460,13 @@ public class TaskSchedulingCalculator {
             return Comparator
                     .comparing((OperationTask task) -> priorityDate(task, priorityMap), Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(task -> priorityValue(task, priorityMap), Comparator.nullsLast(Comparator.reverseOrder()))
+                    .thenComparing(task -> task.getEarliestStart(), Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(task -> task.getSequence(), Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(OperationTask::getTaskId, Comparator.nullsLast(Comparator.naturalOrder()));
+        }
+        if (strategy == SchedulingStrategy.LOWEST_COST) {
+            return Comparator
+                    .comparing((OperationTask task) -> task.getChangeoverTimeMin(), Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(task -> task.getEarliestStart(), Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(task -> task.getSequence(), Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(OperationTask::getTaskId, Comparator.nullsLast(Comparator.naturalOrder()));
@@ -653,6 +733,8 @@ public class TaskSchedulingCalculator {
         private final LocalDateTime plannedEnd;
         /** 在该机台上的执行序号 */
         private final Long sequenceOnResource;
+        /** 方案对应的换型/准备成本（分钟） */
+        private final Integer setupCostMin;
 
         /**
          * 构造机台选择结果
@@ -662,11 +744,16 @@ public class TaskSchedulingCalculator {
          * @param plannedEnd          计划结束时间
          * @param sequenceOnResource  在该机台上的序号
          */
-        public MachineChoice(String machineId, LocalDateTime plannedStart, LocalDateTime plannedEnd, Long sequenceOnResource) {
+        public MachineChoice(String machineId,
+                             LocalDateTime plannedStart,
+                             LocalDateTime plannedEnd,
+                             Long sequenceOnResource,
+                             Integer setupCostMin) {
             this.machineId = machineId;
             this.plannedStart = plannedStart;
             this.plannedEnd = plannedEnd;
             this.sequenceOnResource = sequenceOnResource;
+            this.setupCostMin = setupCostMin;
         }
     }
 

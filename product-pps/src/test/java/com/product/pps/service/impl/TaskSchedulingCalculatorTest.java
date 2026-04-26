@@ -1,8 +1,11 @@
 package com.product.pps.service.impl;
 
 import com.product.domain.entity.Calendar;
+import com.product.domain.entity.Machine;
+import com.product.domain.entity.MachineMoldCompatibility;
 import com.product.domain.entity.OperationTask;
 import com.product.domain.entity.Resource;
+import com.product.domain.entity.TaskResourceRequirement;
 import com.product.pps.dto.TaskSchedulingPriorityDTO;
 import com.product.pps.enums.SchedulingStrategy;
 import org.junit.jupiter.api.Test;
@@ -137,5 +140,84 @@ class TaskSchedulingCalculatorTest {
 
         assertNotNull(earliestFinish);
         assertEquals("M1", earliestFinish.getAssignments().get(0).getMachineId());
+    }
+
+    @Test
+    void calculateBatchAssignmentsShouldSkipIncompatibleMachineWhenTaskRequiresMold() {
+        OperationTask task = new OperationTask();
+        task.setTaskId("T-MOLD");
+        task.setEarliestStart(LocalDateTime.of(2026, 4, 10, 8, 0));
+        task.setStdDurationMin(60L);
+        TaskResourceRequirement requirement = new TaskResourceRequirement();
+        requirement.setTaskId("T-MOLD");
+        requirement.setResourceType("MOLD");
+        requirement.setResourceId("MOLD-1");
+        requirement.setIsMandatory(1);
+        task.setResourceRequirementList(List.of(requirement));
+
+        Resource incompatibleMachine = buildMachineResource("M1", 1L, "MOLD-2", 1);
+        Resource compatibleMachine = buildMachineResource("M2", 2L, "MOLD-1", 1);
+
+        TaskSchedulingCalculator.ScheduleBatchResult result = calculator.calculateBatchAssignments(
+                List.of(task),
+                List.of(incompatibleMachine, compatibleMachine),
+                Map.of(1L, buildCalendar(1L), 2L, buildCalendar(2L)),
+                new TaskSchedulingCalculator.MachineRuntimeContext(),
+                LocalDateTime.of(2026, 4, 10, 8, 0),
+                SchedulingStrategy.EARLIEST_START);
+
+        assertNotNull(result);
+        assertEquals("M2", result.getAssignments().get(0).getMachineId());
+    }
+
+    @Test
+    void calculateBatchAssignmentsShouldPreferLowestCostMachineWhenRequested() {
+        OperationTask task = new OperationTask();
+        task.setTaskId("T-COST");
+        task.setEarliestStart(LocalDateTime.of(2026, 4, 10, 8, 0));
+        task.setStdDurationMin(60L);
+
+        Resource highCostMachine = buildMachineResource("M1", 1L, "MOLD-1", 1, 45);
+        Resource lowCostMachine = buildMachineResource("M2", 2L, "MOLD-1", 1, 10);
+
+        TaskSchedulingCalculator.ScheduleBatchResult result = calculator.calculateBatchAssignments(
+                List.of(task),
+                List.of(highCostMachine, lowCostMachine),
+                Map.of(1L, buildCalendar(1L), 2L, buildCalendar(2L)),
+                new TaskSchedulingCalculator.MachineRuntimeContext(),
+                LocalDateTime.of(2026, 4, 10, 8, 0),
+                SchedulingStrategy.LOWEST_COST);
+
+        assertNotNull(result);
+        assertEquals("M2", result.getAssignments().get(0).getMachineId());
+    }
+
+    private Resource buildMachineResource(String machineId, Long calendarId, String moldId, Integer compatible) {
+        return buildMachineResource(machineId, calendarId, moldId, compatible, null);
+    }
+
+    private Resource buildMachineResource(String machineId, Long calendarId, String moldId, Integer compatible, Integer defaultSetupTimeMin) {
+        Resource machineResource = new Resource();
+        machineResource.setResourceId(machineId);
+        machineResource.setCalendarId(calendarId);
+        Machine machine = new Machine();
+        machine.setMachineId(machineId);
+        machine.setDefaultSetupTimeMin(defaultSetupTimeMin);
+        MachineMoldCompatibility compatibility = new MachineMoldCompatibility();
+        compatibility.setMachineId(machineId);
+        compatibility.setMoldId(moldId);
+        compatibility.setIsCompatible(compatible);
+        machine.setMoldCompatibilityList(List.of(compatibility));
+        machineResource.setMachine(machine);
+        return machineResource;
+    }
+
+    private Calendar buildCalendar(Long calendarId) {
+        Calendar calendar = new Calendar();
+        calendar.setCalendarId(calendarId);
+        calendar.setWorkdayPattern("Mon-Tue-Wed-Thu-Fri-Sat-Sun");
+        calendar.setShiftStart("08:00");
+        calendar.setShiftEnd("17:00");
+        return calendar;
     }
 }

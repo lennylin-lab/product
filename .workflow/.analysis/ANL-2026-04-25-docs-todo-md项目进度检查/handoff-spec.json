@@ -1,0 +1,72 @@
+{
+  "source": "analyze-with-file",
+  "session_id": "ANL-2026-04-25-docs-todo-md项目进度检查",
+  "session_folder": "/home/lenny/Projects/pps/product/.workflow/.analysis/ANL-2026-04-25-docs-todo-md项目进度检查",
+  "summary": "根据代码、测试和近 7 天提交校准后，docs/TODO.md 需要改成按状态管理的 roadmap。",
+  "implementation_scope": [
+    {
+      "objective": "重写 docs/TODO.md 的状态结构",
+      "rationale": "区分已完成、部分完成、待落地，避免重复投入。",
+      "priority": "high",
+      "target_files": [
+        "docs/TODO.md"
+      ],
+      "acceptance_criteria": [
+        "文档明确区分真实状态",
+        "已完成项不再出现在待开发区",
+        "待办表述聚焦真实缺口"
+      ],
+      "change_summary": "docs/TODO.md: 将当前 TODO 改写为状态化 roadmap"
+    },
+    {
+      "objective": "改写执行闭环与订单状态待办",
+      "rationale": "当前缺口是跨模块联动与统一状态机。",
+      "priority": "high",
+      "target_files": [
+        "docs/TODO.md"
+      ],
+      "acceptance_criteria": [
+        "任务事件待办明确写出批次、订单、资源状态联动",
+        "订单状态待办明确写出统一状态机和非法流转保护"
+      ],
+      "change_summary": "docs/TODO.md: 把“补齐任务事件与状态闭环”“规范订单状态流转”改写为下一阶段目标"
+    },
+    {
+      "objective": "保留资源模型扩展为核心 P1",
+      "rationale": "资源协同约束仍是当前主缺口。",
+      "priority": "high",
+      "target_files": [
+        "docs/TODO.md"
+      ],
+      "acceptance_criteria": [
+        "资源模型任务保持高优先级",
+        "描述明确包含兼容关系、协同约束、换型时间"
+      ],
+      "change_summary": "docs/TODO.md: 强调资源模型扩展是当前阶段首要缺口"
+    }
+  ],
+  "key_findings": [
+    {
+      "point": "排程策略切换已完成",
+      "confidence": "high"
+    },
+    {
+      "point": "READY 任务标准化与边界处理已完成",
+      "confidence": "high"
+    },
+    {
+      "point": "任务事件闭环仅部分完成",
+      "confidence": "high"
+    },
+    {
+      "point": "核心测试已有基础但仍需扩覆盖",
+      "confidence": "high"
+    }
+  ],
+  "decision_context": [
+    {
+      "decision": "按真实状态重写 TODO",
+      "reason": "原文档已与当前实现进度不一致"
+    }
+  ]
+}

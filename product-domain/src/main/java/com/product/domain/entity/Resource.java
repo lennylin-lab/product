@@ -11,6 +11,8 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import com.product.common.core.entity.BaseEntity;
 
+import java.util.List;
+
 /**
  * 统一资源主表对象 resource
  *
@@ -53,5 +55,17 @@ public class Resource  extends BaseEntity {
     @Excel(name = "车间/班组/部门")
     @TableField(value = "org_unit")
     private String orgUnit;
+
+    /** 资源能力矩阵 */
+    @TableField(exist = false)
+    private List<ResourceCapability> capabilityList;
+
+    /** 模具扩展信息 */
+    @TableField(exist = false)
+    private Mold mold;
+
+    /** 注塑机扩展信息 */
+    @TableField(exist = false)
+    private Machine machine;
 
 }

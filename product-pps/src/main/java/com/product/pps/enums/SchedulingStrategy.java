@@ -9,11 +9,13 @@ import java.util.Arrays;
  * - EARLIEST_START：优先选择最早开始的任务与机台
  * - EARLIEST_FINISH：优先选择最早完工的任务与机台
  * - DUE_DATE_PRIORITY：优先按交期和优先级排序任务
+ * - LOWEST_COST：优先选择换型/准备成本最低的任务与机台
  */
 public enum SchedulingStrategy {
     EARLIEST_START("EARLIEST_START"),
     EARLIEST_FINISH("EARLIEST_FINISH"),
-    DUE_DATE_PRIORITY("DUE_DATE_PRIORITY");
+    DUE_DATE_PRIORITY("DUE_DATE_PRIORITY"),
+    LOWEST_COST("LOWEST_COST");
 
     private final String code;
 

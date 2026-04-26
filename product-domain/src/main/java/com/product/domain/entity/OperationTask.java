@@ -63,6 +63,18 @@ public class OperationTask  extends BaseEntity {
     @TableField(value = "status")
     private String status;
 
+    /** 资源需求明细（机台/模具/人员/工位） */
+    @TableField(exist = false)
+    private List<TaskResourceRequirement> resourceRequirementList;
+
+    /** 本次换型参考的前序任务ID */
+    @TableField(exist = false)
+    private String changeoverSourceTaskId;
+
+    /** 本次任务推导出的换型时长（分钟） */
+    @TableField(exist = false)
+    private Integer changeoverTimeMin;
+
     @TableField(exist = false)
     private List<String> statusList;
 }

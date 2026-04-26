@@ -9,6 +9,8 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 /**
  * 注塑机扩展信息对象 machine
  *
@@ -35,5 +37,9 @@ public class Machine {
     @Excel(name = "默认换模基准时间", readConverterExp = "默认换模基准时间（分钟）")
     @TableField(value = "default_setup_time_min")
     private Integer defaultSetupTimeMin;
+
+    /** 机模兼容矩阵 */
+    @TableField(exist = false)
+    private List<MachineMoldCompatibility> moldCompatibilityList;
 
 }

@@ -9,12 +9,16 @@ import com.product.common.constant.StatusConstants;
 import com.product.common.constant.TaskEventConstants;
 import com.product.common.utils.StringUtils;
 import com.product.common.utils.uuid.IdUtils;
+import com.product.core.status.StatusEntityType;
+import com.product.core.status.StatusRefreshContext;
+import com.product.core.status.StatusRefreshService;
 import com.product.domain.entity.OperationTask;
 import com.product.domain.entity.TaskAssignment;
 import com.product.domain.entity.TaskEvent;
 import com.product.execute.mapper.TaskEventMapper;
 import com.product.execute.service.ITaskEventService;
 import org.apache.commons.collections4.CollectionUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +34,8 @@ import java.util.List;
  */
 @Service
 public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent> implements ITaskEventService {
+    @Autowired
+    private StatusRefreshService statusRefreshService;
 
     /**
      * 查询任务事件日志（全流程追溯核心）
@@ -137,6 +143,7 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
         return removeById(eventId);
     }
 
+    /** 开始任务：将任务状态变更为 RUNNING，并记录开始事件 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean start(String taskId) {
@@ -145,27 +152,38 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
                 TaskEventConstants.START_TASK_EVENT);
     }
 
+    /** 暂停任务：将任务状态变更为 PAUSED，并记录暂停事件 */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean pause(String taskId) {
         return changeTaskStateAndRecordEvent(taskId,
                 StatusConstants.PAUSED_OPERATION_TASK,
                 TaskEventConstants.PAUSE_TASK_EVENT);
     }
 
+    /** 恢复任务：将任务状态变更为 RUNNING，并记录恢复事件 */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean resume(String taskId) {
         return changeTaskStateAndRecordEvent(taskId,
                 StatusConstants.RUNNING_OPERATION_TASK,
                 TaskEventConstants.RESUME_TASK_EVENT);
     }
 
+    /** 完成任务：将任务状态变更为 DONE，并记录完成事件，同时级联刷新生产批次状态 */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean complete(String taskId) {
         return changeTaskStateAndRecordEvent(taskId,
                 StatusConstants.DONE_OPERATION_TASK,
                 TaskEventConstants.FINISH_TASK_EVENT);
     }
 
+    /**
+     * 任务状态变更的核心流程：更新任务状态 → 记录事件日志 → 级联刷新业务状态。
+     *
+     * @return 三个步骤全部成功返回 true，任一步骤失败返回 false
+     */
     boolean changeTaskStateAndRecordEvent(String taskId, String targetStatus, String eventType) {
         if (StringUtils.isEmpty(taskId) || StringUtils.isEmpty(targetStatus) || StringUtils.isEmpty(eventType)) {
             return false;
@@ -179,9 +197,14 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
         taskEvent.setEventType(eventType);
         taskEvent.setEventTime(LocalDateTime.now());
         taskEvent.setResourceId(loadMachineIdByTaskId(taskId));
-        return save(taskEvent);
+        boolean saved = save(taskEvent);
+        if (!saved) {
+            return false;
+        }
+        return refreshRelatedBusinessStatus(taskId);
     }
 
+    /** 更新工序任务状态 */
     protected boolean updateTaskStatus(String taskId, String targetStatus) {
         return Db.lambdaUpdate(OperationTask.class)
                 .set(OperationTask::getStatus, targetStatus)
@@ -189,6 +212,7 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
                 .update();
     }
 
+    /** 根据任务ID查询其派工记录中的机台资源ID，用于事件日志关联 */
     protected String loadMachineIdByTaskId(String taskId) {
         TaskAssignment assignment = Db.lambdaQuery(TaskAssignment.class)
                 .select(TaskAssignment::getMachineId)
@@ -196,6 +220,31 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
                 .last("limit 1")
                 .one();
         return assignment == null ? null : assignment.getMachineId();
+    }
+
+    /** 刷新关联的生产批次状态：通过任务找到所属批次，触发级联状态刷新（批次→订单行→客户订单） */
+    protected boolean refreshRelatedBusinessStatus(String taskId) {
+        String batchId = loadBatchIdByTaskId(taskId);
+        if (StringUtils.isEmpty(batchId)) {
+            return true;
+        }
+        triggerStatusRefresh(batchId);
+        return true;
+    }
+
+    /** 根据任务ID查询其所属的生产批次ID */
+    protected String loadBatchIdByTaskId(String taskId) {
+        OperationTask task = Db.lambdaQuery(OperationTask.class)
+                .select(OperationTask::getBatchId)
+                .eq(OperationTask::getTaskId, taskId)
+                .last("limit 1")
+                .one();
+        return task == null ? null : task.getBatchId();
+    }
+
+    /** 触发状态刷新链路：生产批次 → 订单行 → 客户订单 */
+    protected void triggerStatusRefresh(String batchId) {
+        statusRefreshService.refresh(StatusRefreshContext.of(StatusEntityType.PRODUCTION_BATCH, batchId));
     }
 
     /**

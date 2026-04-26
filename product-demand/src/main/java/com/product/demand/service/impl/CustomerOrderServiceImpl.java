@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 订单Service业务层处理（MyBatis-Plus）
@@ -27,6 +28,12 @@ import java.util.List;
  */
 @Service
 public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, CustomerOrder> implements ICustomerOrderService {
+    /** 允许人工流转的订单状态集合：新建和已确认之间可以互相切换 */
+    private static final Set<String> ALLOWED_MANUAL_ORDER_STATUSES = Set.of(
+            StatusConstants.NEW_CUSTOMER_ORDER,
+            StatusConstants.CONFIRMED_CUSTOMER_ORDER
+    );
+
     @Autowired
     CustomerOrderMapper customerOrderMapper;
 
@@ -117,7 +124,13 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
      */
     @Override
     public boolean updateCustomerOrder(CustomerOrder customerOrder) {
-        boolean updated = updateById(customerOrder);
+        CustomerOrder currentOrder = requireCustomerOrder(customerOrder.getOrderId());
+        String targetStatus = StringUtils.isEmpty(customerOrder.getStatus())
+                ? currentOrder.getStatus()
+                : customerOrder.getStatus();
+        validateOrderStatusTransition(currentOrder.getStatus(), targetStatus);
+        customerOrder.setStatus(targetStatus);
+        boolean updated = persistCustomerOrder(customerOrder);
         return updated;
     }
 
@@ -148,38 +161,83 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
         return removeById(orderId);
     }
 
+    /** 确认订单：将订单状态从 NEW 变更为 CONFIRMED，确认后可进入排程流程 */
     @Override
     public boolean check(String orderId) {
-        CustomerOrder customerOrder = lambdaQuery()
-                .select(CustomerOrder::getStatus)
-                .eq(CustomerOrder::getOrderId, orderId)
-                .last("limit 1").one();
-        String status = customerOrder.getStatus();
-        if (status.equals(StatusConstants.IN_PRODUCTION_CUSTOMER_ORDER)) {
-            throw new ServiceException("该订单已投入生产");
-        } else if (status.equals(StatusConstants.DONE_CUSTOMER_ORDER)) {
-            throw new ServiceException(("该订单已经完成"));
+        CustomerOrder customerOrder = requireCustomerOrder(orderId);
+        validateOrderStatusTransition(customerOrder.getStatus(), StatusConstants.CONFIRMED_CUSTOMER_ORDER);
+        return persistCustomerOrderStatus(orderId, StatusConstants.CONFIRMED_CUSTOMER_ORDER);
+    }
+
+    /** 反确认订单：将订单状态从 CONFIRMED 回退为 NEW */
+    @Override
+    public boolean cancelCheck(String orderId) {
+        CustomerOrder customerOrder = requireCustomerOrder(orderId);
+        validateOrderStatusTransition(customerOrder.getStatus(), StatusConstants.NEW_CUSTOMER_ORDER);
+        return persistCustomerOrderStatus(orderId, StatusConstants.NEW_CUSTOMER_ORDER);
+    }
+
+    /** 获取订单实体，不存在时抛出异常 */
+    protected CustomerOrder requireCustomerOrder(String orderId) {
+        if (StringUtils.isEmpty(orderId)) {
+            throw new ServiceException("订单不存在");
         }
-        return lambdaUpdate().set(CustomerOrder::getStatus, StatusConstants.CONFIRMED_CUSTOMER_ORDER)
+        CustomerOrder customerOrder = loadCustomerOrderForGuard(orderId);
+        if (customerOrder == null) {
+            throw new ServiceException("订单不存在");
+        }
+        return customerOrder;
+    }
+
+    /** 轻量加载订单状态，用于状态校验（只查 orderId 和 status，避免加载完整实体） */
+    protected CustomerOrder loadCustomerOrderForGuard(String orderId) {
+        return lambdaQuery()
+                .select(CustomerOrder::getOrderId, CustomerOrder::getStatus)
+                .eq(CustomerOrder::getOrderId, orderId)
+                .last("limit 1")
+                .one();
+    }
+
+    /** 持久化订单更新 */
+    protected boolean persistCustomerOrder(CustomerOrder customerOrder) {
+        return updateById(customerOrder);
+    }
+
+    /** 单独持久化订单状态变更（只更新 status 字段，避免整行更新） */
+    protected boolean persistCustomerOrderStatus(String orderId, String targetStatus) {
+        return lambdaUpdate()
+                .set(CustomerOrder::getStatus, targetStatus)
                 .eq(CustomerOrder::getOrderId, orderId)
                 .update();
     }
 
-    @Override
-    public boolean cancelCheck(String orderId) {
-        CustomerOrder customerOrder = lambdaQuery()
-                .select(CustomerOrder::getStatus)
-                .eq(CustomerOrder::getOrderId, orderId)
-                .last("limit 1").one();
-        String status = customerOrder.getStatus();
-        if (status.equals(StatusConstants.IN_PRODUCTION_CUSTOMER_ORDER)) {
-            throw new ServiceException("该订单已投入生产");
-        } else if (status.equals(StatusConstants.DONE_CUSTOMER_ORDER)) {
-            throw new ServiceException(("该订单已经完成"));
+    /**
+     * 校验订单状态流转是否合法。
+     *
+     * <p>规则：
+     * <ul>
+     *   <li>已投入生产（IN_PRODUCTION）或已完成（DONE）的订单禁止修改</li>
+     *   <li>目标状态不能为空</li>
+     *   <li>目标状态只能在 NEW 和 CONFIRMED 之间</li>
+     *   <li>当前状态也必须是 NEW 或 CONFIRMED 才允许人工流转</li>
+     * </ul>
+     */
+    protected void validateOrderStatusTransition(String currentStatus, String targetStatus) {
+        if (StatusConstants.IN_PRODUCTION_CUSTOMER_ORDER.equals(currentStatus)) {
+            throw new ServiceException("该订单已投入生产，禁止修改");
         }
-        return lambdaUpdate().set(CustomerOrder::getStatus, StatusConstants.NEW_CUSTOMER_ORDER)
-                .eq(CustomerOrder::getOrderId, orderId)
-                .update();
+        if (StatusConstants.DONE_CUSTOMER_ORDER.equals(currentStatus)) {
+            throw new ServiceException("该订单已经完成，禁止修改");
+        }
+        if (StringUtils.isEmpty(targetStatus)) {
+            throw new ServiceException("订单状态不能为空");
+        }
+        if (!ALLOWED_MANUAL_ORDER_STATUSES.contains(targetStatus)) {
+            throw new ServiceException("订单状态只能在 NEW 和 CONFIRMED 之间流转");
+        }
+        if (!ALLOWED_MANUAL_ORDER_STATUSES.contains(currentStatus)) {
+            throw new ServiceException("当前订单状态不允许人工修改");
+        }
     }
 
     /**
@@ -194,6 +252,7 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
         return wrapper;
     }
 
+    /** 根据实体类上的 @BizIdPrefix 注解生成业务ID：前缀 + UUID */
     private String buildBizId(Object entity) {
         BizIdPrefix annotation = entity.getClass().getAnnotation(BizIdPrefix.class);
         String prefix = annotation != null ? annotation.value() : null;

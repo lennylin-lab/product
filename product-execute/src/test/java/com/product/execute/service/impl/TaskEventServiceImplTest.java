@@ -25,11 +25,12 @@ class TaskEventServiceImplTest {
         assertNotNull(service.savedEvent);
         assertEquals(TaskEventConstants.START_TASK_EVENT, service.savedEvent.getEventType());
         assertEquals("MC-01", service.savedEvent.getResourceId());
+        assertEquals("BATCH-01", service.refreshedBatchId);
     }
 
     @Test
     void pauseShouldStillRecordEventWhenAssignmentMissing() {
-        RecordingTaskEventService service = new RecordingTaskEventService(true, null);
+        RecordingTaskEventService service = new RecordingTaskEventService(true, null, "BATCH-02");
 
         boolean result = service.pause("TASK-002");
 
@@ -38,6 +39,7 @@ class TaskEventServiceImplTest {
         assertNotNull(service.savedEvent);
         assertEquals(TaskEventConstants.PAUSE_TASK_EVENT, service.savedEvent.getEventType());
         assertNull(service.savedEvent.getResourceId());
+        assertEquals("BATCH-02", service.refreshedBatchId);
     }
 
     @Test
@@ -50,6 +52,7 @@ class TaskEventServiceImplTest {
         assertEquals("TASK-003", service.updatedTaskId);
         assertEquals(StatusConstants.RUNNING_OPERATION_TASK, service.updatedStatus);
         assertNull(service.savedEvent);
+        assertNull(service.refreshedBatchId);
     }
 
     @Test
@@ -61,19 +64,40 @@ class TaskEventServiceImplTest {
         assertFalse(result);
         assertNull(service.updatedTaskId);
         assertNull(service.savedEvent);
+        assertNull(service.refreshedBatchId);
+    }
+
+    @Test
+    void completeShouldReturnFalseWhenRefreshFails() {
+        RecordingTaskEventService service = new RecordingTaskEventService(true, "MC-04", "BATCH-04");
+        service.refreshResult = false;
+
+        boolean result = service.complete("TASK-004");
+
+        assertFalse(result);
+        assertNotNull(service.savedEvent);
+        assertEquals("BATCH-04", service.refreshedBatchId);
     }
 
     private static final class RecordingTaskEventService extends TaskEventServiceImpl {
 
         private final boolean updateResult;
         private final String machineId;
+        private final String batchId;
         private String updatedTaskId;
         private String updatedStatus;
         private TaskEvent savedEvent;
+        private String refreshedBatchId;
+        private boolean refreshResult = true;
 
         private RecordingTaskEventService(boolean updateResult, String machineId) {
+            this(updateResult, machineId, "BATCH-01");
+        }
+
+        private RecordingTaskEventService(boolean updateResult, String machineId, String batchId) {
             this.updateResult = updateResult;
             this.machineId = machineId;
+            this.batchId = batchId;
         }
 
         @Override
@@ -86,6 +110,17 @@ class TaskEventServiceImplTest {
         @Override
         protected String loadMachineIdByTaskId(String taskId) {
             return machineId;
+        }
+
+        @Override
+        protected String loadBatchIdByTaskId(String taskId) {
+            return batchId;
+        }
+
+        @Override
+        protected boolean refreshRelatedBusinessStatus(String taskId) {
+            this.refreshedBatchId = loadBatchIdByTaskId(taskId);
+            return refreshResult;
         }
 
         @Override
