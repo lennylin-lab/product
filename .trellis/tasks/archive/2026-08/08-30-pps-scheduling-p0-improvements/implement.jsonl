@@ -1,0 +1,4 @@
+{"path": ".trellis/spec/backend/database-guidelines.md", "reason": "Mapper and entity conventions"}
+{"path": ".trellis/spec/backend/error-handling.md", "reason": "ServiceException patterns"}
+{"path": "docs/关键配置流程.md", "reason": "A2 formula reference"}
+{"path": "product-pps/src/main/java/com/product/pps/service/impl/TaskSchedulingCalculator.java", "reason": "Scheduling algorithm extension point"}
