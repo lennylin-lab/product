@@ -36,7 +36,7 @@ public class OrderLine{
     /** 产品/SKU */
     @Excel(name = "产品/SKU")
     @TableField(value = "product_id")
-    private String productId;
+    private Long productId;
 
     /** 需求数量（件） */
     @Excel(name = "需求数量")

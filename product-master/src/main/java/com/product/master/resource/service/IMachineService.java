@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.product.domain.dto.MachineResource;
 import com.product.domain.vo.MachineResourceVO;
-import com.product.master.domain.entity.Machine;
+import com.product.domain.entity.Machine;
 
 import java.util.List;
 

@@ -4,13 +4,18 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.baomidou.mybatisplus.extension.toolkit.Db;
+import com.product.common.exception.ServiceException;
 import com.product.common.utils.StringUtils;
 import com.product.demand.mapper.ProductMapper;
 import com.product.demand.service.IProductService;
 import com.product.domain.entity.Product;
+import com.product.domain.entity.ProductMoldParam;
+import com.product.domain.validation.ProductMoldParamValidator;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -29,102 +34,85 @@ import java.util.Map;
 @Service
 public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> implements IProductService {
 
-    /**
-     * 查询产品
-     *
-     * @param productId 产品主键
-     * @return 产品
-     */
     @Override
     public Product selectProductByProductId(Long productId) {
-        return getById(productId);
+        Product product = getById(productId);
+        if (product == null) {
+            return null;
+        }
+        product.setMoldParams(loadMoldParams(productId));
+        return product;
     }
 
-    /**
-     * 查询产品列表
-     *
-     * @param product 查询条件
-     * @return 产品集合
-     */
     @Override
     public List<Product> selectProductList(Product product) {
         return list(buildQueryWrapper(product));
     }
 
-    /**
-     * 分页查询产品列表
-     *
-     * @param page      分页参数
-     * @param product 查询条件
-     * @return 分页结果
-     */
     @Override
     public Page<Product> selectProductPage(Page<Product> page, Product product) {
-        System.out.println(product.toString());
         return this.page(page, buildQueryWrapper(product));
     }
 
-    /**
-     * 新增产品
-     *
-     * @param product 产品
-     * @return 是否成功
-     */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean insertProduct(Product product) {
+        ProductMoldParamValidator.requireMoldParamsForProduct(product.getMoldParams(), null);
         boolean saved = save(product);
-        return saved;
+        if (!saved) {
+            throw new ServiceException("创建产品失败");
+        }
+        saveMoldParams(product.getProductId(), product.getMoldParams());
+        return true;
     }
 
-    /**
-     * 批量新增产品
-     *
-     * @param products 产品列表
-     * @return 成功条数
-     */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public int batchInsertProduct(List<Product> products) {
         if (CollectionUtils.isEmpty(products)) {
             return 0;
         }
-        boolean success = saveBatch(products);
-        return success ? products.size() : 0;
+        for (Product product : products) {
+            insertProduct(product);
+        }
+        return products.size();
     }
 
-    /**
-     * 修改产品
-     *
-     * @param product 产品
-     * @return 是否成功
-     */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean updateProduct(Product product) {
+        if (product == null || product.getProductId() == null) {
+            throw new ServiceException("产品ID不能为空");
+        }
+        if (CollectionUtils.isNotEmpty(product.getMoldParams())) {
+            ProductMoldParamValidator.requireMoldParamsForProduct(product.getMoldParams(), product.getProductId());
+        }
         boolean updated = updateById(product);
-        return updated;
+        if (!updated) {
+            return false;
+        }
+        if (CollectionUtils.isNotEmpty(product.getMoldParams())) {
+            replaceMoldParams(product.getProductId(), product.getMoldParams());
+        }
+        return true;
     }
 
-    /**
-     * 批量删除产品
-     *
-     * @param productIds 主键集合
-     * @return 是否成功
-     */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean deleteProductByProductIds(Long[] productIds) {
         if (productIds == null || productIds.length == 0) {
             return false;
         }
+        Arrays.stream(productIds)
+                .filter(id -> id != null)
+                .forEach(this::deleteMoldParams);
         return removeByIds(Arrays.asList(productIds));
     }
 
-    /**
-     * 删除产品信息
-     *
-     * @param productId 主键
-     * @return 是否成功
-     */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean deleteProductByProductId(Long productId) {
+        deleteMoldParams(productId);
         return removeById(productId);
     }
 
@@ -133,9 +121,32 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
         return page(new Page<>());
     }
 
-    /**
-     * 构建查询条件
-     */
+    private List<ProductMoldParam> loadMoldParams(Long productId) {
+        return Db.lambdaQuery(ProductMoldParam.class)
+                .eq(ProductMoldParam::getProductId, productId)
+                .list();
+    }
+
+    private void saveMoldParams(Long productId, List<ProductMoldParam> moldParams) {
+        for (ProductMoldParam param : moldParams) {
+            param.setProductId(productId);
+        }
+        if (!Db.saveBatch(moldParams)) {
+            throw new ServiceException("保存产品模具参数失败: productId=" + productId);
+        }
+    }
+
+    private void replaceMoldParams(Long productId, List<ProductMoldParam> moldParams) {
+        deleteMoldParams(productId);
+        saveMoldParams(productId, moldParams);
+    }
+
+    private void deleteMoldParams(Long productId) {
+        Db.lambdaUpdate(ProductMoldParam.class)
+                .eq(ProductMoldParam::getProductId, productId)
+                .remove();
+    }
+
     private LambdaQueryWrapper<Product> buildQueryWrapper(Product product) {
         LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<>();
         if (product == null) {
@@ -147,7 +158,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
         String endTime = MapUtils.getString(params, "endTime");
         if (StringUtils.hasText(beginTime)) {
             LocalDateTime start = LocalDate.parse(beginTime, DateTimeFormatter.ofPattern("yyyy-MM-dd")).atStartOfDay();
-            wrapper.ge(Product::getCreateTime, beginTime);
+            wrapper.ge(Product::getCreateTime, start);
         }
         if (StringUtils.hasText(endTime)) {
             LocalDateTime end = LocalDate.parse(endTime, DateTimeFormatter.ofPattern("yyyy-MM-dd")).atTime(LocalTime.MAX);
@@ -155,5 +166,4 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
         }
         return wrapper;
     }
-
 }

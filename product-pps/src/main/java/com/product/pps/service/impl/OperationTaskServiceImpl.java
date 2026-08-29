@@ -6,17 +6,22 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.baomidou.mybatisplus.extension.toolkit.Db;
 import com.product.common.annotation.BizIdPrefix;
 import com.product.common.constant.OperationTaskConstants;
+import com.product.common.constant.ResourceConstants;
 import com.product.common.constant.StatusConstants;
 import com.product.common.core.result.AjaxResult;
 import com.product.common.exception.ServiceException;
 import com.product.common.utils.StringUtils;
 import com.product.common.utils.uuid.IdUtils;
 import com.product.domain.entity.OperationTask;
+import com.product.domain.entity.OrderLine;
+import com.product.domain.entity.ProductMoldParam;
 import com.product.domain.entity.ProductionBatch;
 import com.product.domain.entity.TaskAssignment;
 import com.product.domain.entity.TaskDependency;
+import com.product.domain.entity.TaskResourceRequirement;
 import com.product.pps.dto.OperationTaskError;
 import com.product.pps.mapper.OperationTaskMapper;
+import com.product.pps.mapper.TaskAssignmentResourceMapper;
 import com.product.pps.service.IOperationTaskService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -46,6 +51,10 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
     @Autowired
     @Qualifier("threadPoolTaskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
+    @Autowired
+    private InjectDurationCalculator injectDurationCalculator;
+    @Autowired
+    private TaskAssignmentResourceMapper taskAssignmentResourceMapper;
 
     /**
      * 查询工序任务
@@ -193,8 +202,11 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
         List<OperationTask> operationTasks = new ArrayList<>();
 
         List<TaskDependency> taskDependencies = new ArrayList<>();
+        List<TaskResourceRequirement> resourceRequirements = new ArrayList<>();
         Map<String, ProductionBatch> batchMap = productionBatches.stream()
                 .collect(Collectors.toMap(ProductionBatch::getBatchId, item -> item, (a, b) -> a));
+        Map<Long, OrderLine> orderLineMap = loadOrderLineMap(productionBatches);
+        Map<Long, ProductMoldParam> productMoldParamMap = loadProductMoldParamMap(orderLineMap.values());
         // 开始循环添加任务
         for (String batchId : batchIds) {
             ProductionBatch item = batchMap.get(batchId);
@@ -229,9 +241,12 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
                 operationTask.setBatchId(item.getBatchId());
                 operationTask.setStatus(StatusConstants.READY_OPERATION_TASK);
                 operationTask.setOpCode(OperationTaskConstants.OP_CODE.get(i));
-                long baseDuration = OperationTaskConstants.STD_DURATION_MIM.get(i);
-                log.debug("batchQty:" + batchQty);
-                operationTask.setStdDurationMin(baseDuration * batchQty);
+                operationTask.setStdDurationMin(resolveStdDurationMin(
+                        OperationTaskConstants.OP_CODE.get(i),
+                        batchQty,
+                        item,
+                        orderLineMap,
+                        productMoldParamMap));
                 // 最早开始时间 = 当前时间 + 前面所有工序的累计时长
                 operationTask.setEarliestStart(baseTime.plus(cumulativeMinutes, ChronoUnit.MINUTES));
                 operationTask.setSequence(Long.valueOf(++i));
@@ -240,6 +255,8 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
                 // 添加到列表
                 operationTasks.add(operationTask);
                 batchTasks.add(operationTask);
+                // 构建资源需求
+                resourceRequirements.addAll(buildResourceRequirements(operationTask));
             }
             if (batchTasks.size() >= 3) {
                 TaskDependency setupToInject = new TaskDependency();
@@ -258,6 +275,9 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
         }
         if (!taskDependencies.isEmpty()) {
             Db.saveBatch(taskDependencies);
+        }
+        if (!resourceRequirements.isEmpty()) {
+            Db.saveBatch(resourceRequirements);
         }
 
         if (errors.isEmpty()) {
@@ -295,6 +315,7 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
                 .filter(StringUtils::isNotEmpty)
                 .collect(Collectors.toList());
         if (CollectionUtils.isNotEmpty(taskIds)) {
+            taskAssignmentResourceMapper.deleteByTaskIds(taskIds);
             Db.lambdaUpdate(TaskAssignment.class)
                     .in(TaskAssignment::getTaskId, taskIds)
                     .remove();
@@ -305,6 +326,11 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
                     .in(TaskDependency::getPreTaskId, taskIds)
                     .or()
                     .in(TaskDependency::getPostTaskId, taskIds)
+                    .remove();
+        }
+        if (CollectionUtils.isNotEmpty(taskIds)) {
+            Db.lambdaUpdate(TaskResourceRequirement.class)
+                    .in(TaskResourceRequirement::getTaskId, taskIds)
                     .remove();
         }
         ProductionBatch productionBatch = Db.lambdaQuery(ProductionBatch.class)
@@ -322,16 +348,23 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
         LocalDateTime baseTime = LocalDateTime.now();
         long cumulativeMinutes = 0; // 累计时长（分钟）
         long batchQty = productionBatch.getBatchQty() == null ? 1L : productionBatch.getBatchQty();
+        Map<Long, OrderLine> orderLineMap = loadOrderLineMap(List.of(productionBatch));
+        Map<Long, ProductMoldParam> productMoldParamMap = loadProductMoldParamMap(orderLineMap.values());
         List<OperationTask> operationTasks = new ArrayList<>();
         List<TaskDependency> taskDependencies = new ArrayList<>();
+        List<TaskResourceRequirement> resourceRequirements = new ArrayList<>();
         for (int i = 0; i < 3;) {
             OperationTask operationTask = new OperationTask();
             operationTask.setTaskId(buildBizId(operationTask));
             operationTask.setBatchId(batchId);
             operationTask.setStatus(StatusConstants.READY_OPERATION_TASK);
             operationTask.setOpCode(OperationTaskConstants.OP_CODE.get(i));
-            long baseDuration = OperationTaskConstants.STD_DURATION_MIM.get(i);
-            operationTask.setStdDurationMin(baseDuration * batchQty);
+            operationTask.setStdDurationMin(resolveStdDurationMin(
+                    OperationTaskConstants.OP_CODE.get(i),
+                    batchQty,
+                    productionBatch,
+                    orderLineMap,
+                    productMoldParamMap));
             // 最早开始时间 = 当前时间 + 前面所有工序的累计时长
             operationTask.setEarliestStart(baseTime.plus(cumulativeMinutes, ChronoUnit.MINUTES));
             operationTask.setSequence(Long.valueOf(++i));
@@ -339,6 +372,8 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
             cumulativeMinutes += operationTask.getStdDurationMin();
             // 添加到列表
             operationTasks.add(operationTask);
+            // 构建资源需求
+            resourceRequirements.addAll(buildResourceRequirements(operationTask));
         }
         saveBatch(operationTasks);
         if (operationTasks.size() >= 3) {
@@ -351,6 +386,9 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
             injectToPost.setPostTaskId(operationTasks.get(2).getTaskId());
             taskDependencies.add(injectToPost);
             Db.saveBatch(taskDependencies);
+        }
+        if (!resourceRequirements.isEmpty()) {
+            Db.saveBatch(resourceRequirements);
         }
         return AjaxResult.success();
     }
@@ -372,6 +410,9 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean revokeSchedule(String taskId) {
+        if (StringUtils.isNotEmpty(taskId)) {
+            taskAssignmentResourceMapper.deleteByTaskIds(List.of(taskId));
+        }
         // 删除派工记录
         Db.lambdaUpdate(TaskAssignment.class)
                 .eq(TaskAssignment::getTaskId, taskId)
@@ -406,10 +447,120 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
     }
 
 
+    /**
+     * 根据工序类型构建资源需求列表
+     * SETUP: PERSON(调机员) + MACHINE
+     * INJECT: PERSON(操作员) + MACHINE + MOLD
+     * POST_QC_PUTAWAY: PERSON(质检员) + MACHINE
+     */
+    private List<TaskResourceRequirement> buildResourceRequirements(OperationTask task) {
+        List<TaskResourceRequirement> requirements = new ArrayList<>();
+        String opCode = task.getOpCode();
+        switch (opCode) {
+            case "SETUP" -> {
+                requirements.add(createRequirement(task.getTaskId(), ResourceConstants.RESOURCE_TYPE_PERSON, "调机员", opCode));
+                requirements.add(createRequirement(task.getTaskId(), ResourceConstants.RESOURCE_TYPE_MACHINE, null, opCode));
+            }
+            case "INJECT" -> {
+                requirements.add(createRequirement(task.getTaskId(), ResourceConstants.RESOURCE_TYPE_PERSON, "操作员", opCode));
+                requirements.add(createRequirement(task.getTaskId(), ResourceConstants.RESOURCE_TYPE_MACHINE, null, opCode));
+                requirements.add(createRequirement(task.getTaskId(), ResourceConstants.RESOURCE_TYPE_MOLD, null, opCode));
+            }
+            case "POST_QC_PUTAWAY" -> {
+                requirements.add(createRequirement(task.getTaskId(), ResourceConstants.RESOURCE_TYPE_PERSON, "质检员", opCode));
+                requirements.add(createRequirement(task.getTaskId(), ResourceConstants.RESOURCE_TYPE_MACHINE, null, opCode));
+            }
+            default -> log.warn("未知的工序类型: {}, taskId={}", opCode, task.getTaskId());
+        }
+        return requirements;
+    }
+
+    private TaskResourceRequirement createRequirement(String taskId, String resourceType, String resourceRole, String capabilityCode) {
+        TaskResourceRequirement requirement = new TaskResourceRequirement();
+        requirement.setTaskId(taskId);
+        requirement.setResourceType(resourceType);
+        requirement.setResourceRole(resourceRole);
+        requirement.setCapabilityCode(capabilityCode);
+        requirement.setRequiredCount(1);
+        requirement.setIsMandatory(1);
+        return requirement;
+    }
+
     private String buildBizId(Object entity) {
         BizIdPrefix annotation = entity.getClass().getAnnotation(BizIdPrefix.class);
         String prefix = annotation != null ? annotation.value() : null;
         String suffix = IdUtils.simpleUUID();
         return StringUtils.isNotEmpty(prefix) ? prefix + suffix : suffix;
+    }
+
+    private Map<Long, OrderLine> loadOrderLineMap(Collection<ProductionBatch> batches) {
+        if (CollectionUtils.isEmpty(batches)) {
+            return Map.of();
+        }
+        Set<Long> orderLineIds = batches.stream()
+                .filter(Objects::nonNull)
+                .map(ProductionBatch::getOrderLineId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (orderLineIds.isEmpty()) {
+            return Map.of();
+        }
+        return Db.lambdaQuery(OrderLine.class)
+                .in(OrderLine::getOrderLineId, orderLineIds)
+                .list()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(item -> item.getOrderLineId() != null)
+                .collect(Collectors.toMap(OrderLine::getOrderLineId, item -> item, (left, right) -> left));
+    }
+
+    private Map<Long, ProductMoldParam> loadProductMoldParamMap(Collection<OrderLine> orderLines) {
+        if (CollectionUtils.isEmpty(orderLines)) {
+            return Map.of();
+        }
+        Set<Long> productIds = orderLines.stream()
+                .filter(Objects::nonNull)
+                .map(OrderLine::getProductId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, ProductMoldParam> paramMap = new HashMap<>();
+        Db.lambdaQuery(ProductMoldParam.class)
+                .in(ProductMoldParam::getProductId, productIds)
+                .list()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(item -> item.getProductId() != null)
+                .forEach(item -> paramMap.putIfAbsent(item.getProductId(), item));
+        return paramMap;
+    }
+
+    private long resolveStdDurationMin(String opCode,
+                                       long batchQty,
+                                       ProductionBatch batch,
+                                       Map<Long, OrderLine> orderLineMap,
+                                       Map<Long, ProductMoldParam> productMoldParamMap) {
+        if ("INJECT".equals(opCode)) {
+            return calculateInjectDurationMin(batch, orderLineMap, productMoldParamMap);
+        }
+        int opIndex = OperationTaskConstants.OP_CODE.indexOf(opCode);
+        long baseDuration = opIndex >= 0
+                ? OperationTaskConstants.STD_DURATION_MIM.get(opIndex)
+                : OperationTaskConstants.STD_DURATION_MIM.get(1);
+        return baseDuration * batchQty;
+    }
+
+    private long calculateInjectDurationMin(ProductionBatch batch,
+                                            Map<Long, OrderLine> orderLineMap,
+                                            Map<Long, ProductMoldParam> productMoldParamMap) {
+        OrderLine orderLine = batch == null || batch.getOrderLineId() == null
+                ? null
+                : orderLineMap.get(batch.getOrderLineId());
+        Long productId = orderLine == null ? null : orderLine.getProductId();
+        ProductMoldParam param = productId == null ? null : productMoldParamMap.get(productId);
+        long batchQty = batch.getBatchQty() == null ? 1L : batch.getBatchQty();
+        return injectDurationCalculator.calculateDurationMin(batchQty, param, productId);
     }
 }

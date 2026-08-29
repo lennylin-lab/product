@@ -14,7 +14,7 @@ import com.product.domain.entity.Calendar;
 import com.product.domain.entity.CalendarBreak;
 import com.product.domain.entity.Resource;
 import com.product.domain.vo.MachineResourceVO;
-import com.product.master.domain.entity.Machine;
+import com.product.domain.entity.Machine;
 import com.product.master.resource.mapper.MachineMapper;
 import com.product.master.resource.service.IMachineService;
 import org.apache.commons.collections4.CollectionUtils;

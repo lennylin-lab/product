@@ -5,17 +5,21 @@ import com.product.domain.entity.Machine;
 import com.product.domain.entity.MachineMoldCompatibility;
 import com.product.domain.entity.OperationTask;
 import com.product.domain.entity.Resource;
+import com.product.domain.entity.ResourceCapability;
 import com.product.domain.entity.TaskResourceRequirement;
+import com.product.common.constant.ResourceConstants;
 import com.product.pps.dto.TaskSchedulingPriorityDTO;
 import com.product.pps.enums.SchedulingStrategy;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class TaskSchedulingCalculatorTest {
 
@@ -79,7 +83,6 @@ class TaskSchedulingCalculatorTest {
     /** 验证不同策略会选到不同机台：EARLIEST_START 选最早开始的 M1，EARLIEST_FINISH 选最早完工的 M2 */
     @Test
     void calculateBatchAssignmentsShouldChooseDifferentMachinesForDifferentStrategies() {
-        // 任务时长120分钟，两台机台班次都必须能容纳
         OperationTask task = new OperationTask();
         task.setTaskId("T1");
         task.setEarliestStart(LocalDateTime.of(2026, 4, 10, 7, 0));
@@ -87,56 +90,50 @@ class TaskSchedulingCalculatorTest {
 
         Resource earlyMachine = new Resource();
         earlyMachine.setResourceId("M1");
+        earlyMachine.setResourceType(ResourceConstants.RESOURCE_TYPE_MACHINE);
         earlyMachine.setCalendarId(1L);
 
         Resource lateMachine = new Resource();
         lateMachine.setResourceId("M2");
+        lateMachine.setResourceType(ResourceConstants.RESOURCE_TYPE_MACHINE);
         lateMachine.setCalendarId(2L);
 
-        // M1: 早班次 08:00-17:00，空机台，07:00 → 调整到 08:00 开始
         Calendar earlyShift = new Calendar();
         earlyShift.setCalendarId(1L);
         earlyShift.setWorkdayPattern("Mon-Tue-Wed-Thu-Fri-Sat-Sun");
         earlyShift.setShiftStart("08:00");
         earlyShift.setShiftEnd("17:00");
 
-        // M2: 同样班次但预存 nextAvailableTime=10:00，所以 10:00 才能开始
         Calendar lateShift = new Calendar();
         lateShift.setCalendarId(2L);
         lateShift.setWorkdayPattern("Mon-Tue-Wed-Thu-Fri-Sat-Sun");
         lateShift.setShiftStart("08:00");
         lateShift.setShiftEnd("17:00");
 
-        // EARLIEST_START: M1 从 08:00 开始 < M2 从 10:00 开始 → 选 M1
-        TaskSchedulingCalculator.MachineRuntimeContext context = new TaskSchedulingCalculator.MachineRuntimeContext();
-        context.update("M2", LocalDateTime.of(2026, 4, 10, 10, 0), 1L);
+        Map<Long, Calendar> calendarMap = Map.of(1L, earlyShift, 2L, lateShift);
+        TaskSchedulingQueryService.SchedulingResourceContext schedulingContext =
+                buildSchedulingContext(List.of(earlyMachine, lateMachine), calendarMap);
+
+        // M2 预设 10:00 可用
+        TaskSchedulingCalculator.ResourceRuntimeContext context = new TaskSchedulingCalculator.ResourceRuntimeContext();
+        context.setNextAvailableTime(ResourceConstants.RESOURCE_TYPE_MACHINE, "M2",
+                LocalDateTime.of(2026, 4, 10, 10, 0));
 
         TaskSchedulingCalculator.ScheduleBatchResult earliestStart = calculator.calculateBatchAssignments(
-                List.of(task),
-                List.of(earlyMachine, lateMachine),
-                Map.of(1L, earlyShift, 2L, lateShift),
-                context,
-                LocalDateTime.of(2026, 4, 10, 7, 0),
-                SchedulingStrategy.EARLIEST_START);
+                List.of(task), schedulingContext, context,
+                LocalDateTime.of(2026, 4, 10, 7, 0), SchedulingStrategy.EARLIEST_START);
 
         assertNotNull(earliestStart);
         assertEquals("M1", earliestStart.getAssignments().get(0).getMachineId());
 
-        // EARLIEST_FINISH: 两台机台同班次、同任务时长，plannedEnd 相同
-        // 回退比较 plannedStart，仍然 M1(08:00) < M2(10:00)，结果不变
-        // 为让策略产生不同结果，改用不同任务时长场景：
-        // M1 任务60分钟(08:00-09:00)，M2 任务60分钟(10:00-11:00) → 两策略都选M1
-        // 改为：M1班次短导致顺延，让 EARLIEST_FINISH 表现不同
-        TaskSchedulingCalculator.MachineRuntimeContext finishContext = new TaskSchedulingCalculator.MachineRuntimeContext();
-        finishContext.update("M2", LocalDateTime.of(2026, 4, 10, 10, 0), 1L);
+        // EARLIEST_FINISH 策略
+        TaskSchedulingCalculator.ResourceRuntimeContext finishContext = new TaskSchedulingCalculator.ResourceRuntimeContext();
+        finishContext.setNextAvailableTime(ResourceConstants.RESOURCE_TYPE_MACHINE, "M2",
+                LocalDateTime.of(2026, 4, 10, 10, 0));
 
         TaskSchedulingCalculator.ScheduleBatchResult earliestFinish = calculator.calculateBatchAssignments(
-                List.of(task),
-                List.of(earlyMachine, lateMachine),
-                Map.of(1L, earlyShift, 2L, lateShift),
-                finishContext,
-                LocalDateTime.of(2026, 4, 10, 7, 0),
-                SchedulingStrategy.EARLIEST_FINISH);
+                List.of(task), schedulingContext, finishContext,
+                LocalDateTime.of(2026, 4, 10, 7, 0), SchedulingStrategy.EARLIEST_FINISH);
 
         assertNotNull(earliestFinish);
         assertEquals("M1", earliestFinish.getAssignments().get(0).getMachineId());
@@ -150,7 +147,7 @@ class TaskSchedulingCalculatorTest {
         task.setStdDurationMin(60L);
         TaskResourceRequirement requirement = new TaskResourceRequirement();
         requirement.setTaskId("T-MOLD");
-        requirement.setResourceType("MOLD");
+        requirement.setResourceType(ResourceConstants.RESOURCE_TYPE_MOLD);
         requirement.setResourceId("MOLD-1");
         requirement.setIsMandatory(1);
         task.setResourceRequirementList(List.of(requirement));
@@ -158,13 +155,14 @@ class TaskSchedulingCalculatorTest {
         Resource incompatibleMachine = buildMachineResource("M1", 1L, "MOLD-2", 1);
         Resource compatibleMachine = buildMachineResource("M2", 2L, "MOLD-1", 1);
 
+        Map<Long, Calendar> calendarMap = Map.of(1L, buildCalendar(1L), 2L, buildCalendar(2L));
+        TaskSchedulingQueryService.SchedulingResourceContext schedulingContext =
+                buildSchedulingContext(List.of(incompatibleMachine, compatibleMachine), calendarMap);
+
         TaskSchedulingCalculator.ScheduleBatchResult result = calculator.calculateBatchAssignments(
-                List.of(task),
-                List.of(incompatibleMachine, compatibleMachine),
-                Map.of(1L, buildCalendar(1L), 2L, buildCalendar(2L)),
-                new TaskSchedulingCalculator.MachineRuntimeContext(),
-                LocalDateTime.of(2026, 4, 10, 8, 0),
-                SchedulingStrategy.EARLIEST_START);
+                List.of(task), schedulingContext,
+                new TaskSchedulingCalculator.ResourceRuntimeContext(),
+                LocalDateTime.of(2026, 4, 10, 8, 0), SchedulingStrategy.EARLIEST_START);
 
         assertNotNull(result);
         assertEquals("M2", result.getAssignments().get(0).getMachineId());
@@ -180,16 +178,215 @@ class TaskSchedulingCalculatorTest {
         Resource highCostMachine = buildMachineResource("M1", 1L, "MOLD-1", 1, 45);
         Resource lowCostMachine = buildMachineResource("M2", 2L, "MOLD-1", 1, 10);
 
+        Map<Long, Calendar> calendarMap = Map.of(1L, buildCalendar(1L), 2L, buildCalendar(2L));
+        TaskSchedulingQueryService.SchedulingResourceContext schedulingContext =
+                buildSchedulingContext(List.of(highCostMachine, lowCostMachine), calendarMap);
+
         TaskSchedulingCalculator.ScheduleBatchResult result = calculator.calculateBatchAssignments(
-                List.of(task),
-                List.of(highCostMachine, lowCostMachine),
-                Map.of(1L, buildCalendar(1L), 2L, buildCalendar(2L)),
-                new TaskSchedulingCalculator.MachineRuntimeContext(),
-                LocalDateTime.of(2026, 4, 10, 8, 0),
-                SchedulingStrategy.LOWEST_COST);
+                List.of(task), schedulingContext,
+                new TaskSchedulingCalculator.ResourceRuntimeContext(),
+                LocalDateTime.of(2026, 4, 10, 8, 0), SchedulingStrategy.LOWEST_COST);
 
         assertNotNull(result);
         assertEquals("M2", result.getAssignments().get(0).getMachineId());
+    }
+
+    @Test
+    void chooseResourcesShouldCascadeMachineMoldPerson() {
+        // 任务需要模具 MOLD-1 和具备 INJECT 技能的人员
+        OperationTask task = new OperationTask();
+        task.setTaskId("T-CASCADE");
+        task.setEarliestStart(LocalDateTime.of(2026, 4, 10, 8, 0));
+        task.setStdDurationMin(60L);
+
+        TaskResourceRequirement moldReq = new TaskResourceRequirement();
+        moldReq.setTaskId("T-CASCADE");
+        moldReq.setResourceType(ResourceConstants.RESOURCE_TYPE_MOLD);
+        moldReq.setResourceId("MOLD-1");
+        moldReq.setIsMandatory(1);
+
+        TaskResourceRequirement personReq = new TaskResourceRequirement();
+        personReq.setTaskId("T-CASCADE");
+        personReq.setResourceType(ResourceConstants.RESOURCE_TYPE_PERSON);
+        personReq.setCapabilityCode("INJECT");
+        personReq.setIsMandatory(1);
+
+        task.setResourceRequirementList(List.of(moldReq, personReq));
+
+        Resource machine = buildMachineResource("M1", 1L, "MOLD-1", 1);
+        Resource mold = new Resource();
+        mold.setResourceId("MOLD-1");
+        mold.setResourceType(ResourceConstants.RESOURCE_TYPE_MOLD);
+        mold.setCalendarId(1L);
+
+        Resource person = new Resource();
+        person.setResourceId("P-1");
+        person.setResourceType(ResourceConstants.RESOURCE_TYPE_PERSON);
+        ResourceCapability cap = new ResourceCapability();
+        cap.setResourceId("P-1");
+        cap.setOpCode("INJECT");
+        cap.setIsEnabled(1);
+        person.setCapabilityList(List.of(cap));
+
+        Calendar calendar = buildCalendar(1L);
+        Map<Long, Calendar> calendarMap = Map.of(1L, calendar);
+        TaskSchedulingQueryService.SchedulingResourceContext schedulingContext =
+                buildSchedulingContext(List.of(machine, mold, person), calendarMap);
+
+        TaskSchedulingCalculator.ScheduleBatchResult result = calculator.calculateBatchAssignments(
+                List.of(task), schedulingContext,
+                new TaskSchedulingCalculator.ResourceRuntimeContext(),
+                LocalDateTime.of(2026, 4, 10, 8, 0), SchedulingStrategy.EARLIEST_START);
+
+        assertNotNull(result);
+        assertEquals("M1", result.getAssignments().get(0).getMachineId());
+        assertEquals("MOLD-1", result.getAssignments().get(0).getMoldId());
+        assertEquals("P-1", result.getAssignments().get(0).getPersonId());
+    }
+
+    @Test
+    void chooseResourcesShouldFailWhenNoAvailablePersonMatchesCapability() {
+        OperationTask task = new OperationTask();
+        task.setTaskId("T-NO-PERSON");
+        task.setEarliestStart(LocalDateTime.of(2026, 4, 10, 8, 0));
+        task.setStdDurationMin(60L);
+
+        TaskResourceRequirement personReq = new TaskResourceRequirement();
+        personReq.setTaskId("T-NO-PERSON");
+        personReq.setResourceType(ResourceConstants.RESOURCE_TYPE_PERSON);
+        personReq.setCapabilityCode("WELD");
+        personReq.setIsMandatory(1);
+        task.setResourceRequirementList(List.of(personReq));
+
+        Resource machine = buildMachineResource("M1", 1L, null, 1);
+
+        Resource person = new Resource();
+        person.setResourceId("P-1");
+        person.setResourceType(ResourceConstants.RESOURCE_TYPE_PERSON);
+        ResourceCapability cap = new ResourceCapability();
+        cap.setResourceId("P-1");
+        cap.setOpCode("INJECT");
+        cap.setIsEnabled(1);
+        person.setCapabilityList(List.of(cap));
+
+        Map<Long, Calendar> calendarMap = Map.of(1L, buildCalendar(1L));
+        TaskSchedulingQueryService.SchedulingResourceContext schedulingContext =
+                buildSchedulingContext(List.of(machine, person), calendarMap);
+
+        // 没有具备 WELD 技能的人员，应该抛出异常
+        try {
+            calculator.calculateBatchAssignments(
+                    List.of(task), schedulingContext,
+                    new TaskSchedulingCalculator.ResourceRuntimeContext(),
+                    LocalDateTime.of(2026, 4, 10, 8, 0), SchedulingStrategy.EARLIEST_START);
+        } catch (Exception e) {
+            // 预期失败
+            return;
+        }
+        throw new AssertionError("Expected exception when no person matches capability");
+    }
+
+    @Test
+    void chooseResourcesShouldRespectPersonAvailabilityWindow() {
+        OperationTask task = new OperationTask();
+        task.setTaskId("T-PERSON-BUSY");
+        task.setEarliestStart(LocalDateTime.of(2026, 4, 10, 8, 0));
+        task.setStdDurationMin(60L);
+
+        TaskResourceRequirement personReq = new TaskResourceRequirement();
+        personReq.setTaskId("T-PERSON-BUSY");
+        personReq.setResourceType(ResourceConstants.RESOURCE_TYPE_PERSON);
+        personReq.setCapabilityCode("INJECT");
+        personReq.setIsMandatory(1);
+        task.setResourceRequirementList(List.of(personReq));
+
+        Resource machine = buildMachineResource("M1", 1L, null, 1);
+
+        // P-1 忙碌（10:00 之后才可用），P-2 空闲
+        Resource busyPerson = new Resource();
+        busyPerson.setResourceId("P-1");
+        busyPerson.setResourceType(ResourceConstants.RESOURCE_TYPE_PERSON);
+        ResourceCapability cap1 = new ResourceCapability();
+        cap1.setResourceId("P-1");
+        cap1.setOpCode("INJECT");
+        cap1.setIsEnabled(1);
+        busyPerson.setCapabilityList(List.of(cap1));
+
+        Resource freePerson = new Resource();
+        freePerson.setResourceId("P-2");
+        freePerson.setResourceType(ResourceConstants.RESOURCE_TYPE_PERSON);
+        ResourceCapability cap2 = new ResourceCapability();
+        cap2.setResourceId("P-2");
+        cap2.setOpCode("INJECT");
+        cap2.setIsEnabled(1);
+        freePerson.setCapabilityList(List.of(cap2));
+
+        Map<Long, Calendar> calendarMap = Map.of(1L, buildCalendar(1L));
+        TaskSchedulingQueryService.SchedulingResourceContext schedulingContext =
+                buildSchedulingContext(List.of(machine, busyPerson, freePerson), calendarMap);
+
+        TaskSchedulingCalculator.ResourceRuntimeContext runtimeContext = new TaskSchedulingCalculator.ResourceRuntimeContext();
+        runtimeContext.setNextAvailableTime(ResourceConstants.RESOURCE_TYPE_PERSON, "P-1",
+                LocalDateTime.of(2026, 4, 10, 10, 0));
+
+        TaskSchedulingCalculator.ScheduleBatchResult result = calculator.calculateBatchAssignments(
+                List.of(task), schedulingContext, runtimeContext,
+                LocalDateTime.of(2026, 4, 10, 8, 0), SchedulingStrategy.EARLIEST_START);
+
+        assertNotNull(result);
+        // P-2 空闲应被优先选择
+        assertEquals("P-2", result.getAssignments().get(0).getPersonId());
+    }
+
+    @Test
+    void resourceRuntimeContextShouldTrackMultipleResourceTypes() {
+        TaskSchedulingCalculator.ResourceRuntimeContext context = new TaskSchedulingCalculator.ResourceRuntimeContext();
+
+        // 初始状态：所有资源 null / seq=1
+        assertNull(context.getNextAvailableTime(ResourceConstants.RESOURCE_TYPE_MACHINE, "M1"));
+        assertEquals(1L, context.getNextSequence(ResourceConstants.RESOURCE_TYPE_MACHINE, "M1"));
+        assertNull(context.getNextAvailableTime(ResourceConstants.RESOURCE_TYPE_MOLD, "MOLD-1"));
+        assertEquals(1L, context.getNextSequence(ResourceConstants.RESOURCE_TYPE_MOLD, "MOLD-1"));
+        assertNull(context.getNextAvailableTime(ResourceConstants.RESOURCE_TYPE_PERSON, "P-1"));
+        assertEquals(1L, context.getNextSequence(ResourceConstants.RESOURCE_TYPE_PERSON, "P-1"));
+
+        // 更新机台状态
+        context.update(ResourceConstants.RESOURCE_TYPE_MACHINE, "M1",
+                LocalDateTime.of(2026, 4, 10, 12, 0), 3L);
+        assertEquals(LocalDateTime.of(2026, 4, 10, 12, 0),
+                context.getNextAvailableTime(ResourceConstants.RESOURCE_TYPE_MACHINE, "M1"));
+        assertEquals(4L, context.getNextSequence(ResourceConstants.RESOURCE_TYPE_MACHINE, "M1"));
+
+        // 更新模具状态
+        context.update(ResourceConstants.RESOURCE_TYPE_MOLD, "MOLD-1",
+                LocalDateTime.of(2026, 4, 10, 14, 0), 2L);
+        assertEquals(LocalDateTime.of(2026, 4, 10, 14, 0),
+                context.getNextAvailableTime(ResourceConstants.RESOURCE_TYPE_MOLD, "MOLD-1"));
+        assertEquals(3L, context.getNextSequence(ResourceConstants.RESOURCE_TYPE_MOLD, "MOLD-1"));
+
+        // 更新人员状态
+        context.update(ResourceConstants.RESOURCE_TYPE_PERSON, "P-1",
+                LocalDateTime.of(2026, 4, 10, 10, 0), 5L);
+        assertEquals(LocalDateTime.of(2026, 4, 10, 10, 0),
+                context.getNextAvailableTime(ResourceConstants.RESOURCE_TYPE_PERSON, "P-1"));
+        assertEquals(6L, context.getNextSequence(ResourceConstants.RESOURCE_TYPE_PERSON, "P-1"));
+
+        // 机台状态不受影响
+        assertEquals(LocalDateTime.of(2026, 4, 10, 12, 0),
+                context.getNextAvailableTime(ResourceConstants.RESOURCE_TYPE_MACHINE, "M1"));
+    }
+
+    // ========================== 辅助方法 ==========================
+
+    private TaskSchedulingQueryService.SchedulingResourceContext buildSchedulingContext(
+            List<Resource> resources, Map<Long, Calendar> calendarMap) {
+        Map<String, List<Resource>> resourcesByType = new HashMap<>();
+        for (Resource resource : resources) {
+            resourcesByType
+                    .computeIfAbsent(resource.getResourceType(), k -> new java.util.ArrayList<>())
+                    .add(resource);
+        }
+        return new TaskSchedulingQueryService.SchedulingResourceContext(resources, resourcesByType, calendarMap);
     }
 
     private Resource buildMachineResource(String machineId, Long calendarId, String moldId, Integer compatible) {
@@ -199,15 +396,18 @@ class TaskSchedulingCalculatorTest {
     private Resource buildMachineResource(String machineId, Long calendarId, String moldId, Integer compatible, Integer defaultSetupTimeMin) {
         Resource machineResource = new Resource();
         machineResource.setResourceId(machineId);
+        machineResource.setResourceType(ResourceConstants.RESOURCE_TYPE_MACHINE);
         machineResource.setCalendarId(calendarId);
         Machine machine = new Machine();
         machine.setMachineId(machineId);
         machine.setDefaultSetupTimeMin(defaultSetupTimeMin);
-        MachineMoldCompatibility compatibility = new MachineMoldCompatibility();
-        compatibility.setMachineId(machineId);
-        compatibility.setMoldId(moldId);
-        compatibility.setIsCompatible(compatible);
-        machine.setMoldCompatibilityList(List.of(compatibility));
+        if (moldId != null) {
+            MachineMoldCompatibility compatibility = new MachineMoldCompatibility();
+            compatibility.setMachineId(machineId);
+            compatibility.setMoldId(moldId);
+            compatibility.setIsCompatible(compatible);
+            machine.setMoldCompatibilityList(List.of(compatibility));
+        }
         machineResource.setMachine(machine);
         return machineResource;
     }
@@ -219,5 +419,40 @@ class TaskSchedulingCalculatorTest {
         calendar.setShiftStart("08:00");
         calendar.setShiftEnd("17:00");
         return calendar;
+    }
+
+    @Test
+    void calculateBatchAssignmentsShouldRespectTaskDependency() {
+        OperationTask setupTask = new OperationTask();
+        setupTask.setTaskId("T-SETUP");
+        setupTask.setEarliestStart(LocalDateTime.of(2026, 4, 10, 8, 0));
+        setupTask.setStdDurationMin(120L);
+
+        OperationTask injectTask = new OperationTask();
+        injectTask.setTaskId("T-INJECT");
+        injectTask.setEarliestStart(LocalDateTime.of(2026, 4, 10, 8, 0));
+        injectTask.setStdDurationMin(60L);
+
+        Resource machine = buildMachineResource("M1", 1L, null, 1, 30);
+        TaskSchedulingQueryService.SchedulingResourceContext schedulingContext =
+                buildSchedulingContext(List.of(machine), Map.of(1L, buildCalendar(1L)));
+        TaskSchedulingCalculator.ResourceRuntimeContext runtimeContext =
+                new TaskSchedulingCalculator.ResourceRuntimeContext();
+
+        Map<String, List<String>> postToPredecessors = Map.of("T-INJECT", List.of("T-SETUP"));
+        Map<String, LocalDateTime> predecessorEndTimes = new HashMap<>();
+
+        TaskSchedulingCalculator.ScheduleBatchResult result = calculator.calculateBatchAssignments(
+                List.of(setupTask, injectTask),
+                schedulingContext,
+                runtimeContext,
+                LocalDateTime.of(2026, 4, 10, 7, 0),
+                SchedulingStrategy.EARLIEST_START,
+                postToPredecessors,
+                predecessorEndTimes);
+
+        LocalDateTime setupEnd = result.getAssignments().get(0).getPlannedEnd();
+        LocalDateTime injectStart = result.getAssignments().get(1).getPlannedStart();
+        assertEquals(true, !injectStart.isBefore(setupEnd));
     }
 }

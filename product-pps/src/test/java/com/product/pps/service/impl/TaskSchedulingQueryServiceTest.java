@@ -1,12 +1,18 @@
 package com.product.pps.service.impl;
 
 import com.product.common.constant.StatusConstants;
+import com.product.common.constant.ResourceConstants;
+import com.product.domain.entity.Calendar;
 import com.product.domain.entity.OperationTask;
+import com.product.domain.entity.Resource;
+import com.product.domain.entity.ResourceCapability;
+import com.product.domain.entity.TaskResourceRequirement;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -52,6 +58,60 @@ class TaskSchedulingQueryServiceTest {
         assertTrue(result.isEmpty());
     }
 
+    @Test
+    void resolveRequiredResourceTypesShouldIncludeMachineAndCollaborativeTypes() {
+        OperationTask task = buildTask("T-1", "B1", 1L,
+                LocalDateTime.of(2026, 4, 21, 8, 0), StatusConstants.READY_OPERATION_TASK);
+        TaskResourceRequirement person = new TaskResourceRequirement();
+        person.setResourceType(ResourceConstants.RESOURCE_TYPE_PERSON);
+        TaskResourceRequirement workstation = new TaskResourceRequirement();
+        workstation.setResourceType(ResourceConstants.RESOURCE_TYPE_WORKSTATION);
+        task.setResourceRequirementList(List.of(person, workstation));
+
+        Set<String> result = queryService.resolveRequiredResourceTypes(List.of(task));
+
+        assertEquals(Set.of(
+                ResourceConstants.RESOURCE_TYPE_MACHINE,
+                ResourceConstants.RESOURCE_TYPE_PERSON,
+                ResourceConstants.RESOURCE_TYPE_WORKSTATION), result);
+    }
+
+    @Test
+    void buildSchedulingResourceContextShouldGroupResourcesAndAttachCapabilities() {
+        Resource machine = buildResource("M-1", ResourceConstants.RESOURCE_TYPE_MACHINE, 1L);
+        Resource person = buildResource("P-1", ResourceConstants.RESOURCE_TYPE_PERSON, 2L);
+        Resource workstation = buildResource("W-1", ResourceConstants.RESOURCE_TYPE_WORKSTATION, 3L);
+
+        ResourceCapability machineCapability = new ResourceCapability();
+        machineCapability.setResourceId("M-1");
+        machineCapability.setOpCode("INJECT");
+        ResourceCapability personCapability = new ResourceCapability();
+        personCapability.setResourceId("P-1");
+        personCapability.setOpCode("SETUP");
+
+        queryService.attachResourceCapabilities(List.of(machine, person, workstation),
+                List.of(machineCapability, personCapability));
+
+        Calendar machineCalendar = new Calendar();
+        machineCalendar.setCalendarId(1L);
+        Calendar personCalendar = new Calendar();
+        personCalendar.setCalendarId(2L);
+        Calendar workstationCalendar = new Calendar();
+        workstationCalendar.setCalendarId(3L);
+
+        TaskSchedulingQueryService.SchedulingResourceContext context = queryService.buildSchedulingResourceContext(
+                List.of(machine, person, workstation),
+                Map.of(1L, machineCalendar, 2L, personCalendar, 3L, workstationCalendar));
+
+        assertEquals(List.of(machine), context.getResourcesByType().get(ResourceConstants.RESOURCE_TYPE_MACHINE));
+        assertEquals(List.of(person), context.getResourcesByType().get(ResourceConstants.RESOURCE_TYPE_PERSON));
+        assertEquals(List.of(workstation), context.getResourcesByType().get(ResourceConstants.RESOURCE_TYPE_WORKSTATION));
+        assertEquals(1, machine.getCapabilityList().size());
+        assertEquals("SETUP", person.getCapabilityList().get(0).getOpCode());
+        assertTrue(workstation.getCapabilityList().isEmpty());
+        assertEquals(3, context.getCalendarMap().size());
+    }
+
     private OperationTask buildTask(String taskId,
                                     String batchId,
                                     Long sequence,
@@ -64,5 +124,13 @@ class TaskSchedulingQueryServiceTest {
         task.setEarliestStart(earliestStart);
         task.setStatus(status);
         return task;
+    }
+
+    private Resource buildResource(String resourceId, String resourceType, Long calendarId) {
+        Resource resource = new Resource();
+        resource.setResourceId(resourceId);
+        resource.setResourceType(resourceType);
+        resource.setCalendarId(calendarId);
+        return resource;
     }
 }

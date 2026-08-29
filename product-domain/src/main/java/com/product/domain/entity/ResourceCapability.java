@@ -28,7 +28,7 @@ public class ResourceCapability {
     /** 产品ID */
     @Excel(name = "产品ID")
     @TableField("product_id")
-    private String productId;
+    private Long productId;
 
     /** 是否启用（1=启用，0=禁用） */
     @TableField("is_enabled")

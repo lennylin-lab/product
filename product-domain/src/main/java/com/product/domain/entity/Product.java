@@ -9,6 +9,9 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import com.product.common.core.entity.BaseEntity;
+import com.product.domain.entity.ProductMoldParam;
+
+import java.util.List;
 
 /**
  * 产品对象 product
@@ -36,5 +39,9 @@ public class Product extends BaseEntity {
     @Excel(name = "图片")
     @TableField(value = "image")
     private String image;
+
+    /** 模具参数（创建/更新产品时必填，不落 product 表） */
+    @TableField(exist = false)
+    private List<ProductMoldParam> moldParams;
 
 }

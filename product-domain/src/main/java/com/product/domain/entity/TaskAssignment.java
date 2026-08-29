@@ -12,6 +12,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 派工/排程结果对象 task_assignment
@@ -81,6 +82,14 @@ public class TaskAssignment  extends BaseEntity {
     /** 派工关联的资源需求快照 */
     @TableField(exist = false)
     private List<TaskResourceRequirement> resourceRequirementList;
+
+    /** 派工关联的资源占用明细 */
+    @TableField(exist = false)
+    private List<TaskAssignmentResource> assignedResourceList;
+
+    /** 各资源类型上的序号（resourceType -> sequenceOnResource） */
+    @TableField(exist = false)
+    private Map<String, Long> resourceSequenceMap;
 
     /** 批次ID（关联任务） */
     @Excel(name = "批次ID")

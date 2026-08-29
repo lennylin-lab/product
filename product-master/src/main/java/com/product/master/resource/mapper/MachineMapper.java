@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.product.domain.dto.MachineResource;
 import com.product.domain.vo.MachineResourceVO;
 import org.apache.ibatis.annotations.Mapper;
-import com.product.master.domain.entity.Machine;
+import com.product.domain.entity.Machine;
 
 /**
  * 注塑机扩展信息Mapper接口，基于 MyBatis-Plus

@@ -12,7 +12,9 @@ import com.product.domain.entity.OperationTask;
 import com.product.domain.entity.OrderLine;
 import com.product.domain.entity.ProductionBatch;
 import com.product.domain.entity.Resource;
+import com.product.domain.entity.ResourceCapability;
 import com.product.domain.entity.TaskAssignment;
+import com.product.domain.entity.TaskDependency;
 import com.product.domain.entity.TaskResourceRequirement;
 import com.product.pps.dto.TaskSchedulingPriorityDTO;
 import lombok.extern.slf4j.Slf4j;
@@ -59,48 +61,60 @@ public class TaskSchedulingQueryService {
      * @return 可用机台列表，不会返回 null
      */
     public List<Resource> loadAvailableMachines() {
-        // 使用 MyBatis-Plus 的 Db 工具进行 Lambda 查询
-        List<Resource> resources = Db.lambdaQuery(Resource.class)
-                .eq(Resource::getResourceType, ResourceConstants.RESOURCE_TYPE_MACHINE) // 筛选机台类型
-                .eq(Resource::getStatus, StatusConstants.AVAILABLE_RESOURCE_STATUS) // 筛选可用状态
-                .list();
-        // 防御性处理：如果结果为空，直接返回
-        if (CollectionUtils.isEmpty(resources)) {
-            return resources;
-        }
-        // 过滤掉可能存在的 null 元素（虽然数据库查询通常不会返回 null）
-        List<Resource> availableMachines = resources.stream()
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
-        attachMachineDetails(availableMachines);
-        return availableMachines;
+        return loadAvailableResourcesByType(List.of(ResourceConstants.RESOURCE_TYPE_MACHINE))
+                .getOrDefault(ResourceConstants.RESOURCE_TYPE_MACHINE, List.of());
     }
 
     /**
-     * 加载机台对应的班次日历映射。
+     * 加载排程资源上下文。
      *
      * <p>
-     * 根据机台列表提取所有 calendarId，批量查询对应的 Calendar 实体，
-     * 并以 calendarId 为键建立 Map，方便后续根据机台快速查找日历。
+     * 输出统一的资源分组、能力矩阵与日历视图，供后续 Calculator 扩展多资源排程时直接消费。
+     * 当前默认总是包含 MACHINE，同时按任务资源需求补充 PERSON / WORKSTATION 等类型。
+     * </p>
+     */
+    public SchedulingResourceContext loadSchedulingResourceContext(List<OperationTask> tasks) {
+        List<OperationTask> safeTasks = tasks == null ? List.of() : tasks;
+        // 为任务列表批量关联资源需求
+        attachTaskResourceRequirements(safeTasks);
+        // 解析任务列表所需资源类型
+        Set<String> resourceTypes = resolveRequiredResourceTypes(safeTasks);
+        // 加载可用的资源列表
+        List<Resource> resources = loadAvailableResources(resourceTypes);
+        // 加载资源对应的班次日历映射
+        Map<Long, Calendar> calendarMap = loadCalendarMap(resources);
+        return buildSchedulingResourceContext(resources, calendarMap);
+    }
+
+    /**
+     * 按资源类型加载可用资源，并挂载能力矩阵与机台扩展信息。
+     */
+    public Map<String, List<Resource>> loadAvailableResourcesByType(Collection<String> resourceTypes) {
+        List<Resource> resources = loadAvailableResources(resourceTypes);
+        return buildSchedulingResourceContext(resources, loadCalendarMap(resources)).getResourcesByType();
+    }
+
+    /**
+     * 加载资源对应的班次日历映射。
+     *
+     * <p>
+     * 根据资源列表提取所有 calendarId，批量查询对应的 Calendar 实体，
+     * 并以 calendarId 为键建立 Map，方便后续根据资源快速查找日历。
      * </p>
      *
-     * @param machines 机台列表
+     * @param resources 资源列表
      * @return calendarId → Calendar 的映射，不会返回 null
      */
-    public Map<Long, Calendar> loadCalendarMap(List<Resource> machines) {
-        // 提取所有机台的 calendarId（去重）
+    public Map<Long, Calendar> loadCalendarMap(List<Resource> resources) {
         Set<Long> calendarIds = new HashSet<>();
-        for (Resource machine : machines) {
-            if (machine != null && machine.getCalendarId() != null) {
-                calendarIds.add(machine.getCalendarId());
+        for (Resource resource : resources) {
+            if (resource != null && resource.getCalendarId() != null) {
+                calendarIds.add(resource.getCalendarId());
             }
         }
-        // 如果没有关联的日历，返回空 Map
         if (calendarIds.isEmpty()) {
             return new HashMap<>();
         }
-        // 批量查询日历并转换为 Map：calendarId → Calendar
-        // (a, b) -> a 表示冲突时保留先出现的值
         return Db.lambdaQuery(Calendar.class)
                 .in(Calendar::getCalendarId, calendarIds)
                 .list()
@@ -202,6 +216,13 @@ public class TaskSchedulingQueryService {
         return orderedTasks;
     }
 
+    /**
+     * 为任务列表批量关联资源需求
+     * 1. 检查任务列表是否为空
+     * 2. 提取所有有效的 taskId
+     * 3. 批量查询资源需求并按 taskId 分组
+     * 4. 为每个任务设置对应的资源需求列表
+     */
     void attachTaskResourceRequirements(List<OperationTask> tasks) {
         if (CollectionUtils.isEmpty(tasks)) {
             return;
@@ -220,9 +241,42 @@ public class TaskSchedulingQueryService {
                 .stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.groupingBy(TaskResourceRequirement::getTaskId));
-        tasks.forEach(task -> task.setResourceRequirementList(requirementMap.getOrDefault(task.getTaskId(), List.of())));
+        tasks.forEach(
+                task -> task.setResourceRequirementList(requirementMap.getOrDefault(task.getTaskId(), List.of())));
     }
 
+    /**
+     * 加载可用的资源列表
+     * 1. 规范化资源类型（确保包含机器类型）
+     * 2. 查询指定类型且状态为可用的资源
+     * 3. 关联机器详情和资源能力信息
+     * 4. 返回可用的资源列表
+     */
+    List<Resource> loadAvailableResources(Collection<String> resourceTypes) {
+        Set<String> normalizedTypes = normalizeResourceTypes(resourceTypes);
+        List<Resource> resources = Db.lambdaQuery(Resource.class)
+                .in(Resource::getResourceType, normalizedTypes)
+                .eq(Resource::getStatus, StatusConstants.AVAILABLE_RESOURCE_STATUS)
+                .list();
+        if (CollectionUtils.isEmpty(resources)) {
+            return new ArrayList<>();
+        }
+        List<Resource> availableResources = resources.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        // 为每个资源设置对应的机器详情和模具兼容性列表
+        attachMachineDetails(availableResources);
+        attachResourceCapabilities(availableResources);
+        return availableResources;
+    }
+
+    /**
+     * 为资源列表关联机器详情
+     * 1. 提取所有有效的 machineId
+     * 2. 批量查询机器信息并转换为 Map
+     * 3. 批量查询模具兼容性并按 machineId 分组
+     * 4. 为每个资源设置对应的机器详情和模具兼容性列表
+     */
     private void attachMachineDetails(List<Resource> machines) {
         if (CollectionUtils.isEmpty(machines)) {
             return;
@@ -255,6 +309,132 @@ public class TaskSchedulingQueryService {
             machine.setMoldCompatibilityList(compatibilityMap.getOrDefault(machine.getMachineId(), List.of()));
             machineResource.setMachine(machine);
         });
+    }
+
+    /**
+     * 为资源列表关联能力信息（查询入口）
+     * 1. 提取所有有效的 resourceId
+     * 2. 批量查询资源能力
+     * 3. 调用重载方法完成关联
+     */
+    void attachResourceCapabilities(List<Resource> resources) {
+        if (CollectionUtils.isEmpty(resources)) {
+            return;
+        }
+        List<String> resourceIds = resources.stream()
+                .map(Resource::getResourceId)
+                .filter(StringUtils::isNotEmpty)
+                .distinct()
+                .collect(Collectors.toList());
+        if (CollectionUtils.isEmpty(resourceIds)) {
+            return;
+        }
+        List<ResourceCapability> capabilities = Db.lambdaQuery(ResourceCapability.class)
+                .in(ResourceCapability::getResourceId, resourceIds)
+                .list();
+        attachResourceCapabilities(resources, capabilities);
+    }
+
+    void attachResourceCapabilities(List<Resource> resources, List<ResourceCapability> capabilities) {
+        if (CollectionUtils.isEmpty(resources)) {
+            return;
+        }
+        Map<String, List<ResourceCapability>> capabilityMap = CollectionUtils.isEmpty(capabilities)
+                ? Collections.emptyMap()
+                : capabilities.stream()
+                        .filter(Objects::nonNull)
+                        .filter(item -> StringUtils.isNotEmpty(item.getResourceId()))
+                        .collect(Collectors.groupingBy(ResourceCapability::getResourceId));
+        resources.forEach(resource -> {
+            if (resource != null) {
+                resource.setCapabilityList(capabilityMap.getOrDefault(resource.getResourceId(), List.of()));
+            }
+        });
+    }
+
+    SchedulingResourceContext buildSchedulingResourceContext(List<Resource> resources,
+            Map<Long, Calendar> calendarMap) {
+        List<Resource> safeResources = resources == null ? List.of() : resources;
+        Map<String, List<Resource>> resourcesByType = safeResources.stream()
+                .filter(Objects::nonNull)
+                .filter(item -> StringUtils.isNotEmpty(item.getResourceType()))
+                .collect(Collectors.groupingBy(Resource::getResourceType, LinkedHashMap::new, Collectors.toList()));
+        return new SchedulingResourceContext(safeResources, resourcesByType,
+                calendarMap == null ? Map.of() : calendarMap);
+    }
+
+    /**
+     * 解析任务列表所需资源类型
+     * 1. 初始化包含机器资源的集合
+     * 2. 遍历每个任务的资源需求，提取资源类型并去重
+     * 3. 返回所有需要的资源类型集合
+     */
+    Set<String> resolveRequiredResourceTypes(List<OperationTask> tasks) {
+        Set<String> resourceTypes = new LinkedHashSet<>();
+        resourceTypes.add(ResourceConstants.RESOURCE_TYPE_MACHINE);
+        if (CollectionUtils.isEmpty(tasks)) {
+            return resourceTypes;
+        }
+        tasks.stream()
+                .filter(Objects::nonNull)
+                .map(OperationTask::getResourceRequirementList)
+                .filter(CollectionUtils::isNotEmpty)
+                .flatMap(Collection::stream)
+                .filter(Objects::nonNull)
+                .map(TaskResourceRequirement::getResourceType)
+                .filter(StringUtils::isNotEmpty)
+                .forEach(resourceTypes::add);
+        return resourceTypes;
+    }
+
+    private Set<String> normalizeResourceTypes(Collection<String> resourceTypes) {
+        Set<String> normalizedTypes = new LinkedHashSet<>();
+        normalizedTypes.add(ResourceConstants.RESOURCE_TYPE_MACHINE);
+        if (CollectionUtils.isNotEmpty(resourceTypes)) {
+            resourceTypes.stream()
+                    .filter(StringUtils::isNotEmpty)
+                    .forEach(normalizedTypes::add);
+        }
+        return normalizedTypes;
+    }
+
+    /**
+     * 加载后置任务到前置任务 ID 的依赖映射。
+     */
+    public Map<String, List<String>> loadPostToPredecessorsMap(List<String> taskIds) {
+        if (CollectionUtils.isEmpty(taskIds)) {
+            return Map.of();
+        }
+        return Db.lambdaQuery(TaskDependency.class)
+                .in(TaskDependency::getPostTaskId, taskIds)
+                .list()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(item -> StringUtils.isNotEmpty(item.getPostTaskId())
+                        && StringUtils.isNotEmpty(item.getPreTaskId()))
+                .collect(Collectors.groupingBy(
+                        TaskDependency::getPostTaskId,
+                        Collectors.mapping(TaskDependency::getPreTaskId, Collectors.toList())));
+    }
+
+    /**
+     * 批量加载任务的 planned_end，用于依赖约束。
+     */
+    public Map<String, LocalDateTime> loadPlannedEndByTaskIds(Collection<String> taskIds) {
+        if (CollectionUtils.isEmpty(taskIds)) {
+            return Map.of();
+        }
+        return Db.lambdaQuery(TaskAssignment.class)
+                .select(TaskAssignment::getTaskId, TaskAssignment::getPlannedEnd)
+                .in(TaskAssignment::getTaskId, taskIds)
+                .list()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(item -> StringUtils.isNotEmpty(item.getTaskId()) && item.getPlannedEnd() != null)
+                .collect(Collectors.toMap(
+                        TaskAssignment::getTaskId,
+                        TaskAssignment::getPlannedEnd,
+                        (left, right) -> left.isAfter(right) ? left : right));
     }
 
     /**
@@ -386,5 +566,31 @@ public class TaskSchedulingQueryService {
             priorityMap.put(task.getTaskId(), context);
         }
         return priorityMap;
+    }
+
+    public static class SchedulingResourceContext {
+        private final List<Resource> resources;
+        private final Map<String, List<Resource>> resourcesByType;
+        private final Map<Long, Calendar> calendarMap;
+
+        public SchedulingResourceContext(List<Resource> resources,
+                Map<String, List<Resource>> resourcesByType,
+                Map<Long, Calendar> calendarMap) {
+            this.resources = resources;
+            this.resourcesByType = resourcesByType;
+            this.calendarMap = calendarMap;
+        }
+
+        public List<Resource> getResources() {
+            return resources;
+        }
+
+        public Map<String, List<Resource>> getResourcesByType() {
+            return resourcesByType;
+        }
+
+        public Map<Long, Calendar> getCalendarMap() {
+            return calendarMap;
+        }
     }
 }

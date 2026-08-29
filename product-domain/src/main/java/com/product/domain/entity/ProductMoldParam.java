@@ -21,7 +21,7 @@ public class ProductMoldParam {
     /** 产品ID */
     @Excel(name = "产品ID")
     @TableField("product_id")
-    private String productId;
+    private Long productId;
 
     /** 模具ID */
     @Excel(name = "模具ID")

@@ -9,7 +9,6 @@ import com.product.cache.lock.RedisDistributedLock;
 import com.product.common.constant.StatusConstants;
 import com.product.common.utils.StringUtils;
 import com.product.domain.dto.TaskAssignmentDTO;
-import com.product.domain.entity.Calendar;
 import com.product.domain.entity.OperationTask;
 import com.product.domain.entity.Resource;
 import com.product.domain.entity.ScheduleJob;
@@ -321,11 +320,12 @@ public class TaskAssignmentServiceImpl extends ServiceImpl<TaskAssignmentMapper,
         if (CollectionUtils.isEmpty(machines)) {
             return false;
         }
-        Map<Long, Calendar> calendarMap = taskSchedulingQueryService.loadCalendarMap(machines);
-        TaskSchedulingCalculator.MachineRuntimeContext runtimeContext = taskSchedulingCalculator
-                .buildMachineRuntimeContext(machines);
+        TaskSchedulingQueryService.SchedulingResourceContext schedulingContext = taskSchedulingQueryService
+                .loadSchedulingResourceContext(tasks);
+        TaskSchedulingCalculator.ResourceRuntimeContext runtimeContext = taskSchedulingCalculator
+                .buildResourceRuntimeContext(schedulingContext);
         TaskSchedulingCalculator.ScheduleBatchResult batchResult = taskSchedulingCalculator
-                .calculateBatchAssignments(tasks, machines, calendarMap, runtimeContext, assignmentStart, strategy);
+                .calculateBatchAssignments(tasks, schedulingContext, runtimeContext, assignmentStart, strategy);
         return taskAssignmentPersistenceService.persistBatchResult(batchResult, scheduleBatchSize);
     }
 

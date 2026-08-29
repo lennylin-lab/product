@@ -1,19 +1,20 @@
 package com.product.pps.service.impl;
 
 import com.product.common.constant.ResourceConstants;
-import com.product.common.constant.StatusConstants;
 import com.product.common.exception.ServiceException;
 import com.product.common.utils.StringUtils;
 import com.product.domain.entity.Calendar;
 import com.product.domain.entity.Machine;
+import com.product.domain.entity.MachineMoldCompatibility;
 import com.product.domain.entity.OperationTask;
 import com.product.domain.entity.Resource;
 import com.product.domain.entity.TaskAssignment;
 import com.product.domain.entity.TaskResourceRequirement;
-import com.product.pps.dto.MachineRuntimeStatsDTO;
+import com.product.pps.dto.ResourceRuntimeStatsDTO;
 import com.product.pps.dto.TaskSchedulingPriorityDTO;
-import com.product.pps.mapper.TaskAssignmentMapper;
+import com.product.pps.mapper.TaskAssignmentResourceMapper;
 import com.product.pps.enums.SchedulingStrategy;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -23,135 +24,165 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
-import java.util.Objects;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Comparator;
-import java.util.stream.Collectors;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * 排程计算器。
  *
- * 说明：这里只保留纯排程计算逻辑和机台运行时快照构建，
+ * 说明：这里只保留纯排程计算逻辑和资源运行时快照构建，
  * 让 TaskAssignmentServiceImpl 只负责编排、事务和持久化。
  */
+@Slf4j
 @Component
 public class TaskSchedulingCalculator {
     @Autowired
-    private TaskAssignmentMapper taskAssignmentMapper;
+    private TaskAssignmentResourceMapper taskAssignmentResourceMapper;
 
-    /**
-     * 计算一批任务的机台分配方案（核心排程算法）
-     *
-     * 算法策略：贪心算法
-     * - 按任务列表顺序依次处理
-     * - 每个任务选择当前最早可用的机台
-     * - 选择后立即更新内存快照（确保后续任务基于最新状态）
-     *
-     * 执行流程：
-     * 1. 遍历每个任务
-     * 2. 为每个任务调用 chooseMachine() 选择最优机台
-     * 3. 创建 TaskAssignment 派工记录
-     * 4. 更新内存中的机台可用时间和序号
-     * 5. 返回批次的排程结果
-     *
-     * 数据流转：
-     * 输入：OperationTask 列表（待排程任务）
-     *  ↓
-     * 计算：chooseMachine() 选择机台 + 时间窗口
-     *  ↓
-     * 输出：TaskAssignment 列表（派工记录）
-     *
-     * 内存快照更新机制：
-     * 初始状态：M001(10:00, 序号1), M002(08:00, 序号1)
-     * 任务1分配：选择M002(08:00-10:00), 更新 M002(10:00, 序号2)
-     * 任务2分配：选择M001(10:00-12:00), 更新 M001(12:00, 序号2)
-     * 任务3分配：选择M002(10:00-12:00), 更新 M002(12:00, 序号3)
-     *
-     * 关键特性：
-     * - 纯内存计算：不涉及数据库操作
-     * - 批次原子性：一个批次内的任务要么全部成功，要么全部失败
-     * - 状态累积：runtimeContext 在批次内不断更新，影响后续任务
-     * - 异常处理：任一任务无可用机台则抛出异常，整批失败
-     *
-     * @param tasks             待排程的任务列表（按优先级排序）
-     * @param machines          可用机台列表
-     * @param calendarMap       机台ID → 日历映射（包含班次、工作日规则）
-     * @param runtimeContext    机台运行时上下文（内存快照，会被修改）
-     * @param assignmentStart   排程开始时间基准（用户指定或当前时间）
-     * @return 批次排程结果（包含派工记录列表和任务ID列表）
-     * @throws ServiceException 如果某个任务没有可用机台
-     */
+    // ========================== 公共 API（Coordinator 调用入口）
+    // ==========================
+
     public ScheduleBatchResult calculateBatchAssignments(List<OperationTask> tasks,
-                                                         List<Resource> machines,
-                                                         Map<Long, Calendar> calendarMap,
-                                                         MachineRuntimeContext runtimeContext,
-                                                         LocalDateTime assignmentStart) {
-        return calculateBatchAssignments(tasks, machines, calendarMap, runtimeContext, assignmentStart, SchedulingStrategy.EARLIEST_START);
+            TaskSchedulingQueryService.SchedulingResourceContext schedulingContext,
+            ResourceRuntimeContext runtimeContext,
+            LocalDateTime assignmentStart,
+            SchedulingStrategy strategy) {
+        return calculateBatchAssignments(tasks, schedulingContext, runtimeContext, assignmentStart, strategy,
+                Map.of(), new HashMap<>());
     }
 
     /**
-     * 计算一批任务的机台分配方案（支持策略切换）。
+     * 计算一批任务的资源分配方案（核心排程算法）。
+     *
+     * <p>
+     * 算法策略：贪心算法 -- 级联选择 MACHINE -> MOLD -> PERSON。
+     * 每个任务选择当前最早可用的资源组合，选择后立即更新内存快照。
+     * </p>
+     *
+     * @param tasks                 待排程的任务列表（按优先级排序）
+     * @param schedulingContext     排程资源上下文（机台/模具/人员 + 日历）
+     * @param runtimeContext        资源运行时上下文（内存快照，会被修改）
+     * @param assignmentStart       排程开始时间基准
+     * @param strategy              排程策略
+     * @param postToPredecessors    后置任务 → 前置任务 ID 列表
+     * @param predecessorEndTimes   前置/已排任务 planned_end（会被本批次更新）
+     * @return 批次排程结果
+     * @throws ServiceException 如果某个任务没有可用资源
      */
     public ScheduleBatchResult calculateBatchAssignments(List<OperationTask> tasks,
-                                                         List<Resource> machines,
-                                                         Map<Long, Calendar> calendarMap,
-                                                         MachineRuntimeContext runtimeContext,
-                                                         LocalDateTime assignmentStart,
-                                                         SchedulingStrategy strategy) {
-        // 存储派工记录（待入库）
+            TaskSchedulingQueryService.SchedulingResourceContext schedulingContext,
+            ResourceRuntimeContext runtimeContext,
+            LocalDateTime assignmentStart,
+            SchedulingStrategy strategy,
+            Map<String, List<String>> postToPredecessors,
+            Map<String, LocalDateTime> predecessorEndTimes) {
         List<TaskAssignment> assignments = new ArrayList<>(tasks.size());
-        // 存储任务ID（用于后续批量更新任务状态）
         List<String> taskIds = new ArrayList<>(tasks.size());
+        Map<String, List<String>> safePostToPredecessors = postToPredecessors == null ? Map.of() : postToPredecessors;
+        Map<String, LocalDateTime> safePredecessorEndTimes = predecessorEndTimes == null
+                ? new HashMap<>()
+                : predecessorEndTimes;
 
-        // 遍历每个任务，为其分配最优机台
         for (OperationTask task : tasks) {
             if (task == null) {
                 continue;
             }
 
-            // ===== 为当前任务选择最优机台 =====
-            // 遍历所有可用机台，计算每台机的最早可用时间
-            // 结合日历调整班次时间，处理跨班次顺延
-            // 返回最早能开始任务的机台
-            MachineChoice choice = chooseMachine(task, machines, calendarMap, assignmentStart, runtimeContext, strategy);
+            LocalDateTime dependencyEarliestStart = resolveDependencyEarliestStart(
+                    task.getTaskId(), safePostToPredecessors, safePredecessorEndTimes);
+            LocalDateTime effectiveEarliestStart = maxTime(task.getEarliestStart(), dependencyEarliestStart);
+
+            // 级联选择：MACHINE -> MOLD -> PERSON
+            ResourceChoice choice = chooseResources(task, schedulingContext, runtimeContext, assignmentStart, strategy,
+                    effectiveEarliestStart);
             if (choice == null) {
-                throw new ServiceException("任务" + task.getTaskId() + "没有可用机台");
+                throw new ServiceException("任务" + task.getTaskId() + "没有可用资源");
             }
 
-            // ===== 创建派工记录 =====
+            // 创建派工记录
             TaskAssignment assignment = new TaskAssignment();
             assignment.setTaskId(task.getTaskId());
             assignment.setMachineId(choice.machineId);
+            assignment.setMoldId(choice.moldId);
+            assignment.setPersonId(choice.personId);
             assignment.setPlannedStart(choice.plannedStart);
             assignment.setPlannedEnd(choice.plannedEnd);
             assignment.setSequenceOnResource(choice.sequenceOnResource);
+
+            // 将选中的资源 ID 回写到需求列表，供持久化服务生成 TaskAssignmentResource 明细
+            List<TaskResourceRequirement> resolvedRequirements = resolveSelectedResources(
+                    task.getResourceRequirementList(), choice.machineId, choice.moldId, choice.personId);
+            assignment.setResourceRequirementList(resolvedRequirements);
+
+            // 记录各资源类型的序号，供持久化服务写入 TaskAssignmentResource
+            Map<String, Long> resourceSequenceMap = new HashMap<>();
+            if (choice.sequenceOnResource != null) {
+                resourceSequenceMap.put(ResourceConstants.RESOURCE_TYPE_MACHINE, choice.sequenceOnResource);
+            }
+            if (choice.moldSequence != null) {
+                resourceSequenceMap.put(ResourceConstants.RESOURCE_TYPE_MOLD, choice.moldSequence);
+            }
+            if (choice.personSequence != null) {
+                resourceSequenceMap.put(ResourceConstants.RESOURCE_TYPE_PERSON, choice.personSequence);
+            }
+            assignment.setResourceSequenceMap(resourceSequenceMap);
             assignments.add(assignment);
             taskIds.add(task.getTaskId());
+            safePredecessorEndTimes.put(task.getTaskId(), choice.plannedEnd);
 
-            // ===== 更新内存快照（关键！）=====
-            // 当前批次内不回写数据库，直接推进内存态的机台可用时间与序号
-            // 下一个任务将基于新的快照进行计算
-            // 例如：任务1占用 M001(08:00-10:00)后，M001 的最早可用时间更新为 10:00
-            runtimeContext.update(choice.machineId, choice.plannedEnd, choice.sequenceOnResource);
+            // 更新内存快照：更新所有选中资源的状态
+            if (StringUtils.isNotEmpty(choice.machineId)) {
+                runtimeContext.update(ResourceConstants.RESOURCE_TYPE_MACHINE,
+                        choice.machineId, choice.plannedEnd, choice.sequenceOnResource);
+            }
+            if (StringUtils.isNotEmpty(choice.moldId)) {
+                runtimeContext.update(ResourceConstants.RESOURCE_TYPE_MOLD,
+                        choice.moldId, choice.plannedEnd, choice.moldSequence);
+            }
+            if (StringUtils.isNotEmpty(choice.personId)) {
+                runtimeContext.update(ResourceConstants.RESOURCE_TYPE_PERSON,
+                        choice.personId, choice.plannedEnd, choice.personSequence);
+            }
         }
         return new ScheduleBatchResult(assignments, taskIds);
     }
 
     /**
+     * 根据 task_dependency 计算后置任务的依赖约束开始时间。
+     */
+    LocalDateTime resolveDependencyEarliestStart(String taskId,
+            Map<String, List<String>> postToPredecessors,
+            Map<String, LocalDateTime> predecessorEndTimes) {
+        if (StringUtils.isEmpty(taskId) || postToPredecessors == null || predecessorEndTimes == null) {
+            return null;
+        }
+        List<String> preTaskIds = postToPredecessors.get(taskId);
+        if (CollectionUtils.isEmpty(preTaskIds)) {
+            return null;
+        }
+        LocalDateTime latestPredecessorEnd = null;
+        for (String preTaskId : preTaskIds) {
+            LocalDateTime plannedEnd = predecessorEndTimes.get(preTaskId);
+            if (plannedEnd == null) {
+                continue;
+            }
+            if (latestPredecessorEnd == null || plannedEnd.isAfter(latestPredecessorEnd)) {
+                latestPredecessorEnd = plannedEnd;
+            }
+        }
+        return latestPredecessorEnd;
+    }
+
+    /**
      * 按策略对任务排序。
-     *
-     * 排序规则由 strategy 决定：
-     * - EARLIEST_START：最早开始时间优先
-     * - EARLIEST_FINISH：预估最早结束时间优先
-     * - DUE_DATE_PRIORITY：交期优先，交期相同则按优先级（数值大优先）
-     *
-     * @param priorityMap 任务ID → 优先级上下文（交期、优先级），DUE_DATE_PRIORITY 策略必须传入
      */
     public List<OperationTask> orderTasks(List<OperationTask> tasks,
-                                          SchedulingStrategy strategy,
-                                          Map<String, TaskSchedulingPriorityDTO> priorityMap) {
+            SchedulingStrategy strategy,
+            Map<String, TaskSchedulingPriorityDTO> priorityMap) {
         if (CollectionUtils.isEmpty(tasks)) {
             return new ArrayList<>();
         }
@@ -160,161 +191,231 @@ public class TaskSchedulingCalculator {
         return ordered;
     }
 
+    // ========================== ResourceRuntimeContext 构建与操作
+    // ==========================
+
     /**
-     * 构建机台运行时上下文（内存快照）
+     * 构建多资源运行时上下文（内存快照）。
      *
-     * 核心作用：预加载机台的运行状态到内存，避免排程过程中频繁查询数据库
+     * <p>
+     * 通过 task_assignment_resource 表预加载所有资源类型的运行时状态，
+     * 按 (resourceType, resourceId) 维度统计 max(plannedEnd) 和 max(sequenceOnResource)。
+     * </p>
      *
-     * 设计目的：
-     * 1. 性能优化：将多次数据库查询减少为一次批量查询
-     * 2. 内存计算：在批次计算中不断更新内存状态，避免每次都查库
-     * 3. 并发安全：读取快照后，排程计算在内存中进行，不影响数据库
-     *
-     * 数据结构：
-     * - MachineRuntimeContext.nextAvailableTimeMap: 机台ID → 最早可用时间
-     * - MachineRuntimeContext.nextSequenceMap: 机台ID → 下一个序号
-     *
-     * 加载的数据来源（一次性查询）：
-     * 1. 最近任务结束时间：每台机 SCHEDULED/RUNNING/PAUSED 状态任务的最大 planned_end
-     * 2. 当前最大序号：每台机 task_assignment 表中最大的 sequence_on_resource
-     *
-     * 数据流转：
-     * 初始状态（数据库预加载） → 批次计算中（内存更新） → 最终结果（批量入库）
-     *
-     * 使用示例：
-     * <pre>{@code
-     * // 1. 排程开始前，构建内存快照
-     * MachineRuntimeContext context = taskSchedulingCalculator.buildMachineRuntimeContext(machines);
-     * // 此时：
-     * // - context.nextAvailableTimeMap.get("M001") = 2026-03-31 10:00（最近任务结束时间）
-     * // - context.nextSequenceMap.get("M001") = 5（下一个序号）
-     *
-     * // 2. 批次计算中，更新内存状态（不回写数据库）
-     * for (每个任务) {
-     *     MachineChoice choice = chooseMachine(..., context);
-     *     // 选择机台 M001，时间窗口 10:00-12:00，序号 5
-     *     context.update("M001", 12:00, 5);
-     *     // 此时：
-     *     // - context.nextAvailableTimeMap.get("M001") = 12:00（更新了）
-     *     // - context.nextSequenceMap.get("M001") = 6（下一个任务用序号6）
-     * }
-     *
-     * // 3. 所有批次计算完成后，统一入库
-     * transactionTemplate.execute(() -> persistAllBatchResults(batchResults));
-     * }</pre>
-     *
-     * @param machines 机台列表
-     * @return 机台运行时上下文（包含每台机的最早可用时间和下一个序号）
+     * @param schedulingContext 排程资源上下文
+     * @return 多资源运行时上下文
      */
-    public MachineRuntimeContext buildMachineRuntimeContext(List<Resource> machines) {
-        // 状态机器ID
-        List<String> machineIds = machines.stream()
-                .map(Resource::getResourceId)
-                .filter(StringUtils::isNotEmpty)
-                .distinct()
-                .collect(Collectors.toList());
-        MachineRuntimeContext context = new MachineRuntimeContext();
-        if (CollectionUtils.isEmpty(machineIds)) {
+    public ResourceRuntimeContext buildResourceRuntimeContext(
+            TaskSchedulingQueryService.SchedulingResourceContext schedulingContext) {
+        ResourceRuntimeContext context = new ResourceRuntimeContext();
+        Set<String> resourceTypes = schedulingContext.getResourcesByType().keySet();
+        if (CollectionUtils.isEmpty(resourceTypes)) {
             return context;
         }
-        /**
-         * MachineRuntimeStatsDTO {
-         *  private String machineId;
-         *  private LocalDateTime latestEndTime;
-         *  private Long maxSequence;
-         * }
-         */
-        List<MachineRuntimeStatsDTO> runtimeStats = taskAssignmentMapper.selectMachineRuntimeStats(
-                machineIds,
-                List.of(
-                        StatusConstants.SCHEDULED_OPERATION_TASK,
-                        StatusConstants.RUNNING_OPERATION_TASK,
-                        StatusConstants.PAUSED_OPERATION_TASK
-                )
-        );
-        for (MachineRuntimeStatsDTO row : runtimeStats) {
-            String machineId = row.getMachineId();
-            LocalDateTime latestEndTime = row.getLatestEndTime();
-            Long maxSequence = row.getMaxSequence();
-            if (StringUtils.isNotEmpty(machineId)) {
-                if (latestEndTime != null) {
-                    context.nextAvailableTimeMap.put(machineId, latestEndTime);
-                }
-                if (maxSequence != null) {
-                    context.nextSequenceMap.put(machineId, maxSequence + 1L);
-                }
+
+        List<ResourceRuntimeStatsDTO> stats = taskAssignmentResourceMapper.selectResourceRuntimeStats(
+                new ArrayList<>(resourceTypes));
+        if (CollectionUtils.isEmpty(stats)) {
+            return context;
+        }
+
+        for (ResourceRuntimeStatsDTO row : stats) {
+            if (row == null || StringUtils.isEmpty(row.getResourceType())
+                    || StringUtils.isEmpty(row.getResourceId())) {
+                continue;
+            }
+            if (row.getLatestEndTime() != null) {
+                context.setNextAvailableTime(row.getResourceType(), row.getResourceId(), row.getLatestEndTime());
+            }
+            if (row.getMaxSequence() != null) {
+                context.setNextSequence(row.getResourceType(), row.getResourceId(), row.getMaxSequence() + 1L);
             }
         }
         return context;
     }
 
+    // ========================== 级联资源选择（核心算法） ==========================
+
     /**
-     * 为单个任务选择最优机台
+     * 级联选择资源：MACHINE -> MOLD -> PERSON。
      *
-     * 选择策略：贪心算法（选择最早能开始任务的机台）
-     *
-     * 选择标准（优先级从高到低）：
-     * 1. plannedStart 更早者优先
-     * 2. plannedStart 相同时，plannedEnd 更早者优先
-     *
-     * 执行流程：
-     * 1. 遍历所有可用机台
-     * 2. 为每台机计算可执行的时间窗口：
-     *    - 获取机台最早可用时间（从内存快照读取）
-     *    - 计算候选时间 = max(任务最早开始时间, 机台可用时间, 排程开始时间)
-     *    - 调整到班次开始时间（处理非工作时段）
-     *    - 处理班次结束时间（跨班次则顺延到下一工作日）
-     * 3. 比较所有机台的时间窗口，选择最优的
-     *
-     * 示例场景：
-     * <pre>{@code
-     * 任务：TASK-001, 标准时长 120分钟
-     * 机台M001：可用时间 08:00
-     * 机台M002：可用时间 09:00
-     *
-     * 计算过程：
-     * M001: 08:00 + 120分钟 = 10:00
-     * M002: 09:00 + 120分钟 = 11:00
-     *
-     * 选择结果：M001（开始时间更早）
-     * }</pre>
-     *
-     * 班次调整示例：
-     * <pre>{@code
-     * 机台M001班次：08:00-17:00
-     * 任务时长：240分钟（4小时）
-     *
-     * 情况1：候选时间 07:00（班次前）
-     * → 调整到班次开始：08:00
-     * → 执行时间：08:00-12:00 ✓
-     *
-     * 情况2：候选时间 16:00（班次中）
-     * → 不需要调整：16:00
-     * → 计算结束：16:00 + 4小时 = 20:00
-     * → 跨越班次结束（17:00）
-     * → 顺延到下一工作日：次日 08:00-12:00
-     *
-     * 情况3：候选时间 18:00（班次后）
-     * → 顺延到下一工作日班次开始：次日 08:00
-     * → 执行时间：次日 08:00-12:00
-     * }</pre>
-     *
-     * @param task              待排程的任务
-     * @param machines          可用机台列表
-     * @param calendarMap       机台ID → 日历映射
-     * @param assignmentStart   排程开始时间基准
-     * @param runtimeContext    机台运行时上下文（内存快照）
-     * @return 最优机台选择结果（如果所有机台都不可用则返回null）
+     * <p>
+     * 选择顺序：
+     * 1. 先选最优机台（贪心算法，最早可用）
+     * 2. 根据任务 MOLD 需求从机台兼容模具中选择最早可用的模具
+     * 3. 根据任务 PERSON 需求通过 opCode 匹配选择最早可用的人员
+     * </p>
+     * <p>
+     * plannedStart = max(机台可用, 模具可用, 人员可用, earliestStart, assignmentStart)
+     * </p>
      */
-    private MachineChoice chooseMachine(OperationTask task,
-                                        List<Resource> machines,
-                                        Map<Long, Calendar> calendarMap,
-                                        LocalDateTime assignmentStart,
-                                        MachineRuntimeContext runtimeContext,
-                                        SchedulingStrategy strategy) {
+    private ResourceChoice chooseResources(OperationTask task,
+            TaskSchedulingQueryService.SchedulingResourceContext schedulingContext,
+            ResourceRuntimeContext runtimeContext,
+            LocalDateTime assignmentStart,
+            SchedulingStrategy strategy,
+            LocalDateTime effectiveEarliestStart) {
+        List<Resource> machines = schedulingContext.getResourcesByType()
+                .getOrDefault(ResourceConstants.RESOURCE_TYPE_MACHINE, List.of());
+        Map<Long, Calendar> calendarMap = schedulingContext.getCalendarMap();
+
+        // 阶段1: 选择最优机台
+        MachineChoice machineChoice = chooseBestMachine(task, machines, calendarMap, runtimeContext, assignmentStart,
+                strategy, effectiveEarliestStart);
+        if (machineChoice == null) {
+            return null;
+        }
+
+        String moldId = null;
+        Long moldSequence = null;
+        String personId = null;
+        Long personSequence = null;
+
+        // 阶段2: 选择模具（从机台兼容模具中选最早可用）
+        if (CollectionUtils.isNotEmpty(task.getResourceRequirementList())) {
+            List<TaskResourceRequirement> moldReqs = task.getResourceRequirementList().stream()
+                    .filter(req -> req != null && ResourceConstants.RESOURCE_TYPE_MOLD.equals(req.getResourceType()))
+                    .filter(this::isMandatoryRequirement)
+                    .toList();
+            if (!moldReqs.isEmpty()) {
+                moldId = chooseMold(moldReqs, machineChoice.machineResource, runtimeContext, schedulingContext);
+                if (moldId == null) {
+                    log.warn("任务 {} 没有可用模具(机台 {})", task.getTaskId(), machineChoice.machineId);
+                    return null;
+                }
+                moldSequence = runtimeContext.getNextSequence(ResourceConstants.RESOURCE_TYPE_MOLD, moldId);
+            }
+        }
+
+        // 阶段3: 选择人员（通过 opCode 匹配技能）
+        if (CollectionUtils.isNotEmpty(task.getResourceRequirementList())) {
+            List<TaskResourceRequirement> personReqs = task.getResourceRequirementList().stream()
+                    .filter(req -> req != null && ResourceConstants.RESOURCE_TYPE_PERSON.equals(req.getResourceType()))
+                    .filter(this::isMandatoryRequirement)
+                    .toList();
+            if (!personReqs.isEmpty()) {
+                personId = choosePerson(personReqs, schedulingContext, runtimeContext);
+                if (personId == null) {
+                    log.warn("任务 {} 没有可用人员", task.getTaskId());
+                    return null;
+                }
+                personSequence = runtimeContext.getNextSequence(ResourceConstants.RESOURCE_TYPE_PERSON, personId);
+            }
+        }
+
+        // 计算 plannedStart = max(所有资源可用时间, earliestStart, assignmentStart)
+        LocalDateTime moldNextTime = moldId != null
+                ? runtimeContext.getNextAvailableTime(ResourceConstants.RESOURCE_TYPE_MOLD, moldId)
+                : null;
+        LocalDateTime personNextTime = personId != null
+                ? runtimeContext.getNextAvailableTime(ResourceConstants.RESOURCE_TYPE_PERSON, personId)
+                : null;
+
+        LocalDateTime effectiveStart = maxTime(
+                machineChoice.plannedStart, moldNextTime, personNextTime,
+                effectiveEarliestStart, assignmentStart);
+
+        // 如果 effectiveStart 晚于 machineChoice.plannedStart，需要重新计算时间窗口
+        LocalDateTime plannedStart;
+        LocalDateTime plannedEnd;
+        if (effectiveStart != null && effectiveStart.isAfter(machineChoice.plannedStart)) {
+            // 需要基于新的 effectiveStart 重新计算机台时间窗口
+            Calendar calendar = calendarMap.get(machineChoice.machineResource.getCalendarId());
+            plannedStart = adjustToShiftStart(calendar, effectiveStart);
+            long duration = task.getStdDurationMin() == null ? 0L : task.getStdDurationMin();
+            TimeWindow window = adjustForShiftEnd(calendar, plannedStart, duration);
+            if (window == null) {
+                return null;
+            }
+            plannedStart = window.start;
+            plannedEnd = window.end;
+        } else {
+            plannedStart = machineChoice.plannedStart;
+            plannedEnd = machineChoice.plannedEnd;
+        }
+
+        return new ResourceChoice(
+                machineChoice.machineId, plannedStart, plannedEnd,
+                machineChoice.sequenceOnResource, machineChoice.setupCostMin,
+                moldId, moldSequence, personId, personSequence);
+    }
+
+    // ========================== 需求解析（回写选中资源ID） ==========================
+
+    /**
+     * 将级联选择的结果回写到需求列表中。
+     *
+     * <p>
+     * 对于需求中未指定 resourceId 的 MOLD/PERSON/MACHINE 类型需求，
+     * 用 calculator 选中资源的 ID 填充，以便持久化服务正确生成 TaskAssignmentResource。
+     * </p>
+     *
+     * @param requirements 原始需求列表
+     * @param machineId    选中的机台ID
+     * @param moldId       选中的模具ID（可为 null）
+     * @param personId     选中的人员ID（可为 null）
+     * @return 填充后的需求列表副本
+     */
+    private List<TaskResourceRequirement> resolveSelectedResources(
+            List<TaskResourceRequirement> requirements,
+            String machineId, String moldId, String personId) {
+        if (CollectionUtils.isEmpty(requirements)) {
+            return List.of();
+        }
+        List<TaskResourceRequirement> resolved = new ArrayList<>(requirements.size());
+        for (TaskResourceRequirement req : requirements) {
+            if (req == null) {
+                continue;
+            }
+            TaskResourceRequirement copy = new TaskResourceRequirement();
+            copy.setRequirementId(req.getRequirementId());
+            copy.setTaskId(req.getTaskId());
+            copy.setResourceType(req.getResourceType());
+            copy.setResourceRole(req.getResourceRole());
+            copy.setResourceId(req.getResourceId());
+            copy.setCapabilityCode(req.getCapabilityCode());
+            copy.setRequiredCount(req.getRequiredCount());
+            copy.setIsMandatory(req.getIsMandatory());
+            copy.setChangeoverSourceResourceId(req.getChangeoverSourceResourceId());
+            copy.setChangeoverTimeMin(req.getChangeoverTimeMin());
+
+            // 回写选中资源 ID（仅当原需求未指定时）
+            if (StringUtils.isEmpty(copy.getResourceId())) {
+                if (ResourceConstants.RESOURCE_TYPE_MACHINE.equals(copy.getResourceType())
+                        && StringUtils.isNotEmpty(machineId)) {
+                    copy.setResourceId(machineId);
+                } else if (ResourceConstants.RESOURCE_TYPE_MOLD.equals(copy.getResourceType())
+                        && StringUtils.isNotEmpty(moldId)) {
+                    copy.setResourceId(moldId);
+                } else if (ResourceConstants.RESOURCE_TYPE_PERSON.equals(copy.getResourceType())
+                        && StringUtils.isNotEmpty(personId)) {
+                    copy.setResourceId(personId);
+                }
+            }
+            resolved.add(copy);
+        }
+        return resolved;
+    }
+
+    // ========================== 机台选择（复用原有逻辑） ==========================
+
+    /**
+     * 为单个任务选择最优机台。
+     *
+     * <p>
+     * 选择策略：贪心算法（选择最早能开始任务的机台）。
+     * </p>
+     */
+    private MachineChoice chooseBestMachine(OperationTask task,
+            List<Resource> machines,
+            Map<Long, Calendar> calendarMap,
+            ResourceRuntimeContext runtimeContext,
+            LocalDateTime assignmentStart,
+            SchedulingStrategy strategy,
+            LocalDateTime effectiveEarliestStart) {
         MachineChoice best = null;
         Comparator<MachineChoice> comparator = machineChoiceComparator(strategy);
-        // 遍历所有可用机台，计算每台机的时间窗口
+
         for (Resource machine : machines) {
             if (machine == null) {
                 continue;
@@ -323,56 +424,43 @@ public class TaskSchedulingCalculator {
                 continue;
             }
 
-            // 获取机台关联的日历（包含班次、工作日规则）
             Calendar calendar = calendarMap.get(machine.getCalendarId());
+            LocalDateTime machineNextTime = runtimeContext.getNextAvailableTime(
+                    ResourceConstants.RESOURCE_TYPE_MACHINE, machine.getResourceId());
 
-            // 获取该机台的最早可用时间（从内存快照读取）
-            LocalDateTime machineNextTime = runtimeContext.getNextAvailableTime(machine.getResourceId());
-
-            // 计算候选时间 = 取三个时间中的最大值
-            // 1) 任务最早开始时间（业务约束）
-            // 2) 机台可用时间（前序任务结束时间）
-            // 3) 排程开始时间基准（用户指定或当前时间）
-            LocalDateTime candidate = maxTime(task.getEarliestStart(), machineNextTime, assignmentStart);
-
-            // 调整到班次开始时间
-            // 如果候选时间在非工作时段，顺延到下一个工作日的班次开始时间
+            LocalDateTime candidate = maxTime(effectiveEarliestStart, machineNextTime, assignmentStart);
             LocalDateTime plannedStart = adjustToShiftStart(calendar, candidate);
             if (plannedStart == null) {
-                continue;  // 无法调整到有效时间，跳过该机台
+                continue;
             }
 
-            // 获取任务标准时长（分钟）
             long duration = task.getStdDurationMin() == null ? 0L : task.getStdDurationMin();
-
-            // 计算实际执行时间窗口
-            // 判断任务是否会跨越下班时间，如果是则整体顺延到下一工作日班次开始
             TimeWindow window = adjustForShiftEnd(calendar, plannedStart, duration);
             if (window == null) {
-                continue;  // 无法在有效工作日完成，跳过该机台
+                continue;
             }
 
-            // 获取该机台上的下一个序号（从内存快照读取）
-            Long sequenceOnResource = runtimeContext.getNextSequence(machine.getResourceId());
+            Long sequenceOnResource = runtimeContext.getNextSequence(
+                    ResourceConstants.RESOURCE_TYPE_MACHINE, machine.getResourceId());
 
-            // 创建该机台的选择方案
             MachineChoice choice = new MachineChoice(
                     machine.getResourceId(),
+                    machine,
                     window.start,
                     window.end,
                     sequenceOnResource,
-                    estimateSetupCost(task, machine)
-            );
+                    estimateSetupCost(task, machine));
 
-            // 比较并选择最优方案
-            // 优先级由策略决定
             if (best == null || comparator.compare(choice, best) < 0) {
                 best = choice;
             }
         }
-        return best;  // 返回最早开始的机台
+        return best;
     }
 
+    /**
+     * 检查资源是否满足任务需求（含人员技能检查）。
+     */
     private boolean machineSatisfiesTaskRequirements(OperationTask task, Resource machine) {
         if (task == null || CollectionUtils.isEmpty(task.getResourceRequirementList())) {
             return true;
@@ -424,64 +512,225 @@ public class TaskSchedulingCalculator {
             }
         }
         Machine machineDetail = machine == null ? null : machine.getMachine();
-        return machineDetail == null || machineDetail.getDefaultSetupTimeMin() == null ? 0 : machineDetail.getDefaultSetupTimeMin();
+        return machineDetail == null || machineDetail.getDefaultSetupTimeMin() == null ? 0
+                : machineDetail.getDefaultSetupTimeMin();
+    }
+
+    // ========================== 模具选择 ==========================
+
+    /**
+     * 选择可用模具。
+     *
+     * <p>
+     * 如果需求指定了 resourceId，则仅检查该模具是否在机台兼容列表中且可用；
+     * 否则从机台兼容模具列表中选择最早可用的。
+     * </p>
+     *
+     * @param moldReqs          模具需求列表（mandatory）
+     * @param machineResource   已选定的机台资源
+     * @param runtimeContext    资源运行时上下文
+     * @param schedulingContext 排程资源上下文（获取模具资源列表）
+     * @return 选中的模具ID，无可用时返回 null
+     */
+    private String chooseMold(List<TaskResourceRequirement> moldReqs,
+            Resource machineResource,
+            ResourceRuntimeContext runtimeContext,
+            TaskSchedulingQueryService.SchedulingResourceContext schedulingContext) {
+        Machine machine = machineResource == null ? null : machineResource.getMachine();
+        List<Resource> moldResources = schedulingContext.getResourcesByType()
+                .getOrDefault(ResourceConstants.RESOURCE_TYPE_MOLD, List.of());
+
+        for (TaskResourceRequirement req : moldReqs) {
+            if (req.getResourceId() != null) {
+                // 指定了模具ID：检查兼容性和可用性
+                if (!machineSupportsMold(machineResource, req.getResourceId())) {
+                    return null;
+                }
+                LocalDateTime moldNext = runtimeContext.getNextAvailableTime(
+                        ResourceConstants.RESOURCE_TYPE_MOLD, req.getResourceId());
+                if (moldNext == null) {
+                    return req.getResourceId();
+                }
+                // 如果模具可用时间已经满足（模具空闲），直接选
+                return req.getResourceId();
+            }
+
+            // 未指定模具ID：从机台兼容模具中选最早可用的
+            if (machine == null || CollectionUtils.isEmpty(machine.getMoldCompatibilityList())) {
+                continue;
+            }
+            String bestMoldId = null;
+            LocalDateTime bestMoldNext = null;
+            for (MachineMoldCompatibility compat : machine.getMoldCompatibilityList()) {
+                if (compat == null || StringUtils.isEmpty(compat.getMoldId())
+                        || (compat.getIsCompatible() != null && compat.getIsCompatible() == 0)) {
+                    continue;
+                }
+                String moldId = compat.getMoldId();
+                // 确认模具在可用资源列表中
+                boolean isAvailable = moldResources.stream()
+                        .anyMatch(r -> r != null && StringUtils.equals(r.getResourceId(), moldId));
+                if (!isAvailable) {
+                    continue;
+                }
+                LocalDateTime moldNext = runtimeContext.getNextAvailableTime(
+                        ResourceConstants.RESOURCE_TYPE_MOLD, moldId);
+                if (bestMoldNext == null || (moldNext == null) || moldNext.isBefore(bestMoldNext)) {
+                    bestMoldId = moldId;
+                    bestMoldNext = moldNext;
+                }
+            }
+            if (bestMoldId != null) {
+                return bestMoldId;
+            }
+        }
+        return null;
+    }
+
+    // ========================== 人员选择 ==========================
+
+    /**
+     * 通过 opCode 匹配选择最早可用的人员。
+     *
+     * <p>
+     * 匹配规则：
+     * 1. 如果需求指定了 resourceId，则检查该人员是否存在且技能匹配
+     * 2. 否则从所有可用人员中通过 ResourceCapability.opCode 匹配 capabilityCode，
+     * 选择 isEnabled=1 且最早可用的人员
+     * </p>
+     *
+     * @param personReqs        人员需求列表（mandatory）
+     * @param schedulingContext 排程资源上下文（获取人员资源列表）
+     * @param runtimeContext    资源运行时上下文
+     * @return 选中的人员ID，无可用时返回 null
+     */
+    private String choosePerson(List<TaskResourceRequirement> personReqs,
+            TaskSchedulingQueryService.SchedulingResourceContext schedulingContext,
+            ResourceRuntimeContext runtimeContext) {
+        List<Resource> personResources = schedulingContext.getResourcesByType()
+                .getOrDefault(ResourceConstants.RESOURCE_TYPE_PERSON, List.of());
+
+        for (TaskResourceRequirement req : personReqs) {
+            if (req.getResourceId() != null) {
+                // 指定了人员ID：验证技能匹配
+                if (personHasCapability(req.getResourceId(), req.getCapabilityCode(), personResources)) {
+                    return req.getResourceId();
+                }
+                return null;
+            }
+
+            // 未指定人员ID：通过 capabilityCode 匹配
+            String capabilityCode = req.getCapabilityCode();
+            if (StringUtils.isEmpty(capabilityCode)) {
+                continue;
+            }
+            String bestPersonId = null;
+            LocalDateTime bestPersonNext = null;
+            for (Resource person : personResources) {
+                if (person == null) {
+                    continue;
+                }
+                if (!personHasCapability(person.getResourceId(), capabilityCode, personResources)) {
+                    continue;
+                }
+                LocalDateTime personNext = runtimeContext.getNextAvailableTime(
+                        ResourceConstants.RESOURCE_TYPE_PERSON, person.getResourceId());
+                if (bestPersonNext == null || (personNext == null) || personNext.isBefore(bestPersonNext)) {
+                    bestPersonId = person.getResourceId();
+                    bestPersonNext = personNext;
+                }
+            }
+            if (bestPersonId != null) {
+                return bestPersonId;
+            }
+        }
+        return null;
     }
 
     /**
+     * 检查人员是否具备指定的技能（opCode 匹配 + isEnabled=1）。
+     */
+    private boolean personHasCapability(String personId,
+            String capabilityCode,
+            List<Resource> personResources) {
+        if (StringUtils.isEmpty(personId) || StringUtils.isEmpty(capabilityCode)) {
+            return false;
+        }
+        for (Resource person : personResources) {
+            if (person == null || !StringUtils.equals(person.getResourceId(), personId)) {
+                continue;
+            }
+            if (CollectionUtils.isEmpty(person.getCapabilityList())) {
+                return false;
+            }
+            return person.getCapabilityList().stream()
+                    .filter(Objects::nonNull)
+                    .filter(cap -> Integer.valueOf(1).equals(cap.getIsEnabled()))
+                    .anyMatch(cap -> StringUtils.equals(cap.getOpCode(), capabilityCode));
+        }
+        return false;
+    }
+
+    // ========================== 比较器 ==========================
+
+    /**
      * 根据策略构建机台选择比较器。
-     * EARLIEST_FINISH：优先选结束时间最早的机台（工期最短）
-     * 其他策略：优先选开始时间最早的机台（默认）
      */
     private Comparator<MachineChoice> machineChoiceComparator(SchedulingStrategy strategy) {
         if (strategy == SchedulingStrategy.LOWEST_COST) {
-            return Comparator.comparing((MachineChoice item) -> item.setupCostMin, Comparator.nullsLast(Comparator.naturalOrder()))
+            return Comparator
+                    .comparing((MachineChoice item) -> item.setupCostMin,
+                            Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(item -> item.plannedEnd, Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(item -> item.plannedStart, Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(item -> item.machineId, Comparator.nullsLast(Comparator.naturalOrder()));
         }
         if (strategy == SchedulingStrategy.EARLIEST_FINISH) {
-            return Comparator.comparing((MachineChoice item) -> item.plannedEnd, Comparator.nullsLast(Comparator.naturalOrder()))
+            return Comparator
+                    .comparing((MachineChoice item) -> item.plannedEnd, Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(item -> item.plannedStart, Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(item -> item.machineId, Comparator.nullsLast(Comparator.naturalOrder()));
         }
-        return Comparator.comparing((MachineChoice item) -> item.plannedStart, Comparator.nullsLast(Comparator.naturalOrder()))
+        return Comparator
+                .comparing((MachineChoice item) -> item.plannedStart, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(item -> item.plannedEnd, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(item -> item.machineId, Comparator.nullsLast(Comparator.naturalOrder()));
     }
 
     /**
      * 根据策略构建任务排序比较器。
-     * 每种策略有不同的排序优先级链，末尾统一用 taskId 兜底保证排序稳定性。
      */
-    private Comparator<OperationTask> taskComparator(SchedulingStrategy strategy, Map<String, TaskSchedulingPriorityDTO> priorityMap) {
+    private Comparator<OperationTask> taskComparator(SchedulingStrategy strategy,
+            Map<String, TaskSchedulingPriorityDTO> priorityMap) {
         if (strategy == SchedulingStrategy.DUE_DATE_PRIORITY) {
-            // 交期优先策略：订单交期早的先排，交期相同时优先级数值大的（更紧急）先排
-            // 无关联订单的任务（dueDate 为 null）排到最后
             return Comparator
-                    .comparing((OperationTask task) -> priorityDate(task, priorityMap), Comparator.nullsLast(Comparator.naturalOrder()))
-                    .thenComparing(task -> priorityValue(task, priorityMap), Comparator.nullsLast(Comparator.reverseOrder()))
+                    .comparing((OperationTask task) -> priorityDate(task, priorityMap),
+                            Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(task -> priorityValue(task, priorityMap),
+                            Comparator.nullsLast(Comparator.reverseOrder()))
                     .thenComparing(task -> task.getEarliestStart(), Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(task -> task.getSequence(), Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(OperationTask::getTaskId, Comparator.nullsLast(Comparator.naturalOrder()));
         }
         if (strategy == SchedulingStrategy.LOWEST_COST) {
             return Comparator
-                    .comparing((OperationTask task) -> task.getChangeoverTimeMin(), Comparator.nullsLast(Comparator.naturalOrder()))
+                    .comparing((OperationTask task) -> task.getChangeoverTimeMin(),
+                            Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(task -> task.getEarliestStart(), Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(task -> task.getSequence(), Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(OperationTask::getTaskId, Comparator.nullsLast(Comparator.naturalOrder()));
         }
         if (strategy == SchedulingStrategy.EARLIEST_FINISH) {
-            // 最早完工策略：预估结束时间早的先排（工期短的任务先做，提高机台吞吐）
             return Comparator
-                    .comparing((OperationTask task) -> estimateFinish(task), Comparator.nullsLast(Comparator.naturalOrder()))
+                    .comparing((OperationTask task) -> estimateFinish(task),
+                            Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(task -> task.getEarliestStart(), Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(task -> task.getSequence(), Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(OperationTask::getTaskId, Comparator.nullsLast(Comparator.naturalOrder()));
         }
-        // 默认策略（EARLIEST_START）：能最早开始的任务先排
         return Comparator
-                .comparing((OperationTask task) -> task.getEarliestStart(), Comparator.nullsLast(Comparator.naturalOrder()))
+                .comparing((OperationTask task) -> task.getEarliestStart(),
+                        Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(task -> task.getSequence(), Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(OperationTask::getTaskId, Comparator.nullsLast(Comparator.naturalOrder()));
     }
@@ -499,17 +748,19 @@ public class TaskSchedulingCalculator {
         return start.plusMinutes(duration);
     }
 
-    /** 从优先级上下文中获取任务的订单交期 */
     private LocalDateTime priorityDate(OperationTask task, Map<String, TaskSchedulingPriorityDTO> priorityMap) {
-        TaskSchedulingPriorityDTO context = priorityMap == null || task == null ? null : priorityMap.get(task.getTaskId());
+        TaskSchedulingPriorityDTO context = priorityMap == null || task == null ? null
+                : priorityMap.get(task.getTaskId());
         return context == null ? null : context.getDueDate();
     }
 
-    /** 从优先级上下文中获取任务的订单优先级（数值越大越紧急） */
     private Long priorityValue(OperationTask task, Map<String, TaskSchedulingPriorityDTO> priorityMap) {
-        TaskSchedulingPriorityDTO context = priorityMap == null || task == null ? null : priorityMap.get(task.getTaskId());
+        TaskSchedulingPriorityDTO context = priorityMap == null || task == null ? null
+                : priorityMap.get(task.getTaskId());
         return context == null ? null : context.getPriority();
     }
+
+    // ========================== 时间工具 ==========================
 
     private LocalDateTime maxTime(LocalDateTime... times) {
         LocalDateTime max = null;
@@ -690,66 +941,143 @@ public class TaskSchedulingCalculator {
         }
     }
 
+    // ========================== 内部数据类 ==========================
+
     /**
-     * 机台选择结果
+     * 多资源运行时上下文（内存快照）。
      *
-     * 职责：表示某个任务在某台机台上的执行方案
-     *
-     * 包含信息：
-     * - machineId: 选中的机台ID
-     * - plannedStart: 计划开始时间（已调整到班次开始）
-     * - plannedEnd: 计划结束时间（已处理跨班次顺延）
-     * - sequenceOnResource: 在该机台上的执行序号
-     *
-     * 使用场景：
-     * - chooseMachine() 方法为每台机计算时间窗口后，创建 MachineChoice 对象
-     * - 比较所有机台的 MachineChoice，选择最优的（开始时间最早的）
-     * - 将选中的 MachineChoice 转换为 TaskAssignment 派工记录
-     *
-     * 示例：
-     * <pre>{@code
-     * // 为任务 TASK-001 选择机台
-     * MachineChoice choice = new MachineChoice(
-     *     "M001",                    // 机台ID
-     *     LocalDateTime.of(...),    // 计划开始：2026-03-31 08:00
-     *     LocalDateTime.of(...),    // 计划结束：2026-03-31 10:00
-     *     5L                        // 序号：该机台上的第5个任务
-     * );
-     *
-     * // 转换为派工记录
-     * TaskAssignment assignment = new TaskAssignment();
-     * assignment.setMachineId(choice.machineId);
-     * assignment.setPlannedStart(choice.plannedStart);
-     * assignment.setPlannedEnd(choice.plannedEnd);
-     * assignment.setSequenceOnResource(choice.sequenceOnResource);
-     * }</pre>
+     * <p>
+     * 按 (resourceType, resourceId) 维度维护各资源的最早可用时间和下一个序号。
+     * 在排程计算过程中不断更新，避免频繁查询数据库。
+     * </p>
      */
-    public static class MachineChoice {
-        /** 机台ID */
-        private final String machineId;
-        /** 计划开始时间（已调整到班次开始，处理了非工作时段） */
-        private final LocalDateTime plannedStart;
-        /** 计划结束时间（已处理跨班次顺延） */
-        private final LocalDateTime plannedEnd;
-        /** 在该机台上的执行序号 */
-        private final Long sequenceOnResource;
-        /** 方案对应的换型/准备成本（分钟） */
-        private final Integer setupCostMin;
+    public static class ResourceRuntimeContext {
+        /** resourceType -> (resourceId -> 最早可用时间) */
+        private final Map<String, Map<String, LocalDateTime>> nextAvailableTimeMap = new HashMap<>();
+        /** resourceType -> (resourceId -> 下一个序号) */
+        private final Map<String, Map<String, Long>> nextSequenceMap = new HashMap<>();
 
         /**
-         * 构造机台选择结果
+         * 获取资源的最早可用时间。
          *
-         * @param machineId           机台ID
-         * @param plannedStart        计划开始时间
-         * @param plannedEnd          计划结束时间
-         * @param sequenceOnResource  在该机台上的序号
+         * @param resourceType 资源类型
+         * @param resourceId   资源ID
+         * @return 最早可用时间（null 表示该资源从未被占用）
          */
-        public MachineChoice(String machineId,
-                             LocalDateTime plannedStart,
-                             LocalDateTime plannedEnd,
-                             Long sequenceOnResource,
-                             Integer setupCostMin) {
+        public LocalDateTime getNextAvailableTime(String resourceType, String resourceId) {
+            Map<String, LocalDateTime> typeMap = nextAvailableTimeMap.get(resourceType);
+            return typeMap == null ? null : typeMap.get(resourceId);
+        }
+
+        /**
+         * 获取资源的下一个序号。
+         *
+         * @param resourceType 资源类型
+         * @param resourceId   资源ID
+         * @return 下一个序号（不存在则返回 1）
+         */
+        public Long getNextSequence(String resourceType, String resourceId) {
+            Map<String, Long> typeMap = nextSequenceMap.get(resourceType);
+            return typeMap == null ? 1L : typeMap.getOrDefault(resourceId, 1L);
+        }
+
+        /**
+         * 更新资源运行状态。
+         *
+         * @param resourceType 资源类型
+         * @param resourceId   资源ID
+         * @param plannedEnd   计划结束时间
+         * @param usedSequence 本次使用的序号
+         */
+        public void update(String resourceType, String resourceId, LocalDateTime plannedEnd, Long usedSequence) {
+            if (StringUtils.isEmpty(resourceType) || StringUtils.isEmpty(resourceId)) {
+                return;
+            }
+            if (plannedEnd != null) {
+                nextAvailableTimeMap
+                        .computeIfAbsent(resourceType, k -> new HashMap<>())
+                        .put(resourceId, plannedEnd);
+            }
+            if (usedSequence != null) {
+                nextSequenceMap
+                        .computeIfAbsent(resourceType, k -> new HashMap<>())
+                        .put(resourceId, usedSequence + 1L);
+            }
+        }
+
+        /**
+         * 设置资源的最早可用时间（预加载时使用）。
+         */
+        void setNextAvailableTime(String resourceType, String resourceId, LocalDateTime time) {
+            nextAvailableTimeMap
+                    .computeIfAbsent(resourceType, k -> new HashMap<>())
+                    .put(resourceId, time);
+        }
+
+        /**
+         * 设置资源的下一个序号（预加载时使用）。
+         */
+        void setNextSequence(String resourceType, String resourceId, Long sequence) {
+            nextSequenceMap
+                    .computeIfAbsent(resourceType, k -> new HashMap<>())
+                    .put(resourceId, sequence);
+        }
+    }
+
+    /**
+     * 资源选择结果（扩展 MachineChoice，包含模具和人员信息）。
+     */
+    public static class ResourceChoice {
+        private final String machineId;
+        private final LocalDateTime plannedStart;
+        private final LocalDateTime plannedEnd;
+        private final Long sequenceOnResource;
+        private final Integer setupCostMin;
+        private final String moldId;
+        private final Long moldSequence;
+        private final String personId;
+        private final Long personSequence;
+
+        public ResourceChoice(String machineId,
+                LocalDateTime plannedStart,
+                LocalDateTime plannedEnd,
+                Long sequenceOnResource,
+                Integer setupCostMin,
+                String moldId,
+                Long moldSequence,
+                String personId,
+                Long personSequence) {
             this.machineId = machineId;
+            this.plannedStart = plannedStart;
+            this.plannedEnd = plannedEnd;
+            this.sequenceOnResource = sequenceOnResource;
+            this.setupCostMin = setupCostMin;
+            this.moldId = moldId;
+            this.moldSequence = moldSequence;
+            this.personId = personId;
+            this.personSequence = personSequence;
+        }
+    }
+
+    /**
+     * 机台选择结果（内部使用，包含 Resource 引用以便级联选择时获取兼容模具列表）。
+     */
+    static class MachineChoice {
+        private final String machineId;
+        private final Resource machineResource;
+        private final LocalDateTime plannedStart;
+        private final LocalDateTime plannedEnd;
+        private final Long sequenceOnResource;
+        private final Integer setupCostMin;
+
+        MachineChoice(String machineId,
+                Resource machineResource,
+                LocalDateTime plannedStart,
+                LocalDateTime plannedEnd,
+                Long sequenceOnResource,
+                Integer setupCostMin) {
+            this.machineId = machineId;
+            this.machineResource = machineResource;
             this.plannedStart = plannedStart;
             this.plannedEnd = plannedEnd;
             this.sequenceOnResource = sequenceOnResource;
@@ -758,45 +1086,12 @@ public class TaskSchedulingCalculator {
     }
 
     /**
-     * 时间窗口
-     *
-     * 职责：表示任务的执行时间段（开始时间和结束时间）
-     *
-     * 使用场景：
-     * - adjustForShiftEnd() 方法处理班次结束后，返回调整后的时间窗口
-     * - 如果任务会在班次结束时中断，则将整个任务顺延到下一工作日班次开始
-     *
-     * 示例：
-     * <pre>{@code
-     * 场景1：任务在班次内完成
-     * 机台班次：08:00-17:00
-     * 任务时长：120分钟（2小时）
-     * 候选开始：16:00
-     * → TimeWindow(16:00, 18:00)
-     * → 18:00 > 17:00，跨越班次结束
-     * → 顺延到次日：TimeWindow(次日08:00, 次日10:00)
-     *
-     * 场景2：任务在班次内完成
-     * 机台班次：08:00-17:00
-     * 任务时长：60分钟（1小时）
-     * 候选开始：14:00
-     * → TimeWindow(14:00, 15:00)
-     * → 15:00 < 17:00，在班次内完成
-     * → 不需要调整
-     * }</pre>
+     * 时间窗口。
      */
     public static class TimeWindow {
-        /** 开始时间 */
         private final LocalDateTime start;
-        /** 结束时间 */
         private final LocalDateTime end;
 
-        /**
-         * 构造时间窗口
-         *
-         * @param start 开始时间
-         * @param end   结束时间
-         */
         public TimeWindow(LocalDateTime start, LocalDateTime end) {
             this.start = start;
             this.end = end;
@@ -804,155 +1099,44 @@ public class TaskSchedulingCalculator {
     }
 
     /**
-     * 批次排程结果
-     *
-     * 职责：封装一个批次任务的排程计算结果
-     *
-     * 包含内容：
-     * - assignments: 派工记录列表（待批量插入数据库）
-     * - taskIds: 任务ID列表（用于批量更新任务状态为 SCHEDULED）
-     *
-     * 数据流转：
-     * calculateBatchAssignments() 返回 ScheduleBatchResult
-     *   ↓
-     * 添加到 batchResults 列表
-     *   ↓
-     * 所有批次计算完成后
-     *   ↓
-     * persistAllBatchResults(batchResults) 批量入库
-     *
-     * 使用示例：
-     * <pre>{@code
-     * // 计算一个批次
-     * ScheduleBatchResult batchResult = calculateBatchAssignments(tasks, machines, ...);
-     *
-     * // 批次结果包含：
-     * // - 200 个 TaskAssignment 对象（派工记录）
-     * // - 200 个任务ID（用于更新状态）
-     *
-     * // 后续处理：
-     * // 1. 批量插入派工记录
-     * saveBatch(batchResult.getAssignments());
-     * // 2. 批量更新任务状态
-     * batchMarkScheduled(batchResult.getTaskIds(), "READY", "SCHEDULED");
-     * }</pre>
+     * 批次排程结果。
      */
     public static class ScheduleBatchResult {
-        /** 派工记录列表（一个任务对应一条记录） */
         private final List<TaskAssignment> assignments;
-        /** 任务ID列表（用于后续批量更新任务状态） */
         private final List<String> taskIds;
 
-        /**
-         * 构造批次排程结果
-         *
-         * @param assignments 派工记录列表
-         * @param taskIds     任务ID列表
-         */
         public ScheduleBatchResult(List<TaskAssignment> assignments, List<String> taskIds) {
             this.assignments = assignments;
             this.taskIds = taskIds;
         }
 
-        /**
-         * 获取派工记录列表
-         *
-         * @return 派工记录列表（包含机台ID、计划开始时间、计划结束时间、序号等）
-         */
         public List<TaskAssignment> getAssignments() {
             return assignments;
         }
 
-        /**
-         * 获取任务ID列表
-         *
-         * @return 任务ID列表（用于批量更新任务状态：READY → SCHEDULED）
-         */
         public List<String> getTaskIds() {
             return taskIds;
         }
     }
 
     /**
-     * 机台运行时上下文（内存快照）
+     * 机台运行时上下文（内存快照）。
      *
-     * 职责：在排程计算过程中维护机台的运行状态，避免频繁查询数据库
-     *
-     * 数据结构：
-     * - nextAvailableTimeMap: 机台ID → 最早可用时间（前序任务结束时间）
-     * - nextSequenceMap: 机台ID → 下一个序号
-     *
-     * 状态流转示例：
-     * <pre>{@code
-     * 初始状态（从数据库预加载）:
-     * ┌──────────┬─────────────────────┬─────────┐
-     * │ machineId │ nextAvailableTime   │ sequence│
-     * ├──────────┼─────────────────────┼─────────┤
-     * │ M001     │ 2026-03-31 10:00    │ 5       │
-     * │ M002     │ null（无任务）      │ 1       │
-     * └──────────┴─────────────────────┴─────────┘
-     *
-     * 处理任务1后（选择M001，08:00-12:00，序号5）:
-     * ┌──────────┬─────────────────────┬─────────┐
-     * │ machineId │ nextAvailableTime   │ sequence│
-     * ├──────────┼─────────────────────┼─────────┤
-     * │ M001     │ 2026-03-31 12:00 ← 更新│ 6 ← 更新│
-     * │ M002     │ null                │ 1       │
-     * └──────────┴─────────────────────┴─────────┘
-     *
-     * 处理任务2时，M002因为更早可用被选中:
-     * ┌──────────┬─────────────────────┬─────────┐
-     * │ machineId │ nextAvailableTime   │ sequence│
-     * ├──────────┼─────────────────────┼─────────┤
-     * │ M001     │ 12:00              │ 6       │
-     * │ M002     │ 10:00 ← 更新        │ 2 ← 更新│
-     * └──────────┴─────────────────────┴─────────┘
-     * }</pre>
-     *
-     * 方法说明：
-     * - getNextAvailableTime(): 获取机台最早可用时间（null表示从未派工）
-     * - getNextSequence(): 获取下一个序号（不存在则返回1）
-     * - update(): 更新机台状态（任务分配后调用）
+     * @deprecated 使用 {@link ResourceRuntimeContext} 替代，支持多资源类型。
      */
+    @Deprecated
     public static class MachineRuntimeContext {
-        /** 机台ID → 最早可用时间（前序任务结束时间） */
         private final Map<String, LocalDateTime> nextAvailableTimeMap = new HashMap<>();
-        /** 机台ID → 下一个序号 */
         private final Map<String, Long> nextSequenceMap = new HashMap<>();
 
-        /**
-         * 获取机台的最早可用时间
-         *
-         * @param machineId 机台ID
-         * @return 最早可用时间（null表示该机台从未被派工过）
-         */
         public LocalDateTime getNextAvailableTime(String machineId) {
             return nextAvailableTimeMap.get(machineId);
         }
 
-        /**
-         * 获取机台的下一个序号
-         *
-         * @param machineId 机台ID
-         * @return 下一个序号（如果该机台从未被派工，返回1）
-         */
         public Long getNextSequence(String machineId) {
             return nextSequenceMap.getOrDefault(machineId, 1L);
         }
 
-        /**
-         * 更新机台运行状态
-         *
-         * 调用时机：任务分配到机台后立即更新
-         *
-         * 更新规则：
-         * - 最早可用时间 = 本次任务的结束时间（下一个任务不能早于此时开始）
-         * - 下一个序号 = 使用的序号 + 1（供下一个任务使用）
-         *
-         * @param machineId   机台ID
-         * @param plannedEnd  任务计划结束时间（将成为机台的新最早可用时间）
-         * @param usedSequence 本次使用的序号（下一个任务将使用 usedSequence + 1）
-         */
         public void update(String machineId, LocalDateTime plannedEnd, Long usedSequence) {
             if (StringUtils.isNotEmpty(machineId) && plannedEnd != null) {
                 nextAvailableTimeMap.put(machineId, plannedEnd);
