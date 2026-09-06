@@ -63,6 +63,18 @@ public class OperationTask  extends BaseEntity {
     @TableField(value = "status")
     private String status;
 
+    /** 工序排队策略（FIFO/SAME_MOLD_FIRST/EDD） */
+    @TableField(value = "queue_policy")
+    private String queuePolicy;
+
+    /** 可用资源规则引用（排程换型判定） */
+    @TableField(value = "eligible_resource_rule")
+    private String eligibleResourceRule;
+
+    /** 产品 ID（排程能力校验用，不落库） */
+    @TableField(exist = false)
+    private Long productId;
+
     /** 资源需求明细（机台/模具/人员/工位） */
     @TableField(exist = false)
     private List<TaskResourceRequirement> resourceRequirementList;

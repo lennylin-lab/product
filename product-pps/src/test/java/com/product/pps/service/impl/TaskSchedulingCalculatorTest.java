@@ -8,9 +8,21 @@ import com.product.domain.entity.Resource;
 import com.product.domain.entity.ResourceCapability;
 import com.product.domain.entity.TaskResourceRequirement;
 import com.product.common.constant.ResourceConstants;
+import com.product.common.constant.RouteOperationConstants;
+import com.product.domain.entity.ChangeoverRule;
+import com.product.domain.entity.Product;
 import com.product.pps.dto.TaskSchedulingPriorityDTO;
 import com.product.pps.enums.SchedulingStrategy;
+import com.product.pps.route.RouteRuleRegistry;
+import com.product.pps.route.model.InjectA2TimeModel;
+import com.product.pps.route.model.PostUnitTimeModel;
+import com.product.pps.route.model.SetupBaseTimeModel;
+import com.product.pps.route.rule.InjectMachineRule;
+import com.product.pps.route.rule.PostWorkstationRule;
+import com.product.pps.route.rule.SetupMachineRule;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -20,10 +32,21 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskSchedulingCalculatorTest {
 
     private final TaskSchedulingCalculator calculator = new TaskSchedulingCalculator();
+
+    @BeforeEach
+    void setUp() {
+        RouteRuleRegistry registry = new RouteRuleRegistry(
+                List.of(new SetupMachineRule(), new InjectMachineRule(), new PostWorkstationRule()),
+                List.of(new SetupBaseTimeModel(), new PostUnitTimeModel(),
+                        new InjectA2TimeModel(new InjectDurationCalculator())));
+        ReflectionTestUtils.setField(calculator, "routeRuleRegistry", registry);
+        ReflectionTestUtils.setField(calculator, "changeoverCalculator", new ChangeoverCalculator());
+    }
 
     /** EARLIEST_FINISH 策略：工期短的任务应排在前面（标准排序 vs 实际排序验证） */
     @Test
@@ -386,7 +409,8 @@ class TaskSchedulingCalculatorTest {
                     .computeIfAbsent(resource.getResourceType(), k -> new java.util.ArrayList<>())
                     .add(resource);
         }
-        return new TaskSchedulingQueryService.SchedulingResourceContext(resources, resourcesByType, calendarMap);
+        return new TaskSchedulingQueryService.SchedulingResourceContext(
+                resources, resourcesByType, calendarMap, null, Map.of());
     }
 
     private Resource buildMachineResource(String machineId, Long calendarId, String moldId, Integer compatible) {
@@ -422,6 +446,94 @@ class TaskSchedulingCalculatorTest {
     }
 
     @Test
+    void calculateBatchAssignmentsShouldRejectMachineWithoutProductCapability() {
+        OperationTask task = new OperationTask();
+        task.setTaskId("T-CAP");
+        task.setOpCode("INJECT");
+        task.setProductId(100L);
+        task.setEarliestStart(LocalDateTime.of(2026, 4, 10, 8, 0));
+        task.setStdDurationMin(60L);
+        TaskResourceRequirement machineReq = new TaskResourceRequirement();
+        machineReq.setResourceType(ResourceConstants.RESOURCE_TYPE_MACHINE);
+        machineReq.setIsMandatory(1);
+        task.setResourceRequirementList(List.of(machineReq));
+
+        Resource capableMachine = buildMachineResource("M1", 1L, null, 1);
+        ResourceCapability capability = new ResourceCapability();
+        capability.setResourceId("M1");
+        capability.setOpCode("INJECT");
+        capability.setProductId(100L);
+        capability.setIsEnabled(1);
+        capableMachine.setCapabilityList(List.of(capability));
+
+        Resource wrongProductMachine = buildMachineResource("M2", 2L, null, 1);
+        ResourceCapability wrongCapability = new ResourceCapability();
+        wrongCapability.setResourceId("M2");
+        wrongCapability.setOpCode("INJECT");
+        wrongCapability.setProductId(200L);
+        wrongCapability.setIsEnabled(1);
+        wrongProductMachine.setCapabilityList(List.of(wrongCapability));
+
+        Map<Long, Calendar> calendarMap = Map.of(1L, buildCalendar(1L), 2L, buildCalendar(2L));
+        TaskSchedulingQueryService.SchedulingResourceContext schedulingContext =
+                buildSchedulingContext(List.of(capableMachine, wrongProductMachine), calendarMap);
+
+        TaskSchedulingCalculator.ScheduleBatchResult result = calculator.calculateBatchAssignments(
+                List.of(task), schedulingContext,
+                new TaskSchedulingCalculator.ResourceRuntimeContext(),
+                LocalDateTime.of(2026, 4, 10, 8, 0), SchedulingStrategy.EARLIEST_START);
+
+        assertNotNull(result);
+        assertEquals("M1", result.getAssignments().get(0).getMachineId());
+    }
+
+    @Test
+    void calculateBatchAssignmentsShouldSchedulePostTaskOnWorkstation() {
+        OperationTask task = new OperationTask();
+        task.setTaskId("T-POST");
+        task.setOpCode("POST_QC_PUTAWAY");
+        task.setEarliestStart(LocalDateTime.of(2026, 4, 10, 8, 0));
+        task.setStdDurationMin(60L);
+
+        TaskResourceRequirement personReq = new TaskResourceRequirement();
+        personReq.setResourceType(ResourceConstants.RESOURCE_TYPE_PERSON);
+        personReq.setCapabilityCode("POST_QC_PUTAWAY");
+        personReq.setIsMandatory(1);
+        TaskResourceRequirement workstationReq = new TaskResourceRequirement();
+        workstationReq.setResourceType(ResourceConstants.RESOURCE_TYPE_WORKSTATION);
+        workstationReq.setIsMandatory(1);
+        task.setResourceRequirementList(List.of(personReq, workstationReq));
+
+        Resource person = new Resource();
+        person.setResourceId("P-1");
+        person.setResourceType(ResourceConstants.RESOURCE_TYPE_PERSON);
+        person.setCalendarId(1L);
+        ResourceCapability personCap = new ResourceCapability();
+        personCap.setOpCode("POST_QC_PUTAWAY");
+        personCap.setIsEnabled(1);
+        person.setCapabilityList(List.of(personCap));
+
+        Resource workstation = new Resource();
+        workstation.setResourceId("W-1");
+        workstation.setResourceType(ResourceConstants.RESOURCE_TYPE_WORKSTATION);
+        workstation.setCalendarId(1L);
+
+        Map<Long, Calendar> calendarMap = Map.of(1L, buildCalendar(1L));
+        TaskSchedulingQueryService.SchedulingResourceContext schedulingContext =
+                buildSchedulingContext(List.of(person, workstation), calendarMap);
+
+        TaskSchedulingCalculator.ScheduleBatchResult result = calculator.calculateBatchAssignments(
+                List.of(task), schedulingContext,
+                new TaskSchedulingCalculator.ResourceRuntimeContext(),
+                LocalDateTime.of(2026, 4, 10, 8, 0), SchedulingStrategy.EARLIEST_START);
+
+        assertNotNull(result);
+        assertEquals(null, result.getAssignments().get(0).getMachineId());
+        assertEquals("P-1", result.getAssignments().get(0).getPersonId());
+        assertEquals("W-1", result.getAssignments().get(0).getWorkstationId());
+    }
+
+    @Test
     void calculateBatchAssignmentsShouldRespectTaskDependency() {
         OperationTask setupTask = new OperationTask();
         setupTask.setTaskId("T-SETUP");
@@ -454,5 +566,108 @@ class TaskSchedulingCalculatorTest {
         LocalDateTime setupEnd = result.getAssignments().get(0).getPlannedEnd();
         LocalDateTime injectStart = result.getAssignments().get(1).getPlannedStart();
         assertEquals(true, !injectStart.isBefore(setupEnd));
+    }
+
+    @Test
+    void calculateBatchAssignmentsShouldPreferSameMoldMachineWhenPolicySet() {
+        OperationTask task = new OperationTask();
+        task.setTaskId("T-INJECT");
+        task.setOpCode("INJECT");
+        task.setQueuePolicy(RouteOperationConstants.QUEUE_SAME_MOLD_FIRST);
+        task.setEarliestStart(LocalDateTime.of(2026, 4, 10, 8, 0));
+        task.setStdDurationMin(60L);
+
+        TaskResourceRequirement moldReq = new TaskResourceRequirement();
+        moldReq.setResourceType(ResourceConstants.RESOURCE_TYPE_MOLD);
+        moldReq.setResourceId("MOLD-A");
+        moldReq.setIsMandatory(1);
+        task.setResourceRequirementList(List.of(moldReq));
+
+        Resource machineWithHistory = buildMachineResource("M1", 1L, "MOLD-A", 1);
+        Resource machineWithoutHistory = buildMachineResource("M2", 2L, "MOLD-A", 1);
+
+        Map<Long, Calendar> calendarMap = Map.of(1L, buildCalendar(1L), 2L, buildCalendar(2L));
+        TaskSchedulingQueryService.SchedulingResourceContext schedulingContext =
+                buildSchedulingContext(List.of(machineWithHistory, machineWithoutHistory), calendarMap);
+
+        TaskSchedulingCalculator.ResourceRuntimeContext runtimeContext =
+                new TaskSchedulingCalculator.ResourceRuntimeContext();
+        runtimeContext.setMachineLastAssignment("M1", new ChangeoverCalculator.MachineAssignmentSnapshot(
+                "MOLD-A", 100L, "PP", "BLUE", "PREV-TASK"));
+
+        TaskSchedulingCalculator.ScheduleBatchResult result = calculator.calculateBatchAssignments(
+                List.of(task), schedulingContext, runtimeContext,
+                LocalDateTime.of(2026, 4, 10, 8, 0), SchedulingStrategy.EARLIEST_START);
+
+        assertNotNull(result);
+        assertEquals("M1", result.getAssignments().get(0).getMachineId());
+    }
+
+    @Test
+    void calculateBatchAssignmentsShouldApplyChangeoverForSetupClassRuleWithCustomOpCode() {
+        OperationTask task = new OperationTask();
+        task.setTaskId("T-TOOL");
+        task.setOpCode("TOOL_CHANGE");
+        task.setEligibleResourceRule(RouteOperationConstants.RULE_SETUP_MACHINE);
+        task.setProductId(100L);
+        task.setEarliestStart(LocalDateTime.of(2026, 4, 10, 8, 0));
+        task.setStdDurationMin(30L);
+
+        TaskResourceRequirement personReq = new TaskResourceRequirement();
+        personReq.setResourceType(ResourceConstants.RESOURCE_TYPE_PERSON);
+        personReq.setCapabilityCode("TOOL_CHANGE");
+        personReq.setIsMandatory(1);
+        TaskResourceRequirement machineReq = new TaskResourceRequirement();
+        machineReq.setResourceType(ResourceConstants.RESOURCE_TYPE_MACHINE);
+        machineReq.setIsMandatory(1);
+        task.setResourceRequirementList(List.of(personReq, machineReq));
+
+        Resource person = new Resource();
+        person.setResourceId("P-1");
+        person.setResourceType(ResourceConstants.RESOURCE_TYPE_PERSON);
+        person.setCalendarId(1L);
+        ResourceCapability personCap = new ResourceCapability();
+        personCap.setOpCode("TOOL_CHANGE");
+        personCap.setProductId(100L);
+        personCap.setIsEnabled(1);
+        person.setCapabilityList(List.of(personCap));
+
+        Resource machine = buildMachineResource("M1", 1L, null, 1);
+
+        ChangeoverRule rule = new ChangeoverRule();
+        rule.setSameMoldTimeMin(0);
+        rule.setDifferentMoldTimeMin(45);
+        rule.setMaterialChangeExtraMin(0);
+        rule.setColorChangeExtraMin(0);
+
+        Product product = new Product();
+        product.setProductId(100L);
+        product.setMaterialCode("PP");
+        product.setColorCode("RED");
+
+        Map<Long, Calendar> calendarMap = Map.of(1L, buildCalendar(1L));
+        TaskSchedulingQueryService.SchedulingResourceContext schedulingContext =
+                new TaskSchedulingQueryService.SchedulingResourceContext(
+                        List.of(machine, person),
+                        Map.of(
+                                ResourceConstants.RESOURCE_TYPE_MACHINE, List.of(machine),
+                                ResourceConstants.RESOURCE_TYPE_PERSON, List.of(person)),
+                        calendarMap,
+                        rule,
+                        Map.of(100L, product));
+
+        TaskSchedulingCalculator.ResourceRuntimeContext runtimeContext =
+                new TaskSchedulingCalculator.ResourceRuntimeContext();
+        runtimeContext.setMachineLastAssignment("M1", new ChangeoverCalculator.MachineAssignmentSnapshot(
+                "MOLD-OLD", 99L, "ABS", "BLACK", "PREV-TASK"));
+
+        TaskSchedulingCalculator.ScheduleBatchResult result = calculator.calculateBatchAssignments(
+                List.of(task), schedulingContext, runtimeContext,
+                LocalDateTime.of(2026, 4, 10, 8, 0), SchedulingStrategy.EARLIEST_START);
+
+        assertNotNull(result);
+        assertEquals(45, result.getAssignments().get(0).getChangeoverTimeMin());
+        assertTrue(result.getAssignments().get(0).getPlannedStart()
+                .isAfter(LocalDateTime.of(2026, 4, 10, 8, 44)));
     }
 }

@@ -9,7 +9,6 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import com.product.common.core.entity.BaseEntity;
-import com.product.domain.entity.ProductMoldParam;
 
 import java.util.List;
 
@@ -40,8 +39,20 @@ public class Product extends BaseEntity {
     @TableField(value = "image")
     private String image;
 
+    /** 材料编码（换型判定，可选） */
+    @TableField(value = "material_code")
+    private String materialCode;
+
+    /** 颜色编码（换型判定，可选） */
+    @TableField(value = "color_code")
+    private String colorCode;
+
     /** 模具参数（创建/更新产品时必填，不落 product 表） */
     @TableField(exist = false)
     private List<ProductMoldParam> moldParams;
+
+    /** 启用的工艺路线（查询/创建/更新时使用，不落 product 表） */
+    @TableField(exist = false)
+    private ProductRoute activeRoute;
 
 }

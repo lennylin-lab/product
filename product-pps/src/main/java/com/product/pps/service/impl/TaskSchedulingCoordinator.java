@@ -94,28 +94,32 @@ public class TaskSchedulingCoordinator {
                 taskSchedulingQueryService::loadReadyTaskList,
                 threadPoolTaskExecutor);
 
-        // 先获取机台列表（用于快速判断是否有可用资源）
         List<Resource> machines = machinesFuture.join();
-        if (CollectionUtils.isEmpty(machines)) {
-            return ScheduleExecutionResult.failure("没有可用机台");
-        }
-
-        // 获取待排任务列表
         List<com.product.domain.entity.OperationTask> readyTasks = readyTasksFuture.join();
         int totalTaskCount = readyTasks == null ? 0 : readyTasks.size();
         if (totalTaskCount == 0) {
             notifyScheduleProgress(progressConsumer, 0, 0, 0, 100, SchedulePhase.NO_TASK);
             return ScheduleExecutionResult.success(0, 0);
         }
-        notifyScheduleProgress(progressConsumer, totalTaskCount, 0, 0, 0, SchedulePhase.STARTED);
 
-        // 加载完整资源上下文（包含 MACHINE/MOLD/PERSON + 日历映射）
         TaskSchedulingQueryService.SchedulingResourceContext schedulingContext =
                 taskSchedulingQueryService.loadSchedulingResourceContext(readyTasks);
+        boolean requiresMachine = readyTasks.stream().anyMatch(this::taskRequiresMachine);
+        if (requiresMachine && CollectionUtils.isEmpty(machines)) {
+            return ScheduleExecutionResult.failure("没有可用机台");
+        }
+        notifyScheduleProgress(progressConsumer, totalTaskCount, 0, 0, 0, SchedulePhase.STARTED);
 
-        // 构建多资源运行时上下文（内存快照）
+        List<String> machineIds = machines == null ? List.of() : machines.stream()
+                .filter(Objects::nonNull)
+                .map(Resource::getResourceId)
+                .filter(StringUtils::isNotEmpty)
+                .toList();
+        Map<String, com.product.pps.dto.MachineLastAssignmentDTO> machineLastAssignments =
+                taskSchedulingQueryService.loadMachineLastAssignments(machineIds);
+
         TaskSchedulingCalculator.ResourceRuntimeContext runtimeContext =
-                taskSchedulingCalculator.buildResourceRuntimeContext(schedulingContext);
+                taskSchedulingCalculator.buildResourceRuntimeContext(schedulingContext, machineLastAssignments);
 
         Map<String, TaskSchedulingPriorityDTO> priorityMap = SchedulingStrategy.DUE_DATE_PRIORITY == strategy
                 ? taskSchedulingQueryService.loadTaskPriorityMap(readyTasks)
@@ -248,5 +252,16 @@ public class TaskSchedulingCoordinator {
             nextPushTaskCount += step;
         }
         return latestPushedTaskCount;
+    }
+
+    private boolean taskRequiresMachine(com.product.domain.entity.OperationTask task) {
+        if (task == null || CollectionUtils.isEmpty(task.getResourceRequirementList())) {
+            return true;
+        }
+        return task.getResourceRequirementList().stream()
+                .filter(Objects::nonNull)
+                .filter(req -> req.getIsMandatory() == null || req.getIsMandatory() != 0)
+                .anyMatch(req -> com.product.common.constant.ResourceConstants.RESOURCE_TYPE_MACHINE
+                        .equals(req.getResourceType()));
     }
 }

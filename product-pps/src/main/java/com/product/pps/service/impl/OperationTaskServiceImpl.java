@@ -5,8 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.baomidou.mybatisplus.extension.toolkit.Db;
 import com.product.common.annotation.BizIdPrefix;
-import com.product.common.constant.OperationTaskConstants;
-import com.product.common.constant.ResourceConstants;
+import com.product.common.constant.RouteOperationConstants;
 import com.product.common.constant.StatusConstants;
 import com.product.common.core.result.AjaxResult;
 import com.product.common.exception.ServiceException;
@@ -18,10 +17,13 @@ import com.product.domain.entity.ProductMoldParam;
 import com.product.domain.entity.ProductionBatch;
 import com.product.domain.entity.TaskAssignment;
 import com.product.domain.entity.TaskDependency;
+import com.product.domain.entity.RouteOperation;
 import com.product.domain.entity.TaskResourceRequirement;
 import com.product.pps.dto.OperationTaskError;
 import com.product.pps.mapper.OperationTaskMapper;
 import com.product.pps.mapper.TaskAssignmentResourceMapper;
+import com.product.pps.route.RouteDurationContext;
+import com.product.pps.route.RouteRuleRegistry;
 import com.product.pps.service.IOperationTaskService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -52,9 +54,13 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
     @Qualifier("threadPoolTaskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
     @Autowired
-    private InjectDurationCalculator injectDurationCalculator;
-    @Autowired
     private TaskAssignmentResourceMapper taskAssignmentResourceMapper;
+    @Autowired
+    private ProductRouteQueryService productRouteQueryService;
+    @Autowired
+    private OperationResourceRequirementBuilder operationResourceRequirementBuilder;
+    @Autowired
+    private RouteRuleRegistry routeRuleRegistry;
 
     /**
      * 查询工序任务
@@ -207,6 +213,12 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
                 .collect(Collectors.toMap(ProductionBatch::getBatchId, item -> item, (a, b) -> a));
         Map<Long, OrderLine> orderLineMap = loadOrderLineMap(productionBatches);
         Map<Long, ProductMoldParam> productMoldParamMap = loadProductMoldParamMap(orderLineMap.values());
+        Map<Long, List<RouteOperation>> routeOperationsByProduct = productRouteQueryService
+                .loadActiveRouteOperationsByProductIds(orderLineMap.values().stream()
+                        .filter(Objects::nonNull)
+                        .map(OrderLine::getProductId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet()));
         // 开始循环添加任务
         for (String batchId : batchIds) {
             ProductionBatch item = batchMap.get(batchId);
@@ -231,43 +243,23 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
                 errors.add(error);
                 continue;
             }
-            LocalDateTime baseTime = LocalDateTime.now();
-            long cumulativeMinutes = 0; // 累计时长（分钟）
-            long batchQty = item.getBatchQty() == null ? 1L : item.getBatchQty();
-            List<OperationTask> batchTasks = new ArrayList<>();
-            for (int i = 0; i < 3;) {
-                OperationTask operationTask = new OperationTask();
-                operationTask.setTaskId(buildBizId(operationTask));
-                operationTask.setBatchId(item.getBatchId());
-                operationTask.setStatus(StatusConstants.READY_OPERATION_TASK);
-                operationTask.setOpCode(OperationTaskConstants.OP_CODE.get(i));
-                operationTask.setStdDurationMin(resolveStdDurationMin(
-                        OperationTaskConstants.OP_CODE.get(i),
-                        batchQty,
-                        item,
-                        orderLineMap,
-                        productMoldParamMap));
-                // 最早开始时间 = 当前时间 + 前面所有工序的累计时长
-                operationTask.setEarliestStart(baseTime.plus(cumulativeMinutes, ChronoUnit.MINUTES));
-                operationTask.setSequence(Long.valueOf(++i));
-                // 累加当前工序的时长，用于下一个工序的计算
-                cumulativeMinutes += operationTask.getStdDurationMin();
-                // 添加到列表
-                operationTasks.add(operationTask);
-                batchTasks.add(operationTask);
-                // 构建资源需求
-                resourceRequirements.addAll(buildResourceRequirements(operationTask));
+            OrderLine orderLine = item.getOrderLineId() == null ? null : orderLineMap.get(item.getOrderLineId());
+            Long productId = orderLine == null ? null : orderLine.getProductId();
+            List<RouteOperation> routeOperations = productId == null
+                    ? List.of()
+                    : routeOperationsByProduct.getOrDefault(productId, List.of());
+            if (CollectionUtils.isEmpty(routeOperations)) {
+                OperationTaskError error = new OperationTaskError();
+                error.setBatchId(item.getBatchId());
+                error.setErrorMessage("产品未配置启用的工艺路线");
+                errors.add(error);
+                continue;
             }
-            if (batchTasks.size() >= 3) {
-                TaskDependency setupToInject = new TaskDependency();
-                setupToInject.setPreTaskId(batchTasks.get(0).getTaskId());
-                setupToInject.setPostTaskId(batchTasks.get(1).getTaskId());
-                taskDependencies.add(setupToInject);
-                TaskDependency injectToPost = new TaskDependency();
-                injectToPost.setPreTaskId(batchTasks.get(1).getTaskId());
-                injectToPost.setPostTaskId(batchTasks.get(2).getTaskId());
-                taskDependencies.add(injectToPost);
-            }
+            BatchTaskGenerationResult batchResult = buildBatchTasks(
+                    item, routeOperations, orderLineMap, productMoldParamMap, productId);
+            operationTasks.addAll(batchResult.tasks());
+            taskDependencies.addAll(batchResult.dependencies());
+            resourceRequirements.addAll(batchResult.resourceRequirements());
         }
         // 批量保存工序任务
         if (!operationTasks.isEmpty()) {
@@ -345,50 +337,29 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
             errors.add(new OperationTaskError(batchId, "该批次当前状态不允许修改"));
             return AjaxResult.error("重新生成失败", errors);
         }
-        LocalDateTime baseTime = LocalDateTime.now();
-        long cumulativeMinutes = 0; // 累计时长（分钟）
-        long batchQty = productionBatch.getBatchQty() == null ? 1L : productionBatch.getBatchQty();
         Map<Long, OrderLine> orderLineMap = loadOrderLineMap(List.of(productionBatch));
         Map<Long, ProductMoldParam> productMoldParamMap = loadProductMoldParamMap(orderLineMap.values());
-        List<OperationTask> operationTasks = new ArrayList<>();
-        List<TaskDependency> taskDependencies = new ArrayList<>();
-        List<TaskResourceRequirement> resourceRequirements = new ArrayList<>();
-        for (int i = 0; i < 3;) {
-            OperationTask operationTask = new OperationTask();
-            operationTask.setTaskId(buildBizId(operationTask));
-            operationTask.setBatchId(batchId);
-            operationTask.setStatus(StatusConstants.READY_OPERATION_TASK);
-            operationTask.setOpCode(OperationTaskConstants.OP_CODE.get(i));
-            operationTask.setStdDurationMin(resolveStdDurationMin(
-                    OperationTaskConstants.OP_CODE.get(i),
-                    batchQty,
-                    productionBatch,
-                    orderLineMap,
-                    productMoldParamMap));
-            // 最早开始时间 = 当前时间 + 前面所有工序的累计时长
-            operationTask.setEarliestStart(baseTime.plus(cumulativeMinutes, ChronoUnit.MINUTES));
-            operationTask.setSequence(Long.valueOf(++i));
-            // 累加当前工序的时长，用于下一个工序的计算
-            cumulativeMinutes += operationTask.getStdDurationMin();
-            // 添加到列表
-            operationTasks.add(operationTask);
-            // 构建资源需求
-            resourceRequirements.addAll(buildResourceRequirements(operationTask));
+        OrderLine orderLine = productionBatch.getOrderLineId() == null
+                ? null
+                : orderLineMap.get(productionBatch.getOrderLineId());
+        Long productId = orderLine == null ? null : orderLine.getProductId();
+        Map<Long, List<RouteOperation>> routeOperationsByProduct = productRouteQueryService
+                .loadActiveRouteOperationsByProductIds(productId == null ? List.of() : List.of(productId));
+        List<RouteOperation> routeOperations = productId == null
+                ? List.of()
+                : routeOperationsByProduct.getOrDefault(productId, List.of());
+        if (CollectionUtils.isEmpty(routeOperations)) {
+            errors.add(new OperationTaskError(batchId, "产品未配置启用的工艺路线"));
+            return AjaxResult.error("重新生成失败", errors);
         }
-        saveBatch(operationTasks);
-        if (operationTasks.size() >= 3) {
-            TaskDependency setupToInject = new TaskDependency();
-            setupToInject.setPreTaskId(operationTasks.get(0).getTaskId());
-            setupToInject.setPostTaskId(operationTasks.get(1).getTaskId());
-            taskDependencies.add(setupToInject);
-            TaskDependency injectToPost = new TaskDependency();
-            injectToPost.setPreTaskId(operationTasks.get(1).getTaskId());
-            injectToPost.setPostTaskId(operationTasks.get(2).getTaskId());
-            taskDependencies.add(injectToPost);
-            Db.saveBatch(taskDependencies);
+        BatchTaskGenerationResult batchResult = buildBatchTasks(
+                productionBatch, routeOperations, orderLineMap, productMoldParamMap, productId);
+        saveBatch(batchResult.tasks());
+        if (!batchResult.dependencies().isEmpty()) {
+            Db.saveBatch(batchResult.dependencies());
         }
-        if (!resourceRequirements.isEmpty()) {
-            Db.saveBatch(resourceRequirements);
+        if (!batchResult.resourceRequirements().isEmpty()) {
+            Db.saveBatch(batchResult.resourceRequirements());
         }
         return AjaxResult.success();
     }
@@ -447,45 +418,63 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
     }
 
 
-    /**
-     * 根据工序类型构建资源需求列表
-     * SETUP: PERSON(调机员) + MACHINE
-     * INJECT: PERSON(操作员) + MACHINE + MOLD
-     * POST_QC_PUTAWAY: PERSON(质检员) + MACHINE
-     */
-    private List<TaskResourceRequirement> buildResourceRequirements(OperationTask task) {
-        List<TaskResourceRequirement> requirements = new ArrayList<>();
-        String opCode = task.getOpCode();
-        switch (opCode) {
-            case "SETUP" -> {
-                requirements.add(createRequirement(task.getTaskId(), ResourceConstants.RESOURCE_TYPE_PERSON, "调机员", opCode));
-                requirements.add(createRequirement(task.getTaskId(), ResourceConstants.RESOURCE_TYPE_MACHINE, null, opCode));
+    private BatchTaskGenerationResult buildBatchTasks(ProductionBatch batch,
+                                                      List<RouteOperation> routeOperations,
+                                                      Map<Long, OrderLine> orderLineMap,
+                                                      Map<Long, ProductMoldParam> productMoldParamMap,
+                                                      Long productId) {
+        LocalDateTime baseTime = LocalDateTime.now();
+        long cumulativeMinutes = 0;
+        long batchQty = batch.getBatchQty() == null ? 1L : batch.getBatchQty();
+        List<OperationTask> batchTasks = new ArrayList<>();
+        List<TaskDependency> dependencies = new ArrayList<>();
+        List<TaskResourceRequirement> resourceRequirements = new ArrayList<>();
+        OperationTask previousTask = null;
+        for (RouteOperation routeOperation : routeOperations) {
+            if (routeOperation == null || StringUtils.isEmpty(routeOperation.getOpCode())) {
+                continue;
             }
-            case "INJECT" -> {
-                requirements.add(createRequirement(task.getTaskId(), ResourceConstants.RESOURCE_TYPE_PERSON, "操作员", opCode));
-                requirements.add(createRequirement(task.getTaskId(), ResourceConstants.RESOURCE_TYPE_MACHINE, null, opCode));
-                requirements.add(createRequirement(task.getTaskId(), ResourceConstants.RESOURCE_TYPE_MOLD, null, opCode));
+            OperationTask operationTask = new OperationTask();
+            operationTask.setTaskId(buildBizId(operationTask));
+            operationTask.setBatchId(batch.getBatchId());
+            operationTask.setStatus(StatusConstants.READY_OPERATION_TASK);
+            operationTask.setOpCode(routeOperation.getOpCode());
+            operationTask.setProductId(productId);
+            operationTask.setQueuePolicy(routeOperation.getQueuePolicy());
+            operationTask.setEligibleResourceRule(routeOperation.getEligibleResourceRule());
+            operationTask.setStdDurationMin(resolveStdDurationMin(
+                    routeOperation.getStdTimeModel(),
+                    routeOperation.getOpCode(),
+                    batchQty,
+                    batch,
+                    orderLineMap,
+                    productMoldParamMap));
+            operationTask.setEarliestStart(baseTime.plus(cumulativeMinutes, ChronoUnit.MINUTES));
+            operationTask.setSequence(routeOperation.getSequence() == null
+                    ? Long.valueOf(batchTasks.size() + 1L)
+                    : routeOperation.getSequence().longValue());
+            cumulativeMinutes += operationTask.getStdDurationMin();
+            batchTasks.add(operationTask);
+            resourceRequirements.addAll(operationResourceRequirementBuilder.buildRequirements(operationTask, routeOperation));
+            if (previousTask != null) {
+                TaskDependency dependency = new TaskDependency();
+                dependency.setPreTaskId(previousTask.getTaskId());
+                dependency.setPostTaskId(operationTask.getTaskId());
+                dependencies.add(dependency);
             }
-            case "POST_QC_PUTAWAY" -> {
-                requirements.add(createRequirement(task.getTaskId(), ResourceConstants.RESOURCE_TYPE_PERSON, "质检员", opCode));
-                requirements.add(createRequirement(task.getTaskId(), ResourceConstants.RESOURCE_TYPE_MACHINE, null, opCode));
-            }
-            default -> log.warn("未知的工序类型: {}, taskId={}", opCode, task.getTaskId());
+            previousTask = operationTask;
         }
-        return requirements;
+        return new BatchTaskGenerationResult(batchTasks, dependencies, resourceRequirements);
     }
 
-    private TaskResourceRequirement createRequirement(String taskId, String resourceType, String resourceRole, String capabilityCode) {
-        TaskResourceRequirement requirement = new TaskResourceRequirement();
-        requirement.setTaskId(taskId);
-        requirement.setResourceType(resourceType);
-        requirement.setResourceRole(resourceRole);
-        requirement.setCapabilityCode(capabilityCode);
-        requirement.setRequiredCount(1);
-        requirement.setIsMandatory(1);
-        return requirement;
+    private record BatchTaskGenerationResult(List<OperationTask> tasks,
+                                             List<TaskDependency> dependencies,
+                                             List<TaskResourceRequirement> resourceRequirements) {
     }
 
+    /**
+     * 构建业务主键
+     */
     private String buildBizId(Object entity) {
         BizIdPrefix annotation = entity.getClass().getAnnotation(BizIdPrefix.class);
         String prefix = annotation != null ? annotation.value() : null;
@@ -537,30 +526,19 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
         return paramMap;
     }
 
-    private long resolveStdDurationMin(String opCode,
+    private long resolveStdDurationMin(String stdTimeModel,
+                                       String opCode,
                                        long batchQty,
                                        ProductionBatch batch,
                                        Map<Long, OrderLine> orderLineMap,
                                        Map<Long, ProductMoldParam> productMoldParamMap) {
-        if ("INJECT".equals(opCode)) {
-            return calculateInjectDurationMin(batch, orderLineMap, productMoldParamMap);
-        }
-        int opIndex = OperationTaskConstants.OP_CODE.indexOf(opCode);
-        long baseDuration = opIndex >= 0
-                ? OperationTaskConstants.STD_DURATION_MIM.get(opIndex)
-                : OperationTaskConstants.STD_DURATION_MIM.get(1);
-        return baseDuration * batchQty;
-    }
-
-    private long calculateInjectDurationMin(ProductionBatch batch,
-                                            Map<Long, OrderLine> orderLineMap,
-                                            Map<Long, ProductMoldParam> productMoldParamMap) {
         OrderLine orderLine = batch == null || batch.getOrderLineId() == null
                 ? null
                 : orderLineMap.get(batch.getOrderLineId());
         Long productId = orderLine == null ? null : orderLine.getProductId();
         ProductMoldParam param = productId == null ? null : productMoldParamMap.get(productId);
-        long batchQty = batch.getBatchQty() == null ? 1L : batch.getBatchQty();
-        return injectDurationCalculator.calculateDurationMin(batchQty, param, productId);
+        RouteDurationContext context = new RouteDurationContext(
+                batchQty, productId, param, opCode, stdTimeModel);
+        return routeRuleRegistry.calculateDurationMin(context);
     }
 }

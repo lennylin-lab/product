@@ -32,6 +32,10 @@
             <groupId>com.product</groupId>
             <artifactId>product-core</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.product</groupId>
+            <artifactId>product-pps</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

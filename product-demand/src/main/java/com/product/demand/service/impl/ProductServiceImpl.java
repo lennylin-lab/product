@@ -12,6 +12,7 @@ import com.product.demand.service.IProductService;
 import com.product.domain.entity.Product;
 import com.product.domain.entity.ProductMoldParam;
 import com.product.domain.validation.ProductMoldParamValidator;
+import com.product.pps.service.IProductRouteService;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,12 @@ import java.util.Map;
 @Service
 public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> implements IProductService {
 
+    private final IProductRouteService productRouteService;
+
+    public ProductServiceImpl(IProductRouteService productRouteService) {
+        this.productRouteService = productRouteService;
+    }
+
     @Override
     public Product selectProductByProductId(Long productId) {
         Product product = getById(productId);
@@ -41,6 +48,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
             return null;
         }
         product.setMoldParams(loadMoldParams(productId));
+        product.setActiveRoute(productRouteService.getActiveByProductId(productId));
         return product;
     }
 
@@ -63,6 +71,9 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
             throw new ServiceException("创建产品失败");
         }
         saveMoldParams(product.getProductId(), product.getMoldParams());
+        if (product.getActiveRoute() != null) {
+            productRouteService.saveActiveRouteForProduct(product.getProductId(), product.getActiveRoute());
+        }
         return true;
     }
 
@@ -93,6 +104,9 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
         }
         if (CollectionUtils.isNotEmpty(product.getMoldParams())) {
             replaceMoldParams(product.getProductId(), product.getMoldParams());
+        }
+        if (product.getActiveRoute() != null) {
+            productRouteService.saveActiveRouteForProduct(product.getProductId(), product.getActiveRoute());
         }
         return true;
     }

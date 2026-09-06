@@ -1,19 +1,26 @@
 package com.product.pps.service.impl;
 
 import com.product.common.constant.ResourceConstants;
+import com.product.common.constant.RouteOperationConstants;
 import com.product.common.exception.ServiceException;
 import com.product.common.utils.StringUtils;
 import com.product.domain.entity.Calendar;
+import com.product.domain.entity.ChangeoverRule;
 import com.product.domain.entity.Machine;
 import com.product.domain.entity.MachineMoldCompatibility;
 import com.product.domain.entity.OperationTask;
+import com.product.domain.entity.Product;
 import com.product.domain.entity.Resource;
+import com.product.domain.entity.ResourceCapability;
 import com.product.domain.entity.TaskAssignment;
 import com.product.domain.entity.TaskResourceRequirement;
+import com.product.pps.dto.MachineLastAssignmentDTO;
 import com.product.pps.dto.ResourceRuntimeStatsDTO;
 import com.product.pps.dto.TaskSchedulingPriorityDTO;
 import com.product.pps.mapper.TaskAssignmentResourceMapper;
 import com.product.pps.enums.SchedulingStrategy;
+import com.product.pps.route.RouteRuleRegistry;
+import com.product.pps.route.rule.RouteEligibleResourceRule;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,6 +49,10 @@ import java.util.Set;
 public class TaskSchedulingCalculator {
     @Autowired
     private TaskAssignmentResourceMapper taskAssignmentResourceMapper;
+    @Autowired
+    private ChangeoverCalculator changeoverCalculator;
+    @Autowired
+    private RouteRuleRegistry routeRuleRegistry;
 
     // ========================== 公共 API（Coordinator 调用入口）
     // ==========================
@@ -96,7 +107,7 @@ public class TaskSchedulingCalculator {
                     task.getTaskId(), safePostToPredecessors, safePredecessorEndTimes);
             LocalDateTime effectiveEarliestStart = maxTime(task.getEarliestStart(), dependencyEarliestStart);
 
-            // 级联选择：MACHINE -> MOLD -> PERSON
+            // 级联选择：MACHINE -> MOLD -> PERSON 或 WORKSTATION -> PERSON
             ResourceChoice choice = chooseResources(task, schedulingContext, runtimeContext, assignmentStart, strategy,
                     effectiveEarliestStart);
             if (choice == null) {
@@ -109,13 +120,17 @@ public class TaskSchedulingCalculator {
             assignment.setMachineId(choice.machineId);
             assignment.setMoldId(choice.moldId);
             assignment.setPersonId(choice.personId);
+            assignment.setWorkstationId(choice.workstationId);
             assignment.setPlannedStart(choice.plannedStart);
             assignment.setPlannedEnd(choice.plannedEnd);
             assignment.setSequenceOnResource(choice.sequenceOnResource);
+            assignment.setChangeoverTimeMin(choice.changeoverTimeMin);
+            assignment.setChangeoverSourceTaskId(choice.changeoverSourceTaskId);
 
             // 将选中的资源 ID 回写到需求列表，供持久化服务生成 TaskAssignmentResource 明细
             List<TaskResourceRequirement> resolvedRequirements = resolveSelectedResources(
-                    task.getResourceRequirementList(), choice.machineId, choice.moldId, choice.personId);
+                    task.getResourceRequirementList(), choice.machineId, choice.moldId, choice.personId,
+                    choice.workstationId, choice.changeoverTimeMin);
             assignment.setResourceRequirementList(resolvedRequirements);
 
             // 记录各资源类型的序号，供持久化服务写入 TaskAssignmentResource
@@ -129,6 +144,9 @@ public class TaskSchedulingCalculator {
             if (choice.personSequence != null) {
                 resourceSequenceMap.put(ResourceConstants.RESOURCE_TYPE_PERSON, choice.personSequence);
             }
+            if (choice.workstationSequence != null) {
+                resourceSequenceMap.put(ResourceConstants.RESOURCE_TYPE_WORKSTATION, choice.workstationSequence);
+            }
             assignment.setResourceSequenceMap(resourceSequenceMap);
             assignments.add(assignment);
             taskIds.add(task.getTaskId());
@@ -138,6 +156,8 @@ public class TaskSchedulingCalculator {
             if (StringUtils.isNotEmpty(choice.machineId)) {
                 runtimeContext.update(ResourceConstants.RESOURCE_TYPE_MACHINE,
                         choice.machineId, choice.plannedEnd, choice.sequenceOnResource);
+                runtimeContext.setMachineLastAssignment(choice.machineId,
+                        buildMachineSnapshot(task, choice, schedulingContext));
             }
             if (StringUtils.isNotEmpty(choice.moldId)) {
                 runtimeContext.update(ResourceConstants.RESOURCE_TYPE_MOLD,
@@ -147,8 +167,26 @@ public class TaskSchedulingCalculator {
                 runtimeContext.update(ResourceConstants.RESOURCE_TYPE_PERSON,
                         choice.personId, choice.plannedEnd, choice.personSequence);
             }
+            if (StringUtils.isNotEmpty(choice.workstationId)) {
+                runtimeContext.update(ResourceConstants.RESOURCE_TYPE_WORKSTATION,
+                        choice.workstationId, choice.plannedEnd, choice.workstationSequence);
+            }
         }
         return new ScheduleBatchResult(assignments, taskIds);
+    }
+
+    private ChangeoverCalculator.MachineAssignmentSnapshot buildMachineSnapshot(OperationTask task,
+            ResourceChoice choice,
+            TaskSchedulingQueryService.SchedulingResourceContext schedulingContext) {
+        Product product = task == null || task.getProductId() == null || schedulingContext == null
+                ? null
+                : schedulingContext.getProductMap().get(task.getProductId());
+        return new ChangeoverCalculator.MachineAssignmentSnapshot(
+                choice.moldId,
+                task == null ? null : task.getProductId(),
+                product == null ? null : product.getMaterialCode(),
+                product == null ? null : product.getColorCode(),
+                task == null ? null : task.getTaskId());
     }
 
     /**
@@ -207,31 +245,56 @@ public class TaskSchedulingCalculator {
      */
     public ResourceRuntimeContext buildResourceRuntimeContext(
             TaskSchedulingQueryService.SchedulingResourceContext schedulingContext) {
+        return buildResourceRuntimeContext(schedulingContext, Map.of());
+    }
+
+    public ResourceRuntimeContext buildResourceRuntimeContext(
+            TaskSchedulingQueryService.SchedulingResourceContext schedulingContext,
+            Map<String, MachineLastAssignmentDTO> machineLastAssignments) {
         ResourceRuntimeContext context = new ResourceRuntimeContext();
         Set<String> resourceTypes = schedulingContext.getResourcesByType().keySet();
         if (CollectionUtils.isEmpty(resourceTypes)) {
+            seedMachineLastAssignments(context, schedulingContext, machineLastAssignments);
             return context;
         }
 
         List<ResourceRuntimeStatsDTO> stats = taskAssignmentResourceMapper.selectResourceRuntimeStats(
                 new ArrayList<>(resourceTypes));
-        if (CollectionUtils.isEmpty(stats)) {
-            return context;
-        }
-
-        for (ResourceRuntimeStatsDTO row : stats) {
-            if (row == null || StringUtils.isEmpty(row.getResourceType())
-                    || StringUtils.isEmpty(row.getResourceId())) {
-                continue;
-            }
-            if (row.getLatestEndTime() != null) {
-                context.setNextAvailableTime(row.getResourceType(), row.getResourceId(), row.getLatestEndTime());
-            }
-            if (row.getMaxSequence() != null) {
-                context.setNextSequence(row.getResourceType(), row.getResourceId(), row.getMaxSequence() + 1L);
+        if (CollectionUtils.isNotEmpty(stats)) {
+            for (ResourceRuntimeStatsDTO row : stats) {
+                if (row == null || StringUtils.isEmpty(row.getResourceType())
+                        || StringUtils.isEmpty(row.getResourceId())) {
+                    continue;
+                }
+                if (row.getLatestEndTime() != null) {
+                    context.setNextAvailableTime(row.getResourceType(), row.getResourceId(), row.getLatestEndTime());
+                }
+                if (row.getMaxSequence() != null) {
+                    context.setNextSequence(row.getResourceType(), row.getResourceId(), row.getMaxSequence() + 1L);
+                }
             }
         }
+        seedMachineLastAssignments(context, schedulingContext, machineLastAssignments);
         return context;
+    }
+
+    private void seedMachineLastAssignments(ResourceRuntimeContext context,
+            TaskSchedulingQueryService.SchedulingResourceContext schedulingContext,
+            Map<String, MachineLastAssignmentDTO> machineLastAssignments) {
+        if (machineLastAssignments == null || machineLastAssignments.isEmpty()) {
+            return;
+        }
+        machineLastAssignments.forEach((machineId, snapshot) -> {
+            if (snapshot == null) {
+                return;
+            }
+            context.setMachineLastAssignment(machineId, new ChangeoverCalculator.MachineAssignmentSnapshot(
+                    snapshot.getMoldId(),
+                    snapshot.getProductId(),
+                    snapshot.getMaterialCode(),
+                    snapshot.getColorCode(),
+                    snapshot.getTaskId()));
+        });
     }
 
     // ========================== 级联资源选择（核心算法） ==========================
@@ -255,13 +318,17 @@ public class TaskSchedulingCalculator {
             LocalDateTime assignmentStart,
             SchedulingStrategy strategy,
             LocalDateTime effectiveEarliestStart) {
+        if (requiresWorkstation(task) && !requiresMachine(task)) {
+            return chooseWorkstationResources(task, schedulingContext, runtimeContext, assignmentStart,
+                    effectiveEarliestStart);
+        }
         List<Resource> machines = schedulingContext.getResourcesByType()
                 .getOrDefault(ResourceConstants.RESOURCE_TYPE_MACHINE, List.of());
         Map<Long, Calendar> calendarMap = schedulingContext.getCalendarMap();
 
         // 阶段1: 选择最优机台
         MachineChoice machineChoice = chooseBestMachine(task, machines, calendarMap, runtimeContext, assignmentStart,
-                strategy, effectiveEarliestStart);
+                strategy, effectiveEarliestStart, schedulingContext);
         if (machineChoice == null) {
             return null;
         }
@@ -294,7 +361,7 @@ public class TaskSchedulingCalculator {
                     .filter(this::isMandatoryRequirement)
                     .toList();
             if (!personReqs.isEmpty()) {
-                personId = choosePerson(personReqs, schedulingContext, runtimeContext);
+                personId = choosePerson(personReqs, task, schedulingContext, runtimeContext);
                 if (personId == null) {
                     log.warn("任务 {} 没有可用人员", task.getTaskId());
                     return null;
@@ -337,7 +404,84 @@ public class TaskSchedulingCalculator {
         return new ResourceChoice(
                 machineChoice.machineId, plannedStart, plannedEnd,
                 machineChoice.sequenceOnResource, machineChoice.setupCostMin,
-                moldId, moldSequence, personId, personSequence);
+                machineChoice.changeoverTimeMin, machineChoice.changeoverSourceTaskId,
+                moldId, moldSequence, personId, personSequence, null, null);
+    }
+
+    private ResourceChoice chooseWorkstationResources(OperationTask task,
+            TaskSchedulingQueryService.SchedulingResourceContext schedulingContext,
+            ResourceRuntimeContext runtimeContext,
+            LocalDateTime assignmentStart,
+            LocalDateTime effectiveEarliestStart) {
+        List<Resource> workstations = schedulingContext.getResourcesByType()
+                .getOrDefault(ResourceConstants.RESOURCE_TYPE_WORKSTATION, List.of());
+        Map<Long, Calendar> calendarMap = schedulingContext.getCalendarMap();
+
+        WorkstationChoice workstationChoice = chooseBestWorkstation(task, workstations, calendarMap, runtimeContext,
+                assignmentStart, effectiveEarliestStart);
+        if (workstationChoice == null) {
+            return null;
+        }
+
+        String personId = null;
+        Long personSequence = null;
+        if (CollectionUtils.isNotEmpty(task.getResourceRequirementList())) {
+            List<TaskResourceRequirement> personReqs = task.getResourceRequirementList().stream()
+                    .filter(req -> req != null && ResourceConstants.RESOURCE_TYPE_PERSON.equals(req.getResourceType()))
+                    .filter(this::isMandatoryRequirement)
+                    .toList();
+            if (!personReqs.isEmpty()) {
+                personId = choosePerson(personReqs, task, schedulingContext, runtimeContext);
+                if (personId == null) {
+                    log.warn("任务 {} 没有可用人员", task.getTaskId());
+                    return null;
+                }
+                personSequence = runtimeContext.getNextSequence(ResourceConstants.RESOURCE_TYPE_PERSON, personId);
+            }
+        }
+
+        LocalDateTime personNextTime = personId != null
+                ? runtimeContext.getNextAvailableTime(ResourceConstants.RESOURCE_TYPE_PERSON, personId)
+                : null;
+        LocalDateTime effectiveStart = maxTime(
+                workstationChoice.plannedStart, personNextTime, effectiveEarliestStart, assignmentStart);
+
+        Calendar calendar = calendarMap.get(workstationChoice.workstationResource.getCalendarId());
+        LocalDateTime plannedStart = adjustToShiftStart(calendar, effectiveStart);
+        if (plannedStart == null) {
+            return null;
+        }
+        long duration = task.getStdDurationMin() == null ? 0L : task.getStdDurationMin();
+        TimeWindow window = adjustForShiftEnd(calendar, plannedStart, duration);
+        if (window == null) {
+            return null;
+        }
+
+        return new ResourceChoice(
+                null, window.start, window.end,
+                workstationChoice.sequenceOnResource, 0, null, null,
+                null, null, personId, personSequence,
+                workstationChoice.workstationId, workstationChoice.sequenceOnResource);
+    }
+
+    private boolean requiresMachine(OperationTask task) {
+        if (task == null || CollectionUtils.isEmpty(task.getResourceRequirementList())) {
+            return true;
+        }
+        return task.getResourceRequirementList().stream()
+                .filter(Objects::nonNull)
+                .filter(this::isMandatoryRequirement)
+                .anyMatch(req -> ResourceConstants.RESOURCE_TYPE_MACHINE.equals(req.getResourceType()));
+    }
+
+    private boolean requiresWorkstation(OperationTask task) {
+        if (task == null || CollectionUtils.isEmpty(task.getResourceRequirementList())) {
+            return false;
+        }
+        return task.getResourceRequirementList().stream()
+                .filter(Objects::nonNull)
+                .filter(this::isMandatoryRequirement)
+                .anyMatch(req -> ResourceConstants.RESOURCE_TYPE_WORKSTATION.equals(req.getResourceType()));
     }
 
     // ========================== 需求解析（回写选中资源ID） ==========================
@@ -358,7 +502,7 @@ public class TaskSchedulingCalculator {
      */
     private List<TaskResourceRequirement> resolveSelectedResources(
             List<TaskResourceRequirement> requirements,
-            String machineId, String moldId, String personId) {
+            String machineId, String moldId, String personId, String workstationId, Integer changeoverTimeMin) {
         if (CollectionUtils.isEmpty(requirements)) {
             return List.of();
         }
@@ -377,9 +521,8 @@ public class TaskSchedulingCalculator {
             copy.setRequiredCount(req.getRequiredCount());
             copy.setIsMandatory(req.getIsMandatory());
             copy.setChangeoverSourceResourceId(req.getChangeoverSourceResourceId());
-            copy.setChangeoverTimeMin(req.getChangeoverTimeMin());
+            copy.setChangeoverTimeMin(changeoverTimeMin != null ? changeoverTimeMin : req.getChangeoverTimeMin());
 
-            // 回写选中资源 ID（仅当原需求未指定时）
             if (StringUtils.isEmpty(copy.getResourceId())) {
                 if (ResourceConstants.RESOURCE_TYPE_MACHINE.equals(copy.getResourceType())
                         && StringUtils.isNotEmpty(machineId)) {
@@ -390,6 +533,9 @@ public class TaskSchedulingCalculator {
                 } else if (ResourceConstants.RESOURCE_TYPE_PERSON.equals(copy.getResourceType())
                         && StringUtils.isNotEmpty(personId)) {
                     copy.setResourceId(personId);
+                } else if (ResourceConstants.RESOURCE_TYPE_WORKSTATION.equals(copy.getResourceType())
+                        && StringUtils.isNotEmpty(workstationId)) {
+                    copy.setResourceId(workstationId);
                 }
             }
             resolved.add(copy);
@@ -412,9 +558,14 @@ public class TaskSchedulingCalculator {
             ResourceRuntimeContext runtimeContext,
             LocalDateTime assignmentStart,
             SchedulingStrategy strategy,
-            LocalDateTime effectiveEarliestStart) {
+            LocalDateTime effectiveEarliestStart,
+            TaskSchedulingQueryService.SchedulingResourceContext schedulingContext) {
         MachineChoice best = null;
-        Comparator<MachineChoice> comparator = machineChoiceComparator(strategy);
+        Comparator<MachineChoice> comparator = machineChoiceComparator(strategy, task);
+
+        String targetMoldId = resolvePlannedMoldId(task);
+        boolean sameMoldFirst = task != null
+                && RouteOperationConstants.QUEUE_SAME_MOLD_FIRST.equals(task.getQueuePolicy());
 
         for (Resource machine : machines) {
             if (machine == null) {
@@ -428,7 +579,26 @@ public class TaskSchedulingCalculator {
             LocalDateTime machineNextTime = runtimeContext.getNextAvailableTime(
                     ResourceConstants.RESOURCE_TYPE_MACHINE, machine.getResourceId());
 
-            LocalDateTime candidate = maxTime(effectiveEarliestStart, machineNextTime, assignmentStart);
+            Integer changeoverTimeMin = null;
+            String changeoverSourceTaskId = null;
+            LocalDateTime afterChangeover = machineNextTime;
+            if (requiresChangeover(task) && schedulingContext != null) {
+                ChangeoverCalculator.MachineAssignmentSnapshot previous = runtimeContext
+                        .getMachineLastAssignment(machine.getResourceId());
+                ChangeoverCalculator.MachineAssignmentSnapshot current = buildCurrentChangeoverSnapshot(
+                        task, schedulingContext);
+                if (previous != null && schedulingContext.getChangeoverRule() != null) {
+                    changeoverTimeMin = changeoverCalculator.calculateChangeoverMin(
+                            schedulingContext.getChangeoverRule(), previous, current);
+                    changeoverSourceTaskId = previous.getSourceTaskId();
+                    if (changeoverTimeMin != null && changeoverTimeMin > 0) {
+                        LocalDateTime base = machineNextTime == null ? assignmentStart : machineNextTime;
+                        afterChangeover = base.plusMinutes(changeoverTimeMin);
+                    }
+                }
+            }
+
+            LocalDateTime candidate = maxTime(effectiveEarliestStart, afterChangeover, assignmentStart);
             LocalDateTime plannedStart = adjustToShiftStart(calendar, candidate);
             if (plannedStart == null) {
                 continue;
@@ -443,15 +613,125 @@ public class TaskSchedulingCalculator {
             Long sequenceOnResource = runtimeContext.getNextSequence(
                     ResourceConstants.RESOURCE_TYPE_MACHINE, machine.getResourceId());
 
+            boolean sameMoldPreferred = false;
+            if (sameMoldFirst && StringUtils.isNotEmpty(targetMoldId)) {
+                ChangeoverCalculator.MachineAssignmentSnapshot previousAssignment = runtimeContext
+                        .getMachineLastAssignment(machine.getResourceId());
+                sameMoldPreferred = previousAssignment != null
+                        && StringUtils.equals(targetMoldId, previousAssignment.getMoldId());
+            }
+
             MachineChoice choice = new MachineChoice(
                     machine.getResourceId(),
                     machine,
                     window.start,
                     window.end,
                     sequenceOnResource,
-                    estimateSetupCost(task, machine));
+                    estimateSetupCost(task, machine, changeoverTimeMin),
+                    changeoverTimeMin,
+                    changeoverSourceTaskId,
+                    sameMoldPreferred);
 
             if (best == null || comparator.compare(choice, best) < 0) {
+                best = choice;
+            }
+        }
+        return best;
+    }
+
+    private ChangeoverCalculator.MachineAssignmentSnapshot buildCurrentChangeoverSnapshot(
+            OperationTask task,
+            TaskSchedulingQueryService.SchedulingResourceContext schedulingContext) {
+        Product product = task == null || task.getProductId() == null || schedulingContext == null
+                ? null
+                : schedulingContext.getProductMap().get(task.getProductId());
+        return new ChangeoverCalculator.MachineAssignmentSnapshot(
+                resolvePlannedMoldId(task),
+                task == null ? null : task.getProductId(),
+                product == null ? null : product.getMaterialCode(),
+                product == null ? null : product.getColorCode(),
+                task == null ? null : task.getTaskId());
+    }
+
+    private String resolvePlannedMoldId(OperationTask task) {
+        if (task == null || CollectionUtils.isEmpty(task.getResourceRequirementList())) {
+            return null;
+        }
+        return task.getResourceRequirementList().stream()
+                .filter(req -> req != null && ResourceConstants.RESOURCE_TYPE_MOLD.equals(req.getResourceType()))
+                .map(TaskResourceRequirement::getResourceId)
+                .filter(StringUtils::isNotEmpty)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private boolean requiresChangeover(OperationTask task) {
+        if (task == null) {
+            return false;
+        }
+        if (routeRuleRegistry != null && StringUtils.isNotEmpty(task.getEligibleResourceRule())) {
+            return routeRuleRegistry.findRule(task.getEligibleResourceRule())
+                    .map(RouteEligibleResourceRule::triggersChangeover)
+                    .orElse(false);
+        }
+        if ("SETUP".equals(task.getOpCode())) {
+            return true;
+        }
+        return inferSetupClassFromRequirements(task);
+    }
+
+    private boolean inferSetupClassFromRequirements(OperationTask task) {
+        if (task == null || CollectionUtils.isEmpty(task.getResourceRequirementList())) {
+            return false;
+        }
+        boolean requiresMachine = false;
+        boolean requiresMold = false;
+        for (TaskResourceRequirement requirement : task.getResourceRequirementList()) {
+            if (requirement == null || !isMandatoryRequirement(requirement)) {
+                continue;
+            }
+            if (ResourceConstants.RESOURCE_TYPE_MACHINE.equals(requirement.getResourceType())) {
+                requiresMachine = true;
+            }
+            if (ResourceConstants.RESOURCE_TYPE_MOLD.equals(requirement.getResourceType())) {
+                requiresMold = true;
+            }
+        }
+        return requiresMachine && !requiresMold;
+    }
+
+    private WorkstationChoice chooseBestWorkstation(OperationTask task,
+            List<Resource> workstations,
+            Map<Long, Calendar> calendarMap,
+            ResourceRuntimeContext runtimeContext,
+            LocalDateTime assignmentStart,
+            LocalDateTime effectiveEarliestStart) {
+        WorkstationChoice best = null;
+        for (Resource workstation : workstations) {
+            if (workstation == null) {
+                continue;
+            }
+            if (!resourceSupportsTaskCapability(workstation, task)) {
+                continue;
+            }
+            Calendar calendar = calendarMap.get(workstation.getCalendarId());
+            LocalDateTime workstationNextTime = runtimeContext.getNextAvailableTime(
+                    ResourceConstants.RESOURCE_TYPE_WORKSTATION, workstation.getResourceId());
+            LocalDateTime candidate = maxTime(effectiveEarliestStart, workstationNextTime, assignmentStart);
+            LocalDateTime plannedStart = adjustToShiftStart(calendar, candidate);
+            if (plannedStart == null) {
+                continue;
+            }
+            long duration = task.getStdDurationMin() == null ? 0L : task.getStdDurationMin();
+            TimeWindow window = adjustForShiftEnd(calendar, plannedStart, duration);
+            if (window == null) {
+                continue;
+            }
+            Long sequenceOnResource = runtimeContext.getNextSequence(
+                    ResourceConstants.RESOURCE_TYPE_WORKSTATION, workstation.getResourceId());
+            WorkstationChoice choice = new WorkstationChoice(
+                    workstation.getResourceId(), workstation, window.start, window.end, sequenceOnResource);
+            if (best == null || choice.plannedStart.isBefore(best.plannedStart)) {
                 best = choice;
             }
         }
@@ -464,6 +744,9 @@ public class TaskSchedulingCalculator {
     private boolean machineSatisfiesTaskRequirements(OperationTask task, Resource machine) {
         if (task == null || CollectionUtils.isEmpty(task.getResourceRequirementList())) {
             return true;
+        }
+        if (!resourceSupportsTaskCapability(machine, task)) {
+            return false;
         }
         for (TaskResourceRequirement requirement : task.getResourceRequirementList()) {
             if (requirement == null || !isMandatoryRequirement(requirement)) {
@@ -498,7 +781,24 @@ public class TaskSchedulingCalculator {
                         && (item.getIsCompatible() == null || item.getIsCompatible() != 0));
     }
 
-    private Integer estimateSetupCost(OperationTask task, Resource machine) {
+    private boolean resourceSupportsTaskCapability(Resource resource, OperationTask task) {
+        if (resource == null || task == null || StringUtils.isEmpty(task.getOpCode())) {
+            return true;
+        }
+        if (task.getProductId() == null || CollectionUtils.isEmpty(resource.getCapabilityList())) {
+            return true;
+        }
+        return resource.getCapabilityList().stream()
+                .filter(Objects::nonNull)
+                .filter(cap -> Integer.valueOf(1).equals(cap.getIsEnabled()))
+                .anyMatch(cap -> StringUtils.equals(cap.getOpCode(), task.getOpCode())
+                        && Objects.equals(cap.getProductId(), task.getProductId()));
+    }
+
+    private Integer estimateSetupCost(OperationTask task, Resource machine, Integer changeoverTimeMin) {
+        if (changeoverTimeMin != null) {
+            return changeoverTimeMin;
+        }
         if (task != null && CollectionUtils.isNotEmpty(task.getResourceRequirementList())) {
             Integer requirementCost = task.getResourceRequirementList().stream()
                     .filter(Objects::nonNull)
@@ -605,6 +905,7 @@ public class TaskSchedulingCalculator {
      * @return 选中的人员ID，无可用时返回 null
      */
     private String choosePerson(List<TaskResourceRequirement> personReqs,
+            OperationTask task,
             TaskSchedulingQueryService.SchedulingResourceContext schedulingContext,
             ResourceRuntimeContext runtimeContext) {
         List<Resource> personResources = schedulingContext.getResourcesByType()
@@ -612,14 +913,12 @@ public class TaskSchedulingCalculator {
 
         for (TaskResourceRequirement req : personReqs) {
             if (req.getResourceId() != null) {
-                // 指定了人员ID：验证技能匹配
-                if (personHasCapability(req.getResourceId(), req.getCapabilityCode(), personResources)) {
+                if (personHasCapability(req.getResourceId(), req.getCapabilityCode(), task, personResources)) {
                     return req.getResourceId();
                 }
                 return null;
             }
 
-            // 未指定人员ID：通过 capabilityCode 匹配
             String capabilityCode = req.getCapabilityCode();
             if (StringUtils.isEmpty(capabilityCode)) {
                 continue;
@@ -630,7 +929,7 @@ public class TaskSchedulingCalculator {
                 if (person == null) {
                     continue;
                 }
-                if (!personHasCapability(person.getResourceId(), capabilityCode, personResources)) {
+                if (!personHasCapability(person.getResourceId(), capabilityCode, task, personResources)) {
                     continue;
                 }
                 LocalDateTime personNext = runtimeContext.getNextAvailableTime(
@@ -647,11 +946,9 @@ public class TaskSchedulingCalculator {
         return null;
     }
 
-    /**
-     * 检查人员是否具备指定的技能（opCode 匹配 + isEnabled=1）。
-     */
     private boolean personHasCapability(String personId,
             String capabilityCode,
+            OperationTask task,
             List<Resource> personResources) {
         if (StringUtils.isEmpty(personId) || StringUtils.isEmpty(capabilityCode)) {
             return false;
@@ -661,12 +958,20 @@ public class TaskSchedulingCalculator {
                 continue;
             }
             if (CollectionUtils.isEmpty(person.getCapabilityList())) {
-                return false;
+                return task == null || task.getProductId() == null;
             }
             return person.getCapabilityList().stream()
                     .filter(Objects::nonNull)
                     .filter(cap -> Integer.valueOf(1).equals(cap.getIsEnabled()))
-                    .anyMatch(cap -> StringUtils.equals(cap.getOpCode(), capabilityCode));
+                    .anyMatch(cap -> {
+                        if (!StringUtils.equals(cap.getOpCode(), capabilityCode)) {
+                            return false;
+                        }
+                        if (task == null || task.getProductId() == null) {
+                            return true;
+                        }
+                        return Objects.equals(cap.getProductId(), task.getProductId());
+                    });
         }
         return false;
     }
@@ -676,25 +981,32 @@ public class TaskSchedulingCalculator {
     /**
      * 根据策略构建机台选择比较器。
      */
-    private Comparator<MachineChoice> machineChoiceComparator(SchedulingStrategy strategy) {
+    private Comparator<MachineChoice> machineChoiceComparator(SchedulingStrategy strategy, OperationTask task) {
+        Comparator<MachineChoice> base;
         if (strategy == SchedulingStrategy.LOWEST_COST) {
-            return Comparator
+            base = Comparator
                     .comparing((MachineChoice item) -> item.setupCostMin,
                             Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(item -> item.plannedEnd, Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(item -> item.plannedStart, Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(item -> item.machineId, Comparator.nullsLast(Comparator.naturalOrder()));
-        }
-        if (strategy == SchedulingStrategy.EARLIEST_FINISH) {
-            return Comparator
+        } else if (strategy == SchedulingStrategy.EARLIEST_FINISH) {
+            base = Comparator
                     .comparing((MachineChoice item) -> item.plannedEnd, Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(item -> item.plannedStart, Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(item -> item.machineId, Comparator.nullsLast(Comparator.naturalOrder()));
+        } else {
+            base = Comparator
+                    .comparing((MachineChoice item) -> item.plannedStart, Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(item -> item.plannedEnd, Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(item -> item.machineId, Comparator.nullsLast(Comparator.naturalOrder()));
         }
-        return Comparator
-                .comparing((MachineChoice item) -> item.plannedStart, Comparator.nullsLast(Comparator.naturalOrder()))
-                .thenComparing(item -> item.plannedEnd, Comparator.nullsLast(Comparator.naturalOrder()))
-                .thenComparing(item -> item.machineId, Comparator.nullsLast(Comparator.naturalOrder()));
+        if (task != null && RouteOperationConstants.QUEUE_SAME_MOLD_FIRST.equals(task.getQueuePolicy())) {
+            return Comparator
+                    .comparing((MachineChoice item) -> item.sameMoldPreferred ? 0 : 1)
+                    .thenComparing(base);
+        }
+        return base;
     }
 
     /**
@@ -956,6 +1268,8 @@ public class TaskSchedulingCalculator {
         private final Map<String, Map<String, LocalDateTime>> nextAvailableTimeMap = new HashMap<>();
         /** resourceType -> (resourceId -> 下一个序号) */
         private final Map<String, Map<String, Long>> nextSequenceMap = new HashMap<>();
+        /** machineId -> 最近一次派工快照 */
+        private final Map<String, ChangeoverCalculator.MachineAssignmentSnapshot> machineLastAssignmentMap = new HashMap<>();
 
         /**
          * 获取资源的最早可用时间。
@@ -1022,6 +1336,17 @@ public class TaskSchedulingCalculator {
                     .computeIfAbsent(resourceType, k -> new HashMap<>())
                     .put(resourceId, sequence);
         }
+
+        public ChangeoverCalculator.MachineAssignmentSnapshot getMachineLastAssignment(String machineId) {
+            return machineLastAssignmentMap.get(machineId);
+        }
+
+        public void setMachineLastAssignment(String machineId,
+                ChangeoverCalculator.MachineAssignmentSnapshot snapshot) {
+            if (StringUtils.isNotEmpty(machineId) && snapshot != null) {
+                machineLastAssignmentMap.put(machineId, snapshot);
+            }
+        }
     }
 
     /**
@@ -1033,29 +1358,41 @@ public class TaskSchedulingCalculator {
         private final LocalDateTime plannedEnd;
         private final Long sequenceOnResource;
         private final Integer setupCostMin;
+        private final Integer changeoverTimeMin;
+        private final String changeoverSourceTaskId;
         private final String moldId;
         private final Long moldSequence;
         private final String personId;
         private final Long personSequence;
+        private final String workstationId;
+        private final Long workstationSequence;
 
         public ResourceChoice(String machineId,
                 LocalDateTime plannedStart,
                 LocalDateTime plannedEnd,
                 Long sequenceOnResource,
                 Integer setupCostMin,
+                Integer changeoverTimeMin,
+                String changeoverSourceTaskId,
                 String moldId,
                 Long moldSequence,
                 String personId,
-                Long personSequence) {
+                Long personSequence,
+                String workstationId,
+                Long workstationSequence) {
             this.machineId = machineId;
             this.plannedStart = plannedStart;
             this.plannedEnd = plannedEnd;
             this.sequenceOnResource = sequenceOnResource;
             this.setupCostMin = setupCostMin;
+            this.changeoverTimeMin = changeoverTimeMin;
+            this.changeoverSourceTaskId = changeoverSourceTaskId;
             this.moldId = moldId;
             this.moldSequence = moldSequence;
             this.personId = personId;
             this.personSequence = personSequence;
+            this.workstationId = workstationId;
+            this.workstationSequence = workstationSequence;
         }
     }
 
@@ -1069,19 +1406,48 @@ public class TaskSchedulingCalculator {
         private final LocalDateTime plannedEnd;
         private final Long sequenceOnResource;
         private final Integer setupCostMin;
+        private final Integer changeoverTimeMin;
+        private final String changeoverSourceTaskId;
+        private final boolean sameMoldPreferred;
 
         MachineChoice(String machineId,
                 Resource machineResource,
                 LocalDateTime plannedStart,
                 LocalDateTime plannedEnd,
                 Long sequenceOnResource,
-                Integer setupCostMin) {
+                Integer setupCostMin,
+                Integer changeoverTimeMin,
+                String changeoverSourceTaskId,
+                boolean sameMoldPreferred) {
             this.machineId = machineId;
             this.machineResource = machineResource;
             this.plannedStart = plannedStart;
             this.plannedEnd = plannedEnd;
             this.sequenceOnResource = sequenceOnResource;
             this.setupCostMin = setupCostMin;
+            this.changeoverTimeMin = changeoverTimeMin;
+            this.changeoverSourceTaskId = changeoverSourceTaskId;
+            this.sameMoldPreferred = sameMoldPreferred;
+        }
+    }
+
+    static class WorkstationChoice {
+        private final String workstationId;
+        private final Resource workstationResource;
+        private final LocalDateTime plannedStart;
+        private final LocalDateTime plannedEnd;
+        private final Long sequenceOnResource;
+
+        WorkstationChoice(String workstationId,
+                Resource workstationResource,
+                LocalDateTime plannedStart,
+                LocalDateTime plannedEnd,
+                Long sequenceOnResource) {
+            this.workstationId = workstationId;
+            this.workstationResource = workstationResource;
+            this.plannedStart = plannedStart;
+            this.plannedEnd = plannedEnd;
+            this.sequenceOnResource = sequenceOnResource;
         }
     }
 

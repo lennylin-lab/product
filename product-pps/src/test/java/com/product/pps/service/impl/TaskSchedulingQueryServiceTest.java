@@ -71,7 +71,6 @@ class TaskSchedulingQueryServiceTest {
         Set<String> result = queryService.resolveRequiredResourceTypes(List.of(task));
 
         assertEquals(Set.of(
-                ResourceConstants.RESOURCE_TYPE_MACHINE,
                 ResourceConstants.RESOURCE_TYPE_PERSON,
                 ResourceConstants.RESOURCE_TYPE_WORKSTATION), result);
     }

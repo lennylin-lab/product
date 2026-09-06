@@ -4,18 +4,22 @@ import com.baomidou.mybatisplus.extension.toolkit.Db;
 import com.product.common.constant.ResourceConstants;
 import com.product.common.constant.StatusConstants;
 import com.product.common.utils.StringUtils;
+import com.product.domain.entity.ChangeoverRule;
 import com.product.domain.entity.CustomerOrder;
 import com.product.domain.entity.Calendar;
 import com.product.domain.entity.Machine;
 import com.product.domain.entity.MachineMoldCompatibility;
 import com.product.domain.entity.OperationTask;
 import com.product.domain.entity.OrderLine;
+import com.product.domain.entity.Product;
 import com.product.domain.entity.ProductionBatch;
 import com.product.domain.entity.Resource;
 import com.product.domain.entity.ResourceCapability;
 import com.product.domain.entity.TaskAssignment;
+import com.product.domain.entity.TaskAssignmentResource;
 import com.product.domain.entity.TaskDependency;
 import com.product.domain.entity.TaskResourceRequirement;
+import com.product.pps.dto.MachineLastAssignmentDTO;
 import com.product.pps.dto.TaskSchedulingPriorityDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -75,15 +79,17 @@ public class TaskSchedulingQueryService {
      */
     public SchedulingResourceContext loadSchedulingResourceContext(List<OperationTask> tasks) {
         List<OperationTask> safeTasks = tasks == null ? List.of() : tasks;
-        // 为任务列表批量关联资源需求
         attachTaskResourceRequirements(safeTasks);
-        // 解析任务列表所需资源类型
+        attachTaskProductContext(safeTasks);
         Set<String> resourceTypes = resolveRequiredResourceTypes(safeTasks);
-        // 加载可用的资源列表
         List<Resource> resources = loadAvailableResources(resourceTypes);
-        // 加载资源对应的班次日历映射
         Map<Long, Calendar> calendarMap = loadCalendarMap(resources);
-        return buildSchedulingResourceContext(resources, calendarMap);
+        ChangeoverRule changeoverRule = loadDefaultChangeoverRule();
+        Map<Long, Product> productMap = loadProductsByIds(safeTasks.stream()
+                .map(OperationTask::getProductId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet()));
+        return buildSchedulingResourceContext(resources, calendarMap, changeoverRule, productMap);
     }
 
     /**
@@ -142,6 +148,7 @@ public class TaskSchedulingQueryService {
                 .list();
         List<OperationTask> normalizedTasks = normalizeReadyTasksForScheduling(readyTasks);
         attachTaskResourceRequirements(normalizedTasks);
+        attachTaskProductContext(normalizedTasks);
         return normalizedTasks;
     }
 
@@ -243,6 +250,170 @@ public class TaskSchedulingQueryService {
                 .collect(Collectors.groupingBy(TaskResourceRequirement::getTaskId));
         tasks.forEach(
                 task -> task.setResourceRequirementList(requirementMap.getOrDefault(task.getTaskId(), List.of())));
+    }
+
+    void attachTaskProductContext(List<OperationTask> tasks) {
+        if (CollectionUtils.isEmpty(tasks)) {
+            return;
+        }
+        Set<String> batchIds = tasks.stream()
+                .map(OperationTask::getBatchId)
+                .filter(StringUtils::isNotEmpty)
+                .collect(Collectors.toSet());
+        if (batchIds.isEmpty()) {
+            return;
+        }
+        Map<String, Long> batchToOrderLine = Db.lambdaQuery(ProductionBatch.class)
+                .select(ProductionBatch::getBatchId, ProductionBatch::getOrderLineId)
+                .in(ProductionBatch::getBatchId, batchIds)
+                .list()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(item -> StringUtils.isNotEmpty(item.getBatchId()) && item.getOrderLineId() != null)
+                .collect(Collectors.toMap(ProductionBatch::getBatchId, ProductionBatch::getOrderLineId, (left, right) -> left));
+        if (batchToOrderLine.isEmpty()) {
+            return;
+        }
+        Set<Long> orderLineIds = new HashSet<>(batchToOrderLine.values());
+        Map<Long, OrderLine> orderLineMap = Db.lambdaQuery(OrderLine.class)
+                .in(OrderLine::getOrderLineId, orderLineIds)
+                .list()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(item -> item.getOrderLineId() != null)
+                .collect(Collectors.toMap(OrderLine::getOrderLineId, item -> item, (left, right) -> left));
+        tasks.forEach(task -> {
+            if (task == null || StringUtils.isEmpty(task.getBatchId())) {
+                return;
+            }
+            Long orderLineId = batchToOrderLine.get(task.getBatchId());
+            OrderLine orderLine = orderLineId == null ? null : orderLineMap.get(orderLineId);
+            if (orderLine != null && orderLine.getProductId() != null) {
+                task.setProductId(orderLine.getProductId());
+            }
+        });
+    }
+
+    public ChangeoverRule loadDefaultChangeoverRule() {
+        return Db.lambdaQuery(ChangeoverRule.class)
+                .last("limit 1")
+                .one();
+    }
+
+    public Map<String, MachineLastAssignmentDTO> loadMachineLastAssignments(Collection<String> machineIds) {
+        if (CollectionUtils.isEmpty(machineIds)) {
+            return Map.of();
+        }
+        List<TaskAssignment> assignments = Db.lambdaQuery(TaskAssignment.class)
+                .select(TaskAssignment::getAssignmentId, TaskAssignment::getTaskId,
+                        TaskAssignment::getMachineId, TaskAssignment::getPlannedEnd)
+                .in(TaskAssignment::getMachineId, machineIds)
+                .orderByDesc(TaskAssignment::getPlannedEnd)
+                .list();
+        if (CollectionUtils.isEmpty(assignments)) {
+            return Map.of();
+        }
+        Map<String, TaskAssignment> latestByMachine = new LinkedHashMap<>();
+        for (TaskAssignment assignment : assignments) {
+            if (assignment == null || StringUtils.isEmpty(assignment.getMachineId())) {
+                continue;
+            }
+            latestByMachine.putIfAbsent(assignment.getMachineId(), assignment);
+        }
+        if (latestByMachine.isEmpty()) {
+            return Map.of();
+        }
+        Set<String> taskIds = latestByMachine.values().stream()
+                .map(TaskAssignment::getTaskId)
+                .filter(StringUtils::isNotEmpty)
+                .collect(Collectors.toSet());
+        Map<String, String> taskToMold = Db.lambdaQuery(TaskAssignmentResource.class)
+                .select(TaskAssignmentResource::getTaskId, TaskAssignmentResource::getResourceId)
+                .in(TaskAssignmentResource::getTaskId, taskIds)
+                .eq(TaskAssignmentResource::getResourceType, ResourceConstants.RESOURCE_TYPE_MOLD)
+                .list()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(item -> StringUtils.isNotEmpty(item.getTaskId()) && StringUtils.isNotEmpty(item.getResourceId()))
+                .collect(Collectors.toMap(TaskAssignmentResource::getTaskId, TaskAssignmentResource::getResourceId,
+                        (left, right) -> left));
+        Map<String, Long> taskToProduct = loadProductIdByTaskIds(taskIds);
+        Map<Long, Product> productMap = loadProductsByIds(new HashSet<>(taskToProduct.values()));
+        Map<String, MachineLastAssignmentDTO> result = new HashMap<>();
+        latestByMachine.forEach((machineId, assignment) -> {
+            MachineLastAssignmentDTO dto = new MachineLastAssignmentDTO();
+            dto.setMachineId(machineId);
+            dto.setTaskId(assignment.getTaskId());
+            dto.setMoldId(taskToMold.get(assignment.getTaskId()));
+            Long productId = taskToProduct.get(assignment.getTaskId());
+            dto.setProductId(productId);
+            Product product = productId == null ? null : productMap.get(productId);
+            if (product != null) {
+                dto.setMaterialCode(product.getMaterialCode());
+                dto.setColorCode(product.getColorCode());
+            }
+            result.put(machineId, dto);
+        });
+        return result;
+    }
+
+    private Map<String, Long> loadProductIdByTaskIds(Collection<String> taskIds) {
+        if (CollectionUtils.isEmpty(taskIds)) {
+            return Map.of();
+        }
+        Map<String, String> taskToBatch = Db.lambdaQuery(OperationTask.class)
+                .select(OperationTask::getTaskId, OperationTask::getBatchId)
+                .in(OperationTask::getTaskId, taskIds)
+                .list()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(item -> StringUtils.isNotEmpty(item.getTaskId()) && StringUtils.isNotEmpty(item.getBatchId()))
+                .collect(Collectors.toMap(OperationTask::getTaskId, OperationTask::getBatchId, (left, right) -> left));
+        if (taskToBatch.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Long> batchToOrderLine = Db.lambdaQuery(ProductionBatch.class)
+                .select(ProductionBatch::getBatchId, ProductionBatch::getOrderLineId)
+                .in(ProductionBatch::getBatchId, taskToBatch.values())
+                .list()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(item -> StringUtils.isNotEmpty(item.getBatchId()) && item.getOrderLineId() != null)
+                .collect(Collectors.toMap(ProductionBatch::getBatchId, ProductionBatch::getOrderLineId, (left, right) -> left));
+        Set<Long> orderLineIds = new HashSet<>(batchToOrderLine.values());
+        Map<Long, Long> orderLineToProduct = Db.lambdaQuery(OrderLine.class)
+                .select(OrderLine::getOrderLineId, OrderLine::getProductId)
+                .in(OrderLine::getOrderLineId, orderLineIds)
+                .list()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(item -> item.getOrderLineId() != null && item.getProductId() != null)
+                .collect(Collectors.toMap(OrderLine::getOrderLineId, OrderLine::getProductId, (left, right) -> left));
+        Map<String, Long> result = new HashMap<>();
+        taskToBatch.forEach((taskId, batchId) -> {
+            Long orderLineId = batchToOrderLine.get(batchId);
+            if (orderLineId == null) {
+                return;
+            }
+            Long productId = orderLineToProduct.get(orderLineId);
+            if (productId != null) {
+                result.put(taskId, productId);
+            }
+        });
+        return result;
+    }
+
+    private Map<Long, Product> loadProductsByIds(Set<Long> productIds) {
+        if (CollectionUtils.isEmpty(productIds)) {
+            return Map.of();
+        }
+        return Db.lambdaQuery(Product.class)
+                .in(Product::getProductId, productIds)
+                .list()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(item -> item.getProductId() != null)
+                .collect(Collectors.toMap(Product::getProductId, item -> item, (left, right) -> left));
     }
 
     /**
@@ -354,13 +525,22 @@ public class TaskSchedulingQueryService {
 
     SchedulingResourceContext buildSchedulingResourceContext(List<Resource> resources,
             Map<Long, Calendar> calendarMap) {
+        return buildSchedulingResourceContext(resources, calendarMap, null, Map.of());
+    }
+
+    SchedulingResourceContext buildSchedulingResourceContext(List<Resource> resources,
+            Map<Long, Calendar> calendarMap,
+            ChangeoverRule changeoverRule,
+            Map<Long, Product> productMap) {
         List<Resource> safeResources = resources == null ? List.of() : resources;
         Map<String, List<Resource>> resourcesByType = safeResources.stream()
                 .filter(Objects::nonNull)
                 .filter(item -> StringUtils.isNotEmpty(item.getResourceType()))
                 .collect(Collectors.groupingBy(Resource::getResourceType, LinkedHashMap::new, Collectors.toList()));
         return new SchedulingResourceContext(safeResources, resourcesByType,
-                calendarMap == null ? Map.of() : calendarMap);
+                calendarMap == null ? Map.of() : calendarMap,
+                changeoverRule,
+                productMap == null ? Map.of() : productMap);
     }
 
     /**
@@ -371,8 +551,8 @@ public class TaskSchedulingQueryService {
      */
     Set<String> resolveRequiredResourceTypes(List<OperationTask> tasks) {
         Set<String> resourceTypes = new LinkedHashSet<>();
-        resourceTypes.add(ResourceConstants.RESOURCE_TYPE_MACHINE);
         if (CollectionUtils.isEmpty(tasks)) {
+            resourceTypes.add(ResourceConstants.RESOURCE_TYPE_MACHINE);
             return resourceTypes;
         }
         tasks.stream()
@@ -384,16 +564,21 @@ public class TaskSchedulingQueryService {
                 .map(TaskResourceRequirement::getResourceType)
                 .filter(StringUtils::isNotEmpty)
                 .forEach(resourceTypes::add);
+        if (resourceTypes.isEmpty()) {
+            resourceTypes.add(ResourceConstants.RESOURCE_TYPE_MACHINE);
+        }
         return resourceTypes;
     }
 
     private Set<String> normalizeResourceTypes(Collection<String> resourceTypes) {
         Set<String> normalizedTypes = new LinkedHashSet<>();
-        normalizedTypes.add(ResourceConstants.RESOURCE_TYPE_MACHINE);
         if (CollectionUtils.isNotEmpty(resourceTypes)) {
             resourceTypes.stream()
                     .filter(StringUtils::isNotEmpty)
                     .forEach(normalizedTypes::add);
+        }
+        if (normalizedTypes.isEmpty()) {
+            normalizedTypes.add(ResourceConstants.RESOURCE_TYPE_MACHINE);
         }
         return normalizedTypes;
     }
@@ -572,13 +757,19 @@ public class TaskSchedulingQueryService {
         private final List<Resource> resources;
         private final Map<String, List<Resource>> resourcesByType;
         private final Map<Long, Calendar> calendarMap;
+        private final ChangeoverRule changeoverRule;
+        private final Map<Long, Product> productMap;
 
         public SchedulingResourceContext(List<Resource> resources,
                 Map<String, List<Resource>> resourcesByType,
-                Map<Long, Calendar> calendarMap) {
+                Map<Long, Calendar> calendarMap,
+                ChangeoverRule changeoverRule,
+                Map<Long, Product> productMap) {
             this.resources = resources;
             this.resourcesByType = resourcesByType;
             this.calendarMap = calendarMap;
+            this.changeoverRule = changeoverRule;
+            this.productMap = productMap;
         }
 
         public List<Resource> getResources() {
@@ -591,6 +782,14 @@ public class TaskSchedulingQueryService {
 
         public Map<Long, Calendar> getCalendarMap() {
             return calendarMap;
+        }
+
+        public ChangeoverRule getChangeoverRule() {
+            return changeoverRule;
+        }
+
+        public Map<Long, Product> getProductMap() {
+            return productMap;
         }
     }
 }
