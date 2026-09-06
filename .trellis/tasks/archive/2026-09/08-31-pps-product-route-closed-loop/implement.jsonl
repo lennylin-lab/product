@@ -1,0 +1,8 @@
+{"type":"spec","path":".trellis/spec/backend/directory-structure.md","reason":"Controller/Service conventions for new ProductRouteController"}
+{"type":"spec","path":".trellis/spec/backend/database-guidelines.md","reason":"Entity and MyBatis-Plus patterns for route CRUD"}
+{"type":"spec","path":".trellis/spec/backend/error-handling.md","reason":"ServiceException for route validation errors"}
+{"type":"file","path":"product-pps/src/main/java/com/product/pps/service/impl/OperationTaskServiceImpl.java","reason":"Task generation baseline; refactor target"}
+{"type":"file","path":"product-pps/src/main/java/com/product/pps/service/impl/OperationResourceRequirementBuilder.java","reason":"Resource rule baseline; refactor to registry"}
+{"type":"file","path":"product-pps/src/main/java/com/product/pps/service/impl/TaskSchedulingCalculator.java","reason":"queue_policy and changeover extension point"}
+{"type":"file","path":"product-common/src/main/java/com/product/common/constant/RouteOperationConstants.java","reason":"Existing rule/model codes"}
+{"type":"file","path":"product-demand/src/main/java/com/product/demand/service/impl/ProductServiceImpl.java","reason":"Product-route binding pattern (mold params precedent)"}

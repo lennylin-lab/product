@@ -1,0 +1,5 @@
+{"type":"spec","path":".trellis/spec/backend/quality-guidelines.md","reason":"Test requirements"}
+{"type":"file","path":".trellis/tasks/08-31-pps-product-route-closed-loop/prd.md","reason":"Cross-child acceptance criteria"}
+{"type":"file","path":".trellis/tasks/08-31-route-rule-registry/prd.md","reason":"Registry acceptance"}
+{"type":"file","path":".trellis/tasks/08-31-route-management-api/prd.md","reason":"API acceptance"}
+{"type":"file","path":".trellis/tasks/08-31-route-scheduling-ext/prd.md","reason":"Scheduling acceptance"}

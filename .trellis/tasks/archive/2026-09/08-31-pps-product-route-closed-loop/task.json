@@ -1,0 +1,30 @@
+{
+  "id": "pps-product-route-closed-loop",
+  "name": "pps-product-route-closed-loop",
+  "title": "PPS 工艺路线完整闭环",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "lenny",
+  "assignee": "lenny",
+  "createdAt": "2026-08-31",
+  "completedAt": "2026-09-06",
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-31-route-management-api",
+    "08-31-route-rule-registry",
+    "08-31-route-scheduling-ext"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
