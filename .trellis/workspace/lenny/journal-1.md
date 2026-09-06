@@ -47,3 +47,24 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 3: PPS 工艺路线完整闭环
+
+**Date**: 2026-09-06
+**Task**: PPS 工艺路线完整闭环
+**Branch**: `master`
+
+### Summary
+
+实现规则注册表、路线 CRUD API、产品绑定，以及 queue_policy/换型泛化排程扩展；测试通过并已归档 4 个 Trellis 任务。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c849bca` | (see git log) |
+
+### Status
+
+[OK] **Completed**
