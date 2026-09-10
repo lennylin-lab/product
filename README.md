@@ -136,6 +136,11 @@ cp .env.example .env
 - 空库时自动导入根目录 [schema.sql](/home/lenny/Projects/pps/product/schema.sql:1)
 - 已有业务表时跳过导入，避免覆盖现有开发数据
 
+空库初始化后，系统自带一个管理员账号：
+
+- 用户名 `admin`，密码 `admin123`，首次登录后请立即修改
+- 同时写入系统管理菜单、代码生成菜单、业务目录菜单与基础字典（详见 `schema.sql` 的种子数据部分）
+
 如果你不走一键开发脚本，而是想单独启动某个依赖，也可以直接使用模块目录下的配置：
 
 ```bash
@@ -354,10 +359,16 @@ git log --oneline -10
 - `PUT /demand/customer`：修改客户
 - `DELETE /demand/customer/{customerIds}`：删除客户
 - `GET /demand/product/list`：产品列表
+- `POST /demand/product`：新增产品
 - `GET /demand/order/list`：订单列表
 - `POST /demand/order/export`：导出订单
 - `POST /demand/order/importData`：导入订单
 - `POST /demand/order/importTemplate`：下载模板
+- `PUT /demand/order/check/{orderId}`：订单确认
+- `PUT /demand/order/cancelCheck/{orderId}`：取消确认
+- `GET /demand/orderLine/list`：订单行列表
+- `PUT /demand/orderLine/release/{orderLineId}`：释放订单行
+- `PUT /demand/orderLine/cancelRelease/{orderLineId}`：取消释放
 
 ### 主数据管理
 
@@ -365,14 +376,24 @@ git log --oneline -10
 - `POST /master/resource/machine`：新增机台
 - `PUT /master/resource/machine`：修改机台
 - `DELETE /master/resource/machine/{machineIds}`：删除机台
+- `PUT /master/resource/machine/down/{machineId}`：机台停机
+- `PUT /master/resource/machine/maintenance/{machineId}`：机台保养
+- `PUT /master/resource/machine/restore/{machineId}`：机台恢复
 - `GET /master/calendar/list`：日历列表
+- `POST /master/calendar`：新增日历
 
 ### 生产排程
 
 - `GET /pps/batch/list`：生产批次列表
 - `POST /pps/batch`：创建生产批次
 - `PUT /pps/batch/release/{batchId}`：释放批次
+- `PUT /pps/batch/cancelRelease/{batchId}`：取消释放
 - `POST /pps/batch/generateTask`：生成任务
+- `PUT /pps/batch/retryGenerateTask/{batchId}`：重试生成任务
+- `GET /pps/task/list`：工序任务列表
+- `PUT /pps/task/cancel/{taskId}`：取消任务
+- `PUT /pps/task/restore/{taskId}`：恢复任务
+- `PUT /pps/task/revokeSchedule/{taskId}`：撤销排程
 - `GET /pps/assignment/list`：任务分配列表
 - `POST /pps/assignment/schedule`：排程
 - `POST /pps/assignment/scheduleAll`：批量排程
@@ -380,6 +401,13 @@ git log --oneline -10
 - `GET /pps/assignment/scheduleJob/{jobId}`：查询排程任务进度
 - `GET /pps/assignment/scheduleJob/list`：分页查询排程任务
 - `POST /pps/assignment/scheduleJob/sweepTimeout`：手动触发超时兜底扫描
+- `GET /pps/product-route/list`：工艺路线列表
+- `GET /pps/product-route/product/{productId}`：产品的路线列表
+- `GET /pps/product-route/product/{productId}/active`：产品当前生效路线
+- `POST /pps/product-route`：创建工艺路线
+- `PUT /pps/product-route`：修改工艺路线
+- `PUT /pps/product-route/{routeId}/activate`：激活路线版本
+- `DELETE /pps/product-route/{routeId}`：删除工艺路线
 
 ### 生产执行
 
@@ -462,22 +490,26 @@ git log --oneline -10
 - 认证授权功能
 - 代码生成器
 - 产品与订单模块
+- 主数据（机台、日历）管理
 
 ### 已实现的排程相关能力
 
-- 生产批次管理
-- 工序任务生成
-- 基础排程与任务分配
-- 任务事件追踪
-- 异步全量排程任务与进度查询
-- 排程超时兜底扫描
+- 生产批次管理与释放控制
+- 工序任务生成与生命周期管理（取消、恢复、撤销排程）
+- 基础排程与任务分配，支持四种策略（`EARLIEST_START`、`EARLIEST_FINISH`、`DUE_DATE_PRIORITY`、`LOWEST_COST`）
+- 多资源排程：机台与模具硬约束（资源兼容性过滤）、任务依赖约束
+- 换型时间计算（同/异模具、换料、换色规则）
+- 工艺路线闭环：规则注册表、路线 CRUD、产品绑定、`queue_policy`/标准工时模型扩展
+- 任务事件追踪（开始/暂停/恢复/完工）并联动批次、订单行、订单状态
+- 异步全量排程任务与进度查询、排程超时兜底扫描
 
 ### 待开发功能
 
-- 排程算法优化
-- 生产执行实时跟踪
-- 异常处理机制
+- 人员、工位、夹具等协同资源从模型层进入排程分配与占用计算
+- 异常事件、资源故障等执行侧事件建模与重排触发
+- 成本模型细化（能耗、换模次数、跨班次损耗等综合因子）
 - 报表统计分析
+- 系统级与集成级测试（跨模块状态联动、并发排程场景）
 
 ## 开发规范
 
@@ -498,8 +530,8 @@ git log --oneline -10
 
 - 表名：小写，下划线分隔
 - 字段名：小写，下划线分隔
-- 必须字段：`create_time`、`update_time`、`create_by`、`update_by`
-- 逻辑删除：`del_flag`
+- 必须字段：`create_time`、`update_time`（由 `BaseEntity` 统一维护）
+- 逻辑删除：`del_flag`（仅系统表使用）
 
 ### 事务管理
 
@@ -574,5 +606,5 @@ git log --oneline -10
 
 ---
 
-最后更新时间：2026-04-03
+最后更新时间：2026-09-10
 当前版本：0.0.1-SNAPSHOT
