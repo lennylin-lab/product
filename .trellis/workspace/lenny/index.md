@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 3
-- **Last Active**: 2026-09-06
+- **Total Sessions**: 4
+- **Last Active**: 2026-09-10
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~70 | Active |
+| `journal-1.md` | ~92 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 4 | 2026-09-10 | 修复新环境引导链:schema.sql 补交与 README 刷新 | `3d26512`, `5462a99` | `master` |
 | 3 | 2026-09-06 | PPS 工艺路线完整闭环 | `c849bca` | `master` |
 | 2 | 2026-09-06 | PPS 工艺路线完整闭环 | `c849bca` | `master` |
 | 1 | 2026-08-30 | PPS排程P0改进：多资源排程与产品模具参数校验 | `09b2030` | `master` |
