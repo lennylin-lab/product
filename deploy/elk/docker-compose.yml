@@ -49,7 +49,7 @@ services:
     command: ["filebeat", "-e", "--strict.perms=false"]
     volumes:
       - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-      - ${PRODUCT_LOG_PATH:-/home/chuan/project/backend/logs}:/var/log/product:ro
+      - ${PRODUCT_LOG_PATH:-./logs}:/var/log/product:ro
     networks:
       - product-elk
 

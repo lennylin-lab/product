@@ -43,7 +43,10 @@ Thumbs.db
 
 ### Logs ###
 *.log
+# 忽略临时 SQL,但保留数据库初始化脚本
 *.sql
+!schema.sql
 .ace-tool/
 .env
 **/.env
+!deploy/**/.env
