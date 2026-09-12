@@ -114,3 +114,17 @@ alioss:
   access-key-id: ${ALIOSS_ACCESS_KEY_ID:change-me-in-env}
   access-key-secret: ${ALIOSS_ACCESS_KEY_SECRET:change-me-in-env}
   bucket-name: ${ALIOSS_BUCKET_NAME:change-me-in-env}
+
+# Swagger / OpenAPI 文档配置
+springdoc:
+  api-docs:
+    # OpenAPI 描述文件路径：/v3/api-docs
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    # Swagger UI 路径：/swagger-ui.html
+    enabled: true
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  packages-to-scan: com.product

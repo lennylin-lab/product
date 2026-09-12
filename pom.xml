@@ -56,6 +56,7 @@
         <jaxb-api.version>2.3.1</jaxb-api.version>
         <aliyun-oss-version>3.17.4</aliyun-oss-version>
         <velocity.version>2.3</velocity.version>
+        <springdoc.version>2.8.13</springdoc.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -66,6 +67,13 @@
                 <version>3.5.0</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+
+            <!-- SpringDoc OpenAPI (Swagger) -->
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                <version>${springdoc.version}</version>
             </dependency>
 
             <!-- 项目内部依赖 -->
