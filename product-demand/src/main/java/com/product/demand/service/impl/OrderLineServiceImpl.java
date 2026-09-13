@@ -1,7 +1,5 @@
 package com.product.demand.service.impl;
 
-import com.baomidou.mybatisplus.core.toolkit.IdWorker;
-
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -76,9 +74,7 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
      */
     @Override
     public boolean insertOrderLine(OrderLine orderLine) {
-        if (orderLine.getOrderId() == null) {
-            orderLine.setOrderId(IdWorker.getId());
-        }
+        validateOrderExists(orderLine == null ? null : orderLine.getOrderId());
         if (StringUtils.isEmpty(orderLine.getStatus())) {
             orderLine.setStatus(StatusConstants.NEW_ORDER_LINE);
         }
@@ -97,11 +93,7 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
         if (CollectionUtils.isEmpty(orderLines)) {
             return 0;
         }
-        orderLines.forEach(orderLine -> {
-            if (orderLine.getOrderId() == null) {
-                orderLine.setOrderId(IdWorker.getId());
-            }
-        });
+        orderLines.forEach(orderLine -> validateOrderExists(orderLine.getOrderId()));
         boolean success = saveBatch(orderLines);
         return success ? orderLines.size() : 0;
     }
@@ -201,5 +193,20 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
         wrapper.eq(orderLine.getQty() != null, OrderLine::getQty, orderLine.getQty());
         wrapper.eq(orderLine.getStatus() != null, OrderLine::getStatus, orderLine.getStatus());
         return wrapper;
+    }
+
+    /**
+     * 校验订单行归属的订单必须存在，避免明细指向不存在的订单。
+     */
+    private void validateOrderExists(Long orderId) {
+        if (orderId == null) {
+            throw new ServiceException("订单行必须指定所属订单ID");
+        }
+        boolean orderExists = Db.lambdaQuery(CustomerOrder.class)
+                .eq(CustomerOrder::getOrderId, orderId)
+                .exists();
+        if (!orderExists) {
+            throw new ServiceException("所属订单不存在: " + orderId);
+        }
     }
 }
