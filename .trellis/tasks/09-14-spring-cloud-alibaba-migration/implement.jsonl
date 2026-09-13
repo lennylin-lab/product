@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/directory-structure.md","reason":"约束现有模块结构、Controller 和 API 路由迁移方式"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"约束现有实体、Mapper、SQL 和数据库访问模式的拆分"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"保持服务化后的错误契约与异常处理兼容"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"覆盖认证、测试和禁止模式"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"建立微服务日志与追踪上下文基线"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"约束 RPC、事件、网关、服务与数据库之间的数据契约"}
+{"file":".trellis/tasks/09-14-spring-cloud-alibaba-migration/design.md","reason":"实施所依据的目标架构、边界、组件与一致性决策"}

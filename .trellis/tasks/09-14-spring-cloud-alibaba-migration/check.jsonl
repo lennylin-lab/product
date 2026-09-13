@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/directory-structure.md","reason":"审核服务结构与 API 路由是否符合项目基线"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"审核数据所有权、Mapper 和事务边界"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"审核跨服务错误契约和降级语义"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"审核认证、测试覆盖和禁止模式"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"审核日志、指标、追踪和敏感信息处理"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"审核所有跨层和跨服务契约是否闭合"}
+{"file":".trellis/tasks/09-14-spring-cloud-alibaba-migration/design.md","reason":"逐项核对实现是否遵循已审核架构决策"}
