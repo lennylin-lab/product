@@ -6,7 +6,7 @@ spring:
     # 默认仍指向本机 3306，迁移到 Docker 后可通过环境变量覆盖。
     url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:33066/product?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&allowPublicKeyRetrieval=true&serverTimezone=Asia%2FTaipei}
     username: ${SPRING_DATASOURCE_USERNAME:root}
-    password: ${SPRING_DATASOURCE_PASSWORD:change-me-in-env}
+    password: ${SPRING_DATASOURCE_PASSWORD:123456}
     druid:
       # 配置连接超时时间
       connectTimeout: 30000
