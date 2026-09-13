@@ -85,7 +85,7 @@ public class ScheduleJobServiceImpl implements IScheduleJobService {
      * 使用示例：
      * <pre>{@code
      * // 前端调用
-     * String jobId = scheduleJobService.scheduleAllAsync(dto);
+     * Long jobId = scheduleJobService.scheduleAllAsync(dto);
      * // 立即返回：jobId = "abc123"
      *
      * // 前端轮询进度
@@ -105,7 +105,7 @@ public class ScheduleJobServiceImpl implements IScheduleJobService {
      * @throws ServiceException 如果已有排程任务在执行
      */
     @Override
-    public String scheduleAllAsync(TaskAssignmentDTO taskAssignmentDTO) {
+    public Long scheduleAllAsync(TaskAssignmentDTO taskAssignmentDTO) {
         // ========== 入口互斥 ==========
         // 先拿分布式锁，再做"查重 + 创建 job + 提交线程"的临界区操作。
         // 这里锁的持有时间很短，主要是防止多个请求同时穿透到 count() 之前。
@@ -163,7 +163,7 @@ public class ScheduleJobServiceImpl implements IScheduleJobService {
      * @return 排程任务信息（包含状态、进度、结果等）
      */
     @Override
-    public ScheduleJob selectScheduleJobByJobId(String jobId) {
+    public ScheduleJob selectScheduleJobByJobId(Long jobId) {
         return scheduleJobMapper.selectById(jobId);
     }
 
@@ -206,7 +206,7 @@ public class ScheduleJobServiceImpl implements IScheduleJobService {
      * @param jobId              排程任务ID
      * @param taskAssignmentDTO 排程参数
      */
-    private void executeScheduleJob(String jobId, TaskAssignmentDTO taskAssignmentDTO) {
+    private void executeScheduleJob(Long jobId, TaskAssignmentDTO taskAssignmentDTO) {
         // ========== 状态流转：PENDING → RUNNING ==========
         // 后台线程真正执行排程前，先把任务标记为 RUNNING
         // 便于前端轮询查看进度
@@ -271,8 +271,8 @@ public class ScheduleJobServiceImpl implements IScheduleJobService {
      * @param jobId   排程任务ID
      * @param progress 进度数据（由 TaskAssignmentService 推送）
      */
-    private void updateScheduleJobProgress(String jobId, ScheduleProgressDTO progress) {
-        if (StringUtils.isEmpty(jobId) || progress == null) {
+    private void updateScheduleJobProgress(Long jobId, ScheduleProgressDTO progress) {
+        if (jobId == null || progress == null) {
             return;
         }
         Db.lambdaUpdate(ScheduleJob.class)
@@ -303,7 +303,7 @@ public class ScheduleJobServiceImpl implements IScheduleJobService {
      * @param jobId       排程任务ID
      * @param errorMessage 错误信息
      */
-    private void markScheduleJobFailed(String jobId, String errorMessage) {
+    private void markScheduleJobFailed(Long jobId, String errorMessage) {
         // ========== 错误信息处理 ==========
         // 兜底：防止空指针异常
         // 截断：避免数据库字段长度溢出
@@ -350,7 +350,7 @@ public class ScheduleJobServiceImpl implements IScheduleJobService {
             return wrapper.orderByDesc(ScheduleJob::getCreateTime, ScheduleJob::getJobId);
         }
         // 只拼接非空的条件，避免 SQL 中出现无意义的 IS NULL 条件
-        wrapper.eq(StringUtils.isNotEmpty(scheduleJob.getJobId()), ScheduleJob::getJobId, scheduleJob.getJobId());
+        wrapper.eq(scheduleJob.getJobId() != null, ScheduleJob::getJobId, scheduleJob.getJobId());
         wrapper.eq(StringUtils.isNotEmpty(scheduleJob.getJobType()), ScheduleJob::getJobType, scheduleJob.getJobType());
         wrapper.eq(StringUtils.isNotEmpty(scheduleJob.getStatus()), ScheduleJob::getStatus, scheduleJob.getStatus());
         wrapper.eq(scheduleJob.getAssignmentStart() != null, ScheduleJob::getAssignmentStart, scheduleJob.getAssignmentStart());

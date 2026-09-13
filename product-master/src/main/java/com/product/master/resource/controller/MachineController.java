@@ -75,7 +75,7 @@ public class MachineController extends BaseController {
      * 获取注塑机扩展信息详细信息
      */
     @GetMapping(value = "/{machineId}")
-    public AjaxResult getInfo(@PathVariable("machineId") String machineId) {
+    public AjaxResult getInfo(@PathVariable("machineId") Long machineId) {
         return success(machineService.selectMachineByMachineId(machineId));
     }
 
@@ -107,7 +107,7 @@ public class MachineController extends BaseController {
      * 故障
      */
     @PutMapping("/down/{machineId}")
-    public AjaxResult down(@PathVariable("machineId") String machineId) {
+    public AjaxResult down(@PathVariable("machineId") Long machineId) {
         return toAjax(machineService.down(machineId));
     }
 
@@ -115,7 +115,7 @@ public class MachineController extends BaseController {
      * 保养
      */
     @PutMapping("/maintenance/{machineId}")
-    public AjaxResult maintenance(@PathVariable("machineId") String machineId) {
+    public AjaxResult maintenance(@PathVariable("machineId") Long machineId) {
         return toAjax(machineService.maintenance(machineId));
     }
 
@@ -123,7 +123,7 @@ public class MachineController extends BaseController {
      * 恢复
      */
     @PutMapping("/restore/{machineId}")
-    public AjaxResult restore(@PathVariable("machineId") String machineId) {
+    public AjaxResult restore(@PathVariable("machineId") Long machineId) {
         return toAjax(machineService.restore(machineId));
     }
 }

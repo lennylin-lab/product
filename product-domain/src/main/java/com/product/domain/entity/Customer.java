@@ -24,7 +24,7 @@ public class Customer extends BaseEntity {
     private static final long serialVersionUID = 1L;
 
     /** 客户id */
-    @TableId(value = "customer_id", type = IdType.AUTO )
+    @TableId(value = "customer_id", type = IdType.ASSIGN_ID )
     private Long customerId;
 
     /** 客户名 */

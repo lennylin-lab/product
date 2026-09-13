@@ -36,7 +36,7 @@ class OperationResourceRequirementBuilderTest {
     @Test
     void buildRequirementsShouldUsePostWorkstationRule() {
         OperationTask task = new OperationTask();
-        task.setTaskId("T-POST");
+        task.setTaskId(514L);
         task.setOpCode("POST_QC_PUTAWAY");
 
         RouteOperation routeOperation = new RouteOperation();

@@ -20,7 +20,7 @@ public interface ITaskEventService extends IService<TaskEvent> {
      * @param eventId 任务事件日志（全流程追溯核心）主键
      * @return 任务事件日志（全流程追溯核心）
      */
-    TaskEvent selectTaskEventByEventId(String eventId);
+    TaskEvent selectTaskEventByEventId(Long eventId);
 
     /**
      * 查询任务事件日志（全流程追溯核心）列表
@@ -77,13 +77,13 @@ public interface ITaskEventService extends IService<TaskEvent> {
      * @param eventId 主键
      * @return 是否成功
      */
-    boolean deleteTaskEventByEventId(String eventId);
+    boolean deleteTaskEventByEventId(Long eventId);
 
-    boolean start(String taskId);
+    boolean start(Long taskId);
 
-    boolean pause(String taskId);
+    boolean pause(Long taskId);
 
-    boolean resume(String taskId);
+    boolean resume(Long taskId);
 
-    boolean complete(String taskId);
+    boolean complete(Long taskId);
 }

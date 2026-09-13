@@ -25,8 +25,8 @@ public class Mold {
     private static final long serialVersionUID = 1L;
 
     /** 模具ID */
-    @TableId(value = "mold_id", type = IdType.ASSIGN_UUID)
-    private String moldId;
+    @TableId(value = "mold_id", type = IdType.ASSIGN_ID)
+    private Long moldId;
 
     /** 模具业务编号 */
     @Excel(name = "模具业务编号")

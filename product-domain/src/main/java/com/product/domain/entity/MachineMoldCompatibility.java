@@ -17,11 +17,11 @@ public class MachineMoldCompatibility {
 
     /** 注塑机ID */
     @TableField("machine_id")
-    private String machineId;
+    private Long machineId;
 
     /** 模具ID */
     @TableField("mold_id")
-    private String moldId;
+    private Long moldId;
 
     /** 是否兼容 */
     @TableField("is_compatible")

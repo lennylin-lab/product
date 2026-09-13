@@ -18,7 +18,7 @@ public class ResourceCapability {
 
     /** 资源ID */
     @TableField("resource_id")
-    private String resourceId;
+    private Long resourceId;
 
     /** 工序编码 */
     @Excel(name = "工序编码")

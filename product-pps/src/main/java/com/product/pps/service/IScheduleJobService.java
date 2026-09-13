@@ -8,9 +8,9 @@ import com.product.domain.entity.ScheduleJob;
  * 排程任务记录Service接口
  */
 public interface IScheduleJobService {
-    String scheduleAllAsync(TaskAssignmentDTO taskAssignmentDTO);
+    Long scheduleAllAsync(TaskAssignmentDTO taskAssignmentDTO);
 
-    ScheduleJob selectScheduleJobByJobId(String jobId);
+    ScheduleJob selectScheduleJobByJobId(Long jobId);
 
     Page<ScheduleJob> selectScheduleJobPage(Page<ScheduleJob> page, ScheduleJob scheduleJob);
 }

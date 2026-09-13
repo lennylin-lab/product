@@ -25,8 +25,8 @@ public class Machine {
     private static final long serialVersionUID = 1L;
 
     /** 注塑机ID */
-    @TableId(value = "machine_id", type = IdType.ASSIGN_UUID)
-    private String machineId;
+    @TableId(value = "machine_id", type = IdType.ASSIGN_ID)
+    private Long machineId;
 
     /** 锁模力 */
     @Excel(name = "锁模力")

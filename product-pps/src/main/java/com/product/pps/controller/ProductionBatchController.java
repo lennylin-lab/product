@@ -78,7 +78,7 @@ public class ProductionBatchController extends BaseController {
      * 获取生产批次（订单行拆批）详细信息
      */
     @GetMapping(value = "/{batchId}")
-    public AjaxResult getInfo(@PathVariable("batchId") String batchId) {
+    public AjaxResult getInfo(@PathVariable("batchId") Long batchId) {
         return success(productionBatchService.selectProductionBatchByBatchId(batchId));
     }
 
@@ -102,7 +102,7 @@ public class ProductionBatchController extends BaseController {
      * 删除生产批次（订单行拆批）
      */
     @DeleteMapping("/{batchIds}")
-    public AjaxResult remove(@PathVariable String[] batchIds) {
+    public AjaxResult remove(@PathVariable Long[] batchIds) {
         return toAjax(productionBatchService.deleteProductionBatchByBatchIds(batchIds));
     }
 
@@ -110,7 +110,7 @@ public class ProductionBatchController extends BaseController {
      * 释放生产批次
      */
     @PutMapping("/release/{batchId}")
-    public AjaxResult release(@PathVariable("batchId") String batchId) {
+    public AjaxResult release(@PathVariable("batchId") Long batchId) {
         return toAjax(productionBatchService.release(batchId));
     }
 
@@ -118,7 +118,7 @@ public class ProductionBatchController extends BaseController {
      * 取消释放生产批次
      */
     @PutMapping("/cancelRelease/{batchId}")
-    public AjaxResult cancelRelease(@PathVariable("batchId") String batchId) {
+    public AjaxResult cancelRelease(@PathVariable("batchId") Long batchId) {
         return toAjax(productionBatchService.cancelRelease(batchId));
     }
 
@@ -126,7 +126,7 @@ public class ProductionBatchController extends BaseController {
      * 生成生产任务
      */
     @PostMapping("/generateTask")
-    public AjaxResult generateTask(@RequestBody List<String> batchIds) {
+    public AjaxResult generateTask(@RequestBody List<Long> batchIds) {
         return operationTaskService.generateTask(batchIds);
     }
 
@@ -134,7 +134,7 @@ public class ProductionBatchController extends BaseController {
      * 重新生成生产任务
      */
     @PutMapping("/retryGenerateTask/{batchId}")
-    public AjaxResult retryGenerateTask(@PathVariable String batchId) {
+    public AjaxResult retryGenerateTask(@PathVariable Long batchId) {
         return operationTaskService.retryGenerateTask(batchId);
     }
 }

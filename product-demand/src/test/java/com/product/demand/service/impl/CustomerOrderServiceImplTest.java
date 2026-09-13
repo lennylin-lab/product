@@ -10,77 +10,77 @@ import java.util.Map;
 public class CustomerOrderServiceImplTest extends TestCase {
 
     public void testCheckShouldRejectInProductionOrder() {
-        RecordingCustomerOrderService service = new RecordingCustomerOrderService(order("OR-1",
+        RecordingCustomerOrderService service = new RecordingCustomerOrderService(order(901L,
                 StatusConstants.IN_PRODUCTION_CUSTOMER_ORDER));
 
-        ServiceException exception = expectServiceException(() -> service.check("OR-1"));
+        ServiceException exception = expectServiceException(() -> service.check(901L));
 
         assertEquals("该订单已投入生产，禁止修改", exception.getMessage());
     }
 
     public void testCheckShouldRejectDoneOrder() {
-        RecordingCustomerOrderService service = new RecordingCustomerOrderService(order("OR-1",
+        RecordingCustomerOrderService service = new RecordingCustomerOrderService(order(901L,
                 StatusConstants.DONE_CUSTOMER_ORDER));
 
-        ServiceException exception = expectServiceException(() -> service.check("OR-1"));
+        ServiceException exception = expectServiceException(() -> service.check(901L));
 
         assertEquals("该订单已经完成，禁止修改", exception.getMessage());
     }
 
     public void testCancelCheckShouldRejectInProductionOrder() {
-        RecordingCustomerOrderService service = new RecordingCustomerOrderService(order("OR-2",
+        RecordingCustomerOrderService service = new RecordingCustomerOrderService(order(902L,
                 StatusConstants.IN_PRODUCTION_CUSTOMER_ORDER));
 
-        ServiceException exception = expectServiceException(() -> service.cancelCheck("OR-2"));
+        ServiceException exception = expectServiceException(() -> service.cancelCheck(902L));
 
         assertEquals("该订单已投入生产，禁止修改", exception.getMessage());
     }
 
     public void testCancelCheckShouldRejectDoneOrder() {
-        RecordingCustomerOrderService service = new RecordingCustomerOrderService(order("OR-2",
+        RecordingCustomerOrderService service = new RecordingCustomerOrderService(order(902L,
                 StatusConstants.DONE_CUSTOMER_ORDER));
 
-        ServiceException exception = expectServiceException(() -> service.cancelCheck("OR-2"));
+        ServiceException exception = expectServiceException(() -> service.cancelCheck(902L));
 
         assertEquals("该订单已经完成，禁止修改", exception.getMessage());
     }
 
     public void testUpdateShouldRejectInProductionOrder() {
-        RecordingCustomerOrderService service = new RecordingCustomerOrderService(order("OR-3",
+        RecordingCustomerOrderService service = new RecordingCustomerOrderService(order(903L,
                 StatusConstants.IN_PRODUCTION_CUSTOMER_ORDER));
 
-        CustomerOrder customerOrder = order("OR-3", StatusConstants.CONFIRMED_CUSTOMER_ORDER);
+        CustomerOrder customerOrder = order(903L, StatusConstants.CONFIRMED_CUSTOMER_ORDER);
         ServiceException exception = expectServiceException(() -> service.updateCustomerOrder(customerOrder));
 
         assertEquals("该订单已投入生产，禁止修改", exception.getMessage());
     }
 
     public void testUpdateShouldRejectDoneOrder() {
-        RecordingCustomerOrderService service = new RecordingCustomerOrderService(order("OR-4",
+        RecordingCustomerOrderService service = new RecordingCustomerOrderService(order(904L,
                 StatusConstants.DONE_CUSTOMER_ORDER));
 
-        CustomerOrder customerOrder = order("OR-4", StatusConstants.NEW_CUSTOMER_ORDER);
+        CustomerOrder customerOrder = order(904L, StatusConstants.NEW_CUSTOMER_ORDER);
         ServiceException exception = expectServiceException(() -> service.updateCustomerOrder(customerOrder));
 
         assertEquals("该订单已经完成，禁止修改", exception.getMessage());
     }
 
     public void testUpdateShouldRejectIllegalStatusTransition() {
-        RecordingCustomerOrderService service = new RecordingCustomerOrderService(order("OR-5",
+        RecordingCustomerOrderService service = new RecordingCustomerOrderService(order(905L,
                 StatusConstants.NEW_CUSTOMER_ORDER));
 
-        CustomerOrder customerOrder = order("OR-5", StatusConstants.DONE_CUSTOMER_ORDER);
+        CustomerOrder customerOrder = order(905L, StatusConstants.DONE_CUSTOMER_ORDER);
         ServiceException exception = expectServiceException(() -> service.updateCustomerOrder(customerOrder));
 
         assertEquals("订单状态只能在 NEW 和 CONFIRMED 之间流转", exception.getMessage());
     }
 
     public void testUpdateShouldKeepCurrentStatusWhenPayloadOmitsStatus() {
-        RecordingCustomerOrderService service = new RecordingCustomerOrderService(order("OR-6",
+        RecordingCustomerOrderService service = new RecordingCustomerOrderService(order(906L,
                 StatusConstants.CONFIRMED_CUSTOMER_ORDER));
 
         CustomerOrder customerOrder = new CustomerOrder();
-        customerOrder.setOrderId("OR-6");
+        customerOrder.setOrderId(906L);
         customerOrder.setPriority(2L);
 
         boolean updated = service.updateCustomerOrder(customerOrder);
@@ -101,7 +101,7 @@ public class CustomerOrderServiceImplTest extends TestCase {
         return null;
     }
 
-    private static CustomerOrder order(String orderId, String status) {
+    private static CustomerOrder order(Long orderId, String status) {
         CustomerOrder customerOrder = new CustomerOrder();
         customerOrder.setOrderId(orderId);
         customerOrder.setStatus(status);
@@ -114,7 +114,7 @@ public class CustomerOrderServiceImplTest extends TestCase {
     }
 
     private static final class RecordingCustomerOrderService extends CustomerOrderServiceImpl {
-        private final Map<String, CustomerOrder> orders = new HashMap<>();
+        private final Map<Long, CustomerOrder> orders = new HashMap<>();
         private CustomerOrder updatedOrder;
 
         private RecordingCustomerOrderService(CustomerOrder... customerOrders) {
@@ -124,7 +124,7 @@ public class CustomerOrderServiceImplTest extends TestCase {
         }
 
         @Override
-        protected CustomerOrder loadCustomerOrderForGuard(String orderId) {
+        protected CustomerOrder loadCustomerOrderForGuard(Long orderId) {
             return orders.get(orderId);
         }
 
@@ -136,7 +136,7 @@ public class CustomerOrderServiceImplTest extends TestCase {
         }
 
         @Override
-        protected boolean persistCustomerOrderStatus(String orderId, String targetStatus) {
+        protected boolean persistCustomerOrderStatus(Long orderId, String targetStatus) {
             CustomerOrder customerOrder = orders.get(orderId);
             customerOrder.setStatus(targetStatus);
             return true;

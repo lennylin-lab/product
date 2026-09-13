@@ -18,5 +18,5 @@ import org.apache.ibatis.annotations.Param;
 public interface ProductionBatchMapper extends BaseMapper<ProductionBatch> {
     Page<ProductionBatchVO> selectProductionBatchPage(Page<ProductionBatchVO> page, BatchSearchDTO batchSearchDTO);
 
-    ProductionBatch selectBatchForUpdate(@Param("batchId") String batchId);
+    ProductionBatch selectBatchForUpdate(@Param("batchId") Long batchId);
 }

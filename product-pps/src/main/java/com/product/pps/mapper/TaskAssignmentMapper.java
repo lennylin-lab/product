@@ -29,7 +29,7 @@ public interface TaskAssignmentMapper extends BaseMapper<TaskAssignment> {
      * @deprecated 被 selectMachineLatestEndTime 替代，支持批量查询
      */
     @Deprecated
-    LocalDateTime selectMachineNextTime(@Param("machineId") String machineId,
+    LocalDateTime selectMachineNextTime(@Param("machineId") Long machineId,
                                         @Param("statusList") List<String> statusList);
 
     /**
@@ -45,7 +45,7 @@ public interface TaskAssignmentMapper extends BaseMapper<TaskAssignment> {
      * @deprecated 被 selectMachineRuntimeStats 替代，支持一次性查询所有运行时信息
      */
     @Deprecated
-    List<MachineRuntimeStatsDTO> selectMachineLatestEndTime(@Param("machineIds") List<String> machineIds,
+    List<MachineRuntimeStatsDTO> selectMachineLatestEndTime(@Param("machineIds") List<Long> machineIds,
                                                             @Param("statusList") List<String> statusList);
 
     /**
@@ -60,7 +60,7 @@ public interface TaskAssignmentMapper extends BaseMapper<TaskAssignment> {
      * @deprecated 被 selectMachineRuntimeStats 替代，支持一次性查询所有运行时信息
      */
     @Deprecated
-    List<MachineRuntimeStatsDTO> selectMachineMaxSequence(@Param("machineIds") List<String> machineIds);
+    List<MachineRuntimeStatsDTO> selectMachineMaxSequence(@Param("machineIds") List<Long> machineIds);
 
     /**
      * 批量查询多台机的运行时统计信息（合并查询）
@@ -73,7 +73,7 @@ public interface TaskAssignmentMapper extends BaseMapper<TaskAssignment> {
      * @param statusList 任务状态列表（SCHEDULED/RUNNING/PAUSED）
      * @return 每台机的运行时统计信息（machineId, latestEndTime, maxSequence）
      */
-    List<MachineRuntimeStatsDTO> selectMachineRuntimeStats(@Param("machineIds") List<String> machineIds,
+    List<MachineRuntimeStatsDTO> selectMachineRuntimeStats(@Param("machineIds") List<Long> machineIds,
                                                            @Param("statusList") List<String> statusList);
 
     /**
@@ -86,7 +86,7 @@ public interface TaskAssignmentMapper extends BaseMapper<TaskAssignment> {
      * @param taskIds 要检查的任务ID列表
      * @return 已存在的任务ID列表
      */
-    List<String> selectExistingTaskIds(@Param("taskIds") List<String> taskIds);
+    List<Long> selectExistingTaskIds(@Param("taskIds") List<Long> taskIds);
 
     /**
      * 分页查询派工记录（关联工序任务信息）

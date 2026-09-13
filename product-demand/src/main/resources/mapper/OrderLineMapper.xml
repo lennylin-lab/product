@@ -12,7 +12,7 @@
     </select>
 
     <!-- 批量删除子表 -->
-    <delete id="deleteProductionBatchByBatchIds" parameterType="java.lang.String">
+    <delete id="deleteProductionBatchByBatchIds" parameterType="java.lang.Long">
         delete from production_batch where order_line_id in
         <foreach item="orderLineId" collection="orderLineIds" open="(" separator="," close=")">
             #{orderLineId}

@@ -51,11 +51,11 @@ public class ProductRouteQueryService {
         if (routeByProduct.isEmpty()) {
             return Map.of();
         }
-        List<String> routeIds = routeByProduct.values().stream()
+        List<Long> routeIds = routeByProduct.values().stream()
                 .map(ProductRoute::getRouteId)
                 .distinct()
                 .toList();
-        Map<String, List<RouteOperation>> operationsByRoute = Db.lambdaQuery(RouteOperation.class)
+        Map<Long, List<RouteOperation>> operationsByRoute = Db.lambdaQuery(RouteOperation.class)
                 .in(RouteOperation::getRouteId, routeIds)
                 .list()
                 .stream()

@@ -55,7 +55,7 @@ class RouteRuleRegistryTest {
     void calculateDurationMinShouldUseInjectA2Model() {
         ProductMoldParam param = new ProductMoldParam();
         param.setProductId(1L);
-        param.setMoldId("M1");
+        param.setMoldId(101L);
         param.setCycleTimeSec(new BigDecimal("30"));
         param.setCavity(2);
         param.setYieldRate(BigDecimal.ONE);

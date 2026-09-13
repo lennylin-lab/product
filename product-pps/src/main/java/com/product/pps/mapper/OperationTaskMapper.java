@@ -35,7 +35,7 @@ public interface OperationTaskMapper extends BaseMapper<OperationTask> {
      * @param toStatus   目标状态
      * @return 实际更新的行数
      */
-    int batchMarkScheduled(@Param("taskIds") List<String> taskIds,
+    int batchMarkScheduled(@Param("taskIds") List<Long> taskIds,
                            @Param("fromStatus") String fromStatus,
                            @Param("toStatus") String toStatus);
 }

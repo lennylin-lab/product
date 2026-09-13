@@ -23,7 +23,7 @@ public interface CustomerOrderMapper extends BaseMapper<CustomerOrder> {
      * @param orderId 订单主键
      * @return 订单明细集合
      */
-    List<OrderLine> selectOrderLineList(String orderId);
+    List<OrderLine> selectOrderLineList(Long orderId);
 
     /**
      * 批量删除订单明细
@@ -39,7 +39,7 @@ public interface CustomerOrderMapper extends BaseMapper<CustomerOrder> {
      * @param orderId 主键
      * @return 结果
      */
-    int deleteOrderLineByOrderId(String orderId);
+    int deleteOrderLineByOrderId(Long orderId);
 
     /**
      * 批量新增订单明细

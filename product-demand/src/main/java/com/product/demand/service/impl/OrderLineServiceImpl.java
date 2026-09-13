@@ -1,14 +1,14 @@
 package com.product.demand.service.impl;
 
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.baomidou.mybatisplus.extension.toolkit.Db;
-import com.product.common.annotation.BizIdPrefix;
 import com.product.common.constant.StatusConstants;
 import com.product.common.exception.ServiceException;
 import com.product.common.utils.StringUtils;
-import com.product.common.utils.uuid.IdUtils;
 import com.product.demand.mapper.OrderLineMapper;
 import com.product.demand.service.IOrderLineService;
 import com.product.domain.entity.CustomerOrder;
@@ -35,7 +35,7 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
      * @return 订单明细
      */
     @Override
-    public OrderLine selectOrderLineByOrderLineId(String orderLineId) {
+    public OrderLine selectOrderLineByOrderLineId(Long orderLineId) {
         OrderLine orderLine = getById(orderLineId);
         if (orderLine == null) {
             return null;
@@ -76,21 +76,14 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
      */
     @Override
     public boolean insertOrderLine(OrderLine orderLine) {
-        if (StringUtils.isEmpty(orderLine.getOrderId())) {
-            orderLine.setOrderId(buildBizId(orderLine));
+        if (orderLine.getOrderId() == null) {
+            orderLine.setOrderId(IdWorker.getId());
         }
         if (StringUtils.isEmpty(orderLine.getStatus())) {
             orderLine.setStatus(StatusConstants.NEW_ORDER_LINE);
         }
         boolean saved = save(orderLine);
         return saved;
-    }
-
-    private String buildBizId(Object entity) {
-        BizIdPrefix annotation = entity.getClass().getAnnotation(BizIdPrefix.class);
-        String prefix = annotation != null ? annotation.value() : null;
-        String suffix = IdUtils.simpleUUID();
-        return StringUtils.isNotEmpty(prefix) ? prefix + suffix : suffix;
     }
 
     /**
@@ -105,8 +98,8 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
             return 0;
         }
         orderLines.forEach(orderLine -> {
-            if (StringUtils.isEmpty(orderLine.getOrderId())) {
-                orderLine.setOrderId(buildBizId(orderLine));
+            if (orderLine.getOrderId() == null) {
+                orderLine.setOrderId(IdWorker.getId());
             }
         });
         boolean success = saveBatch(orderLines);
@@ -153,7 +146,7 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
     }
 
     @Override
-    public boolean release(String orderLineId) {
+    public boolean release(Long orderLineId) {
         OrderLine orderLine = lambdaQuery().select(OrderLine::getOrderId, OrderLine::getStatus)
                 .eq(OrderLine::getOrderLineId, orderLineId)
                 .last("limit 1").one();
@@ -179,7 +172,7 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
     }
 
     @Override
-    public boolean cancelRelease(String orderLineId) {
+    public boolean cancelRelease(Long orderLineId) {
         OrderLine orderLine = lambdaQuery().select(OrderLine::getOrderId, OrderLine::getStatus)
                 .eq(OrderLine::getOrderLineId, orderLineId)
                 .last("limit 1").one();

@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.product.common.annotation.BizIdPrefix;
 import com.product.common.annotation.Excel;
 import com.product.common.core.entity.BaseEntity;
 import lombok.Data;
@@ -21,18 +20,17 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 @TableName("task_resource_requirement")
-@BizIdPrefix("TR")
 public class TaskResourceRequirement extends BaseEntity {
     private static final long serialVersionUID = 1L;
 
     /** 需求ID */
-    @TableId(value = "requirement_id", type = IdType.ASSIGN_UUID)
-    private String requirementId;
+    @TableId(value = "requirement_id", type = IdType.ASSIGN_ID)
+    private Long requirementId;
 
     /** 任务ID */
     @Excel(name = "任务ID")
     @TableField("task_id")
-    private String taskId;
+    private Long taskId;
 
     /** 资源类型 */
     @Excel(name = "资源类型", readConverterExp = "MACHINE=注塑机,MOLD=模具,PERSON=人员,WORKSTATION=工位")
@@ -45,7 +43,7 @@ public class TaskResourceRequirement extends BaseEntity {
 
     /** 指定资源ID */
     @TableField("resource_id")
-    private String resourceId;
+    private Long resourceId;
 
     /** 能力编码 */
     @TableField("capability_code")
@@ -61,7 +59,7 @@ public class TaskResourceRequirement extends BaseEntity {
 
     /** 换型来源资源ID */
     @TableField("changeover_source_resource_id")
-    private String changeoverSourceResourceId;
+    private Long changeoverSourceResourceId;
 
     /** 换型时长（分钟） */
     @TableField("changeover_time_min")

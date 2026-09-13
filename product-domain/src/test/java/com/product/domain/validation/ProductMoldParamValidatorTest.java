@@ -37,7 +37,7 @@ class ProductMoldParamValidatorTest {
 
     private ProductMoldParam validParam() {
         ProductMoldParam param = new ProductMoldParam();
-        param.setMoldId("MOLD-1");
+        param.setMoldId(201L);
         param.setCycleTimeSec(new BigDecimal("30"));
         param.setCavity(2);
         param.setYieldRate(new BigDecimal("0.95"));

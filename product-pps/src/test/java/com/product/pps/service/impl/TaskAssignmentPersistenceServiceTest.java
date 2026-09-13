@@ -40,14 +40,14 @@ class TaskAssignmentPersistenceServiceTest {
 
         TaskAssignment assignment = buildAssignment();
         TaskSchedulingCalculator.ScheduleBatchResult batchResult =
-                new TaskSchedulingCalculator.ScheduleBatchResult(List.of(assignment), List.of("TASK-1"));
+                new TaskSchedulingCalculator.ScheduleBatchResult(List.of(assignment), List.of(510L));
 
         when(taskAssignmentMapper.selectExistingTaskIds(anyList())).thenReturn(List.of());
         when(taskAssignmentResourceMapper.batchInsert(anyList())).thenAnswer(invocation -> {
             List<?> rows = invocation.getArgument(0);
             return rows.size();
         });
-        when(operationTaskMapper.batchMarkScheduled(eq(List.of("TASK-1")),
+        when(operationTaskMapper.batchMarkScheduled(eq(List.of(510L)),
                 eq(StatusConstants.READY_OPERATION_TASK),
                 eq(StatusConstants.SCHEDULED_OPERATION_TASK))).thenReturn(1);
 
@@ -64,27 +64,27 @@ class TaskAssignmentPersistenceServiceTest {
 
     private TaskAssignment buildAssignment() {
         TaskAssignment assignment = new TaskAssignment();
-        assignment.setTaskId("TASK-1");
-        assignment.setMachineId("M-1");
+        assignment.setTaskId(510L);
+        assignment.setMachineId(103L);
         assignment.setPlannedStart(LocalDateTime.of(2026, 4, 28, 8, 0));
         assignment.setPlannedEnd(LocalDateTime.of(2026, 4, 28, 10, 0));
         assignment.setSequenceOnResource(3L);
 
         TaskResourceRequirement machineReq = new TaskResourceRequirement();
-        machineReq.setRequirementId("REQ-M");
+        machineReq.setRequirementId(701L);
         machineReq.setResourceType(ResourceConstants.RESOURCE_TYPE_MACHINE);
-        machineReq.setResourceId("M-1");
+        machineReq.setResourceId(103L);
 
         TaskResourceRequirement personReq = new TaskResourceRequirement();
-        personReq.setRequirementId("REQ-P");
+        personReq.setRequirementId(705L);
         personReq.setResourceType(ResourceConstants.RESOURCE_TYPE_PERSON);
-        personReq.setResourceId("P-1");
+        personReq.setResourceId(301L);
         personReq.setResourceRole("OPERATOR");
 
         TaskResourceRequirement workstationReq = new TaskResourceRequirement();
-        workstationReq.setRequirementId("REQ-W");
+        workstationReq.setRequirementId(702L);
         workstationReq.setResourceType(ResourceConstants.RESOURCE_TYPE_WORKSTATION);
-        workstationReq.setResourceId("W-1");
+        workstationReq.setResourceId(401L);
         workstationReq.setResourceRole("LINE");
 
         assignment.setResourceRequirementList(List.of(machineReq, personReq, workstationReq));
@@ -96,8 +96,8 @@ class TaskAssignmentPersistenceServiceTest {
         TestableTaskAssignmentPersistenceService service = new TestableTaskAssignmentPersistenceService();
 
         TaskAssignment assignment = new TaskAssignment();
-        assignment.setTaskId("TASK-SEQ");
-        assignment.setMachineId("M-1");
+        assignment.setTaskId(520L);
+        assignment.setMachineId(103L);
         assignment.setPlannedStart(LocalDateTime.of(2026, 4, 28, 8, 0));
         assignment.setPlannedEnd(LocalDateTime.of(2026, 4, 28, 10, 0));
         assignment.setSequenceOnResource(3L);
@@ -109,14 +109,14 @@ class TaskAssignmentPersistenceServiceTest {
         assignment.setResourceSequenceMap(resourceSequenceMap);
 
         TaskResourceRequirement moldReq = new TaskResourceRequirement();
-        moldReq.setRequirementId("REQ-MOLD");
+        moldReq.setRequirementId(703L);
         moldReq.setResourceType(ResourceConstants.RESOURCE_TYPE_MOLD);
-        moldReq.setResourceId("MOLD-1");
+        moldReq.setResourceId(201L);
 
         TaskResourceRequirement personReq = new TaskResourceRequirement();
-        personReq.setRequirementId("REQ-PERSON");
+        personReq.setRequirementId(704L);
         personReq.setResourceType(ResourceConstants.RESOURCE_TYPE_PERSON);
-        personReq.setResourceId("P-1");
+        personReq.setResourceId(301L);
 
         assignment.setResourceRequirementList(List.of(moldReq, personReq));
 

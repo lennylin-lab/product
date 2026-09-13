@@ -26,7 +26,7 @@ public class Product extends BaseEntity {
     private static final long serialVersionUID = 1L;
 
     /** 产品id */
-    @TableId(value = "product_id", type = IdType.AUTO )
+    @TableId(value = "product_id", type = IdType.ASSIGN_ID )
     private Long productId;
 
     /** 产品名称 */

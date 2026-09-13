@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.product.common.annotation.BizIdPrefix;
 import com.product.common.annotation.Excel;
 import com.product.common.core.entity.BaseEntity;
 import lombok.Data;
@@ -23,18 +22,17 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 @TableName("task_event")
-@BizIdPrefix("EV")
 public class TaskEvent  extends BaseEntity {
     private static final long serialVersionUID = 1L;
 
     /** 事件ID */
-    @TableId(value = "event_id", type = IdType.ASSIGN_UUID )
-    private String eventId;
+    @TableId(value = "event_id", type = IdType.ASSIGN_ID )
+    private Long eventId;
 
     /** 任务ID */
     @Excel(name = "任务ID")
     @TableField(value = "task_id")
-    private String taskId;
+    private Long taskId;
 
     /** 事件类型（START：任务开始 PAUSE：任务暂停 RESUME：任务恢复 FINISH：任务完工） */
     @Excel(name = "事件类型", readConverterExp = "START=任务开始,PAUSE=任务暂停,RESUME=任务恢复,FINISH=任务完工")
@@ -48,12 +46,12 @@ public class TaskEvent  extends BaseEntity {
 
     /** 操作人ID */
     @TableField(value = "operator_id")
-    private String operatorId;
+    private Long operatorId;
 
     /** 发生事件的资源（建议机台/工位） */
     @Excel(name = "发生事件的资源")
     @TableField(value = "resource_id")
-    private String resourceId;
+    private Long resourceId;
 
     /** 良品数量 */
     @TableField(value = "qty_good")

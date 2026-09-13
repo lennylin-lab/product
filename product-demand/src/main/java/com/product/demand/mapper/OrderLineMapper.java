@@ -21,7 +21,7 @@ public interface OrderLineMapper extends BaseMapper<OrderLine> {
      * @param orderLineId 订单明细主键
      * @return 生产批次（订单行拆批）集合
      */
-    List<ProductionBatch> selectProductionBatchList(String orderLineId);
+    List<ProductionBatch> selectProductionBatchList(Long orderLineId);
 
     /**
      * 批量删除生产批次（订单行拆批）

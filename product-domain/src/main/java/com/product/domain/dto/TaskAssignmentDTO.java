@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 @Data
 public class TaskAssignmentDTO {
     /** 指定排程的任务ID（可选，为空时排程所有 READY 任务） */
-    private String taskId;
+    private Long taskId;
     /** 排程开始时间基准（可选，为空时使用当前时间） */
     @DateTimeFormat(pattern = "yyyy-MM-dd[' 'HH:mm:ss']")
     private LocalDateTime assignmentStart;

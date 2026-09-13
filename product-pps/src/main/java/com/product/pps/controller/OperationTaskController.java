@@ -86,7 +86,7 @@ public class OperationTaskController extends BaseController {
      * 获取工序任务详细信息
      */
     @GetMapping(value = "/{taskId}")
-    public AjaxResult getInfo(@PathVariable("taskId") String taskId) {
+    public AjaxResult getInfo(@PathVariable("taskId") Long taskId) {
         return success(operationTaskService.selectOperationTaskByTaskId(taskId));
     }
 
@@ -118,7 +118,7 @@ public class OperationTaskController extends BaseController {
      * 取消任务
      */
     @PutMapping("/cancel/{taskId}")
-    public AjaxResult cancel(@PathVariable("taskId") String taskId) {
+    public AjaxResult cancel(@PathVariable("taskId") Long taskId) {
         return toAjax(operationTaskService.cancel(taskId));
     }
 
@@ -126,7 +126,7 @@ public class OperationTaskController extends BaseController {
      * 恢复任务
      */
     @PutMapping("/restore/{taskId}")
-    public AjaxResult restore(@PathVariable("taskId") String taskId) {
+    public AjaxResult restore(@PathVariable("taskId") Long taskId) {
         return toAjax(operationTaskService.restore(taskId));
     }
 
@@ -134,7 +134,7 @@ public class OperationTaskController extends BaseController {
      * 撤销排程
      */
     @PutMapping("/revokeSchedule/{taskId}")
-    public AjaxResult revokeSchedule(@PathVariable("taskId") String taskId) {
+    public AjaxResult revokeSchedule(@PathVariable("taskId") Long taskId) {
         return toAjax(operationTaskService.revokeSchedule(taskId));
     }
 }

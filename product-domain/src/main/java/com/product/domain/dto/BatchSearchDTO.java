@@ -13,7 +13,7 @@ import java.util.Map;
  */
 @Data
 public class BatchSearchDTO {
-    private String orderId;
+    private Long orderId;
     private Long orderLineId;
     // 批次状态
     private String status;

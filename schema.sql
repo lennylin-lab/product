@@ -175,7 +175,7 @@ CREATE TABLE gen_table_column (
 
 DROP TABLE IF EXISTS resource;
 CREATE TABLE resource (
-    resource_id   VARCHAR(64)  NOT NULL                COMMENT '资源ID',
+    resource_id   BIGINT(20)       NOT NULL                COMMENT '资源ID',
     resource_type VARCHAR(20)  DEFAULT ''              COMMENT '资源类型(MACHINE注塑机 MOLD模具 PERSON人员 WORKSTATION工位)',
     name          VARCHAR(100) DEFAULT ''              COMMENT '资源名称',
     status        VARCHAR(20)  DEFAULT 'AVAILABLE'     COMMENT '资源状态(AVAILABLE可用 BUSY忙碌 DOWN故障 MAINTENANCE保养中 OFFSHIFT离班)',
@@ -190,7 +190,7 @@ CREATE TABLE resource (
 
 DROP TABLE IF EXISTS machine;
 CREATE TABLE machine (
-    machine_id            VARCHAR(64) NOT NULL COMMENT '机台ID(与resource.resource_id对应)',
+    machine_id            BIGINT(20)      NOT NULL COMMENT '机台ID(与resource.resource_id对应)',
     tonnage               INT(11)     DEFAULT NULL COMMENT '锁模力',
     default_setup_time_min INT(11)    DEFAULT NULL COMMENT '默认换模基准时间(分钟)',
     PRIMARY KEY (machine_id)
@@ -198,7 +198,7 @@ CREATE TABLE machine (
 
 DROP TABLE IF EXISTS mold;
 CREATE TABLE mold (
-    mold_id       VARCHAR(64) NOT NULL COMMENT '模具ID(与resource.resource_id对应)',
+    mold_id       BIGINT(20)      NOT NULL COMMENT '模具ID(与resource.resource_id对应)',
     mold_code     VARCHAR(64) DEFAULT '' COMMENT '模具业务编号',
     cavity        INT(11)     DEFAULT NULL COMMENT '型腔数',
     mold_status   VARCHAR(20) DEFAULT 'AVAILABLE' COMMENT '模具状态(AVAILABLE可用 IN_USE使用中 REPAIR维修中 MAINTENANCE保养中)',
@@ -208,15 +208,15 @@ CREATE TABLE mold (
 
 DROP TABLE IF EXISTS machine_mold_compatibility;
 CREATE TABLE machine_mold_compatibility (
-    machine_id    VARCHAR(64) NOT NULL COMMENT '机台ID',
-    mold_id       VARCHAR(64) NOT NULL COMMENT '模具ID',
+    machine_id    BIGINT(20)      NOT NULL COMMENT '机台ID',
+    mold_id       BIGINT(20)      NOT NULL COMMENT '模具ID',
     is_compatible INT(1)      DEFAULT 1 COMMENT '是否兼容(1兼容 0不兼容)',
     PRIMARY KEY (machine_id, mold_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='机台模具兼容表';
 
 DROP TABLE IF EXISTS resource_capability;
 CREATE TABLE resource_capability (
-    resource_id     VARCHAR(64) NOT NULL COMMENT '资源ID',
+    resource_id     BIGINT(20)      NOT NULL COMMENT '资源ID',
     op_code         VARCHAR(32) NOT NULL COMMENT '工序编码(SETUP INJECT POST_QC_PUTAWAY)',
     product_id      BIGINT(20)  NOT NULL COMMENT '产品ID',
     is_enabled      INT(1)      DEFAULT 1 COMMENT '是否启用(1启用 0停用)',
@@ -262,7 +262,7 @@ CREATE TABLE product (
 DROP TABLE IF EXISTS product_mold_param;
 CREATE TABLE product_mold_param (
     product_id     BIGINT(20)      NOT NULL COMMENT '产品ID',
-    mold_id        VARCHAR(64)     NOT NULL COMMENT '模具ID',
+    mold_id        BIGINT(20)          NOT NULL COMMENT '模具ID',
     cycle_time_sec DECIMAL(10,2)   DEFAULT NULL COMMENT '单模周期(秒)',
     cavity         INT(11)         DEFAULT NULL COMMENT '可用型腔数',
     yield_rate     DECIMAL(5,4)    DEFAULT NULL COMMENT '良品率',
@@ -272,7 +272,7 @@ CREATE TABLE product_mold_param (
 
 DROP TABLE IF EXISTS product_route;
 CREATE TABLE product_route (
-    route_id    VARCHAR(64) NOT NULL COMMENT '路线ID',
+    route_id    BIGINT(20)      NOT NULL COMMENT '路线ID',
     product_id  BIGINT(20)  DEFAULT NULL COMMENT '产品ID',
     version     VARCHAR(20) DEFAULT '' COMMENT '版本',
     is_active   INT(1)      DEFAULT 0 COMMENT '是否启用(1启用 0停用)',
@@ -286,8 +286,8 @@ CREATE TABLE product_route (
 
 DROP TABLE IF EXISTS route_operation;
 CREATE TABLE route_operation (
-    op_id                 VARCHAR(64) NOT NULL COMMENT '工序ID',
-    route_id              VARCHAR(64) DEFAULT NULL COMMENT '路线ID',
+    op_id                 BIGINT(20)      NOT NULL COMMENT '工序ID',
+    route_id              BIGINT(20)      DEFAULT NULL COMMENT '路线ID',
     op_code               VARCHAR(32) DEFAULT '' COMMENT '工序编码(SETUP INJECT POST_QC_PUTAWAY)',
     sequence              INT(11)     DEFAULT NULL COMMENT '工序顺序',
     eligible_resource_rule VARCHAR(100) DEFAULT '' COMMENT '可用资源规则编码',
@@ -299,7 +299,7 @@ CREATE TABLE route_operation (
 
 DROP TABLE IF EXISTS changeover_rule;
 CREATE TABLE changeover_rule (
-    rule_id                 VARCHAR(64) NOT NULL COMMENT '规则ID',
+    rule_id                 BIGINT(20)      NOT NULL COMMENT '规则ID',
     same_mold_time_min      INT(11)     DEFAULT NULL COMMENT '同模具换型时间(分钟)',
     different_mold_time_min INT(11)     DEFAULT NULL COMMENT '不同模具换型时间(分钟)',
     material_change_extra_min INT(11)   DEFAULT NULL COMMENT '换料附加时间(分钟)',
@@ -315,7 +315,7 @@ CREATE TABLE changeover_rule (
 
 DROP TABLE IF EXISTS customer_order;
 CREATE TABLE customer_order (
-    order_id    VARCHAR(64) NOT NULL COMMENT '订单ID',
+    order_id    BIGINT(20)      NOT NULL COMMENT '订单ID',
     customer_id BIGINT(20)  DEFAULT NULL COMMENT '客户ID',
     due_date    DATETIME    DEFAULT NULL COMMENT '交期',
     priority    BIGINT(20)  DEFAULT NULL COMMENT '优先级',
@@ -330,7 +330,7 @@ CREATE TABLE customer_order (
 DROP TABLE IF EXISTS order_line;
 CREATE TABLE order_line (
     order_line_id BIGINT(20)  NOT NULL AUTO_INCREMENT COMMENT '订单行ID',
-    order_id      VARCHAR(64) DEFAULT NULL COMMENT '所属订单ID',
+    order_id      BIGINT(20)      DEFAULT NULL COMMENT '所属订单ID',
     product_id    BIGINT(20)  DEFAULT NULL COMMENT '产品ID',
     qty           BIGINT(20)  DEFAULT NULL COMMENT '需求数量',
     allocated_qty BIGINT(20)  DEFAULT 0    COMMENT '已拆批数量',
@@ -346,7 +346,7 @@ CREATE TABLE order_line (
 
 DROP TABLE IF EXISTS production_batch;
 CREATE TABLE production_batch (
-    batch_id     VARCHAR(64) NOT NULL COMMENT '批次ID',
+    batch_id     BIGINT(20)      NOT NULL COMMENT '批次ID',
     order_line_id BIGINT(20) DEFAULT NULL COMMENT '来源订单行ID',
     batch_qty    BIGINT(20)  DEFAULT NULL COMMENT '批次数量',
     status       VARCHAR(20) DEFAULT 'PLANNED' COMMENT '批次状态(PLANNED计划中 RELEASED已释放 IN_PROCESS执行中 DONE完成)',
@@ -361,8 +361,8 @@ CREATE TABLE production_batch (
 
 DROP TABLE IF EXISTS operation_task;
 CREATE TABLE operation_task (
-    task_id             VARCHAR(64) NOT NULL COMMENT '任务ID',
-    batch_id            VARCHAR(64) DEFAULT NULL COMMENT '所属批次ID',
+    task_id             BIGINT(20)      NOT NULL COMMENT '任务ID',
+    batch_id            BIGINT(20)      DEFAULT NULL COMMENT '所属批次ID',
     op_code             VARCHAR(32) DEFAULT NULL COMMENT '工序(SETUP换模调机 INJECT注塑成型 POST_QC_PUTAWAY后处理&检验&入库)',
     sequence            BIGINT(20)  DEFAULT NULL COMMENT '工序顺序',
     std_duration_min    BIGINT(20)  DEFAULT NULL COMMENT '预计时长(分钟)',
@@ -379,22 +379,22 @@ CREATE TABLE operation_task (
 
 DROP TABLE IF EXISTS task_dependency;
 CREATE TABLE task_dependency (
-    pre_task_id  VARCHAR(64) NOT NULL COMMENT '前置任务ID',
-    post_task_id VARCHAR(64) NOT NULL COMMENT '后置任务ID',
+    pre_task_id  BIGINT(20)      NOT NULL COMMENT '前置任务ID',
+    post_task_id BIGINT(20)      NOT NULL COMMENT '后置任务ID',
     PRIMARY KEY (pre_task_id, post_task_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='任务依赖表';
 
 DROP TABLE IF EXISTS task_resource_requirement;
 CREATE TABLE task_resource_requirement (
-    requirement_id              VARCHAR(64) NOT NULL COMMENT '需求ID',
-    task_id                     VARCHAR(64) DEFAULT NULL COMMENT '任务ID',
+    requirement_id              BIGINT(20)      NOT NULL COMMENT '需求ID',
+    task_id                     BIGINT(20)      DEFAULT NULL COMMENT '任务ID',
     resource_type               VARCHAR(20) DEFAULT NULL COMMENT '资源类型(MACHINE注塑机 MOLD模具 PERSON人员 WORKSTATION工位)',
     resource_role               VARCHAR(30) DEFAULT NULL COMMENT '资源角色',
-    resource_id                 VARCHAR(64) DEFAULT NULL COMMENT '指定资源ID(为空表示按能力匹配)',
+    resource_id                 BIGINT(20)      DEFAULT NULL COMMENT '指定资源ID(为空表示按能力匹配)',
     capability_code             VARCHAR(64) DEFAULT NULL COMMENT '能力编码',
     required_count              INT(11)     DEFAULT 1 COMMENT '需求数量',
     is_mandatory                INT(1)      DEFAULT 1 COMMENT '是否硬约束(1是 0否)',
-    changeover_source_resource_id VARCHAR(64) DEFAULT NULL COMMENT '换型来源资源ID',
+    changeover_source_resource_id BIGINT(20)      DEFAULT NULL COMMENT '换型来源资源ID',
     changeover_time_min         INT(11)     DEFAULT NULL COMMENT '换型时间(分钟)',
     create_time                 DATETIME    DEFAULT NULL COMMENT '创建时间',
     update_time                 DATETIME    DEFAULT NULL COMMENT '更新时间',
@@ -406,8 +406,8 @@ CREATE TABLE task_resource_requirement (
 DROP TABLE IF EXISTS task_assignment;
 CREATE TABLE task_assignment (
     assignment_id        BIGINT(20)  NOT NULL AUTO_INCREMENT COMMENT '分配ID',
-    task_id              VARCHAR(64) DEFAULT NULL COMMENT '任务ID',
-    machine_id           VARCHAR(64) DEFAULT NULL COMMENT '注塑机ID',
+    task_id              BIGINT(20)      DEFAULT NULL COMMENT '任务ID',
+    machine_id           BIGINT(20)      DEFAULT NULL COMMENT '注塑机ID',
     planned_start        DATETIME    DEFAULT NULL COMMENT '计划开始时间',
     planned_end          DATETIME    DEFAULT NULL COMMENT '计划结束时间',
     sequence_on_resource BIGINT(20)  DEFAULT NULL COMMENT '资源上的顺序号(用于甘特图)',
@@ -422,11 +422,11 @@ DROP TABLE IF EXISTS task_assignment_resource;
 CREATE TABLE task_assignment_resource (
     assignment_resource_id BIGINT(20)  NOT NULL AUTO_INCREMENT COMMENT '分配资源ID',
     assignment_id          BIGINT(20)  DEFAULT NULL COMMENT '分配ID',
-    task_id                VARCHAR(64) DEFAULT NULL COMMENT '任务ID',
-    resource_id            VARCHAR(64) DEFAULT NULL COMMENT '资源ID',
+    task_id                BIGINT(20)      DEFAULT NULL COMMENT '任务ID',
+    resource_id            BIGINT(20)      DEFAULT NULL COMMENT '资源ID',
     resource_type          VARCHAR(20) DEFAULT NULL COMMENT '资源类型(MACHINE MOLD PERSON WORKSTATION)',
     resource_role          VARCHAR(30) DEFAULT NULL COMMENT '资源角色',
-    requirement_id         VARCHAR(64) DEFAULT NULL COMMENT '对应资源需求ID',
+    requirement_id         BIGINT(20)      DEFAULT NULL COMMENT '对应资源需求ID',
     planned_start          DATETIME    DEFAULT NULL COMMENT '计划开始时间',
     planned_end            DATETIME    DEFAULT NULL COMMENT '计划结束时间',
     sequence_on_resource   BIGINT(20)  DEFAULT NULL COMMENT '资源上的顺序号',
@@ -440,7 +440,7 @@ CREATE TABLE task_assignment_resource (
 
 DROP TABLE IF EXISTS schedule_job;
 CREATE TABLE schedule_job (
-    job_id               VARCHAR(64) NOT NULL COMMENT '任务ID',
+    job_id               BIGINT(20)      NOT NULL COMMENT '任务ID',
     job_type             VARCHAR(30) DEFAULT NULL COMMENT '任务类型',
     status               VARCHAR(20) DEFAULT 'PENDING' COMMENT '状态(PENDING排队 RUNNING运行 SUCCESS成功 FAILED失败)',
     assignment_start     DATETIME    DEFAULT NULL COMMENT '排程基准时间',
@@ -464,12 +464,12 @@ CREATE TABLE schedule_job (
 
 DROP TABLE IF EXISTS task_event;
 CREATE TABLE task_event (
-    event_id    VARCHAR(64) NOT NULL COMMENT '事件ID',
-    task_id     VARCHAR(64) DEFAULT NULL COMMENT '任务ID',
+    event_id    BIGINT(20)      NOT NULL COMMENT '事件ID',
+    task_id     BIGINT(20)      DEFAULT NULL COMMENT '任务ID',
     event_type  VARCHAR(20) DEFAULT NULL COMMENT '事件类型(START任务开始 PAUSE任务暂停 RESUME任务恢复 FINISH任务完工)',
     event_time  DATETIME    DEFAULT NULL COMMENT '事件时间',
-    operator_id VARCHAR(64) DEFAULT NULL COMMENT '操作人ID',
-    resource_id VARCHAR(64) DEFAULT NULL COMMENT '发生事件的资源',
+    operator_id BIGINT(20)      DEFAULT NULL COMMENT '操作人ID',
+    resource_id BIGINT(20)      DEFAULT NULL COMMENT '发生事件的资源',
     qty_good    BIGINT(20)  DEFAULT NULL COMMENT '良品数量',
     qty_bad     BIGINT(20)  DEFAULT NULL COMMENT '不良数量',
     reason_code VARCHAR(50) DEFAULT NULL COMMENT '原因编码',
@@ -482,13 +482,13 @@ CREATE TABLE task_event (
 
 DROP TABLE IF EXISTS resource_status_event;
 CREATE TABLE resource_status_event (
-    event_id        VARCHAR(64) NOT NULL COMMENT '事件ID',
-    resource_id     VARCHAR(64) DEFAULT NULL COMMENT '资源ID',
+    event_id        BIGINT(20)      NOT NULL COMMENT '事件ID',
+    resource_id     BIGINT(20)      DEFAULT NULL COMMENT '资源ID',
     time            DATETIME    DEFAULT NULL COMMENT '发生时间',
     from_status     VARCHAR(20) DEFAULT NULL COMMENT '原状态',
     to_status       VARCHAR(20) DEFAULT NULL COMMENT '新状态',
     reason_code     VARCHAR(50) DEFAULT NULL COMMENT '原因编码',
-    related_task_id VARCHAR(64) DEFAULT NULL COMMENT '关联任务ID',
+    related_task_id BIGINT(20)      DEFAULT NULL COMMENT '关联任务ID',
     create_time     DATETIME    DEFAULT NULL COMMENT '创建时间',
     update_time     DATETIME    DEFAULT NULL COMMENT '更新时间',
     PRIMARY KEY (event_id),

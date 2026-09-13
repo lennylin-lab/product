@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
  */
 @Data
 public class MachineRuntimeStatsDTO {
-    private String machineId;
+    private Long machineId;
     private LocalDateTime latestEndTime;
     private Long maxSequence;
 }

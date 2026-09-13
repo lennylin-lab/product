@@ -35,5 +35,5 @@ public interface TaskAssignmentResourceMapper extends BaseMapper<TaskAssignmentR
     /**
      * 按任务 ID 批量删除派工资源占用明细。
      */
-    int deleteByTaskIds(@Param("taskIds") List<String> taskIds);
+    int deleteByTaskIds(@Param("taskIds") List<Long> taskIds);
 }

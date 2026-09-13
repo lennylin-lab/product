@@ -81,7 +81,7 @@ public class TaskEventController extends BaseController {
      * 获取任务事件日志（全流程追溯核心）详细信息
      */
     @GetMapping(value = "/{eventId}")
-    public AjaxResult getInfo(@PathVariable("eventId") String eventId) {
+    public AjaxResult getInfo(@PathVariable("eventId") Long eventId) {
         return success(taskEventService.selectTaskEventByEventId(eventId));
     }
 
@@ -113,7 +113,7 @@ public class TaskEventController extends BaseController {
      * 开工
      */
     @PostMapping("/start/{taskId}")
-    public AjaxResult start(@PathVariable String taskId) {
+    public AjaxResult start(@PathVariable Long taskId) {
         return toAjax(taskEventService.start(taskId));
     }
 
@@ -121,7 +121,7 @@ public class TaskEventController extends BaseController {
      * 暂停
      */
     @PostMapping("/pause/{taskId}")
-    public AjaxResult pause(@PathVariable String taskId, @RequestBody PauseTaskDTO pauseTaskDTO) {
+    public AjaxResult pause(@PathVariable Long taskId, @RequestBody PauseTaskDTO pauseTaskDTO) {
         return toAjax(taskEventService.pause(taskId));
     }
 
@@ -129,7 +129,7 @@ public class TaskEventController extends BaseController {
      * 恢复
      */
     @PostMapping("/resume/{taskId}")
-    public AjaxResult resume(@PathVariable String taskId) {
+    public AjaxResult resume(@PathVariable Long taskId) {
         return toAjax(taskEventService.resume(taskId));
     }
 
@@ -137,7 +137,7 @@ public class TaskEventController extends BaseController {
      * 完工
      */
     @PostMapping("/complete/{taskId}")
-    public AjaxResult complete(@PathVariable String taskId) {
+    public AjaxResult complete(@PathVariable Long taskId) {
         return toAjax(taskEventService.complete(taskId));
     }
 }

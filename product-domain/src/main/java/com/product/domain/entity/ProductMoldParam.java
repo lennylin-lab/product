@@ -26,7 +26,7 @@ public class ProductMoldParam {
     /** 模具ID */
     @Excel(name = "模具ID")
     @TableField("mold_id")
-    private String moldId;
+    private Long moldId;
 
     /** 节拍（秒/模次），即注塑机完成一个注塑循环所需的时间 */
     @TableField("cycle_time_sec")

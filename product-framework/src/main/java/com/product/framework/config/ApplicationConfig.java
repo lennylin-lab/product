@@ -1,5 +1,6 @@
 package com.product.framework.config;
 
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer;
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
 import com.product.common.utils.spring.SpringUtils;
@@ -60,6 +61,9 @@ public class ApplicationConfig
 
         return jacksonObjectMapperBuilder -> jacksonObjectMapperBuilder
                 .timeZone(TimeZone.getDefault())
+                // 雪花ID为19位Long，超出JS Number.MAX_SAFE_INTEGER，统一序列化为String避免前端精度丢失
+                .serializerByType(Long.class, ToStringSerializer.instance)
+                .serializerByType(Long.TYPE, ToStringSerializer.instance)
                 .serializerByType(LocalDateTime.class, new LocalDateTimeSerializer(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
                 .deserializerByType(LocalDateTime.class, new LocalDateTimeDeserializer(flexibleLdtFormatter));
     }

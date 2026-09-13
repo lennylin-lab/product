@@ -158,9 +158,9 @@ public class TaskSchedulingQueryService {
      * @param taskId 任务唯一标识
      * @return 任务实体，找不到或 taskId 为空时返回 null
      */
-    public OperationTask loadTaskByTaskId(String taskId) {
+    public OperationTask loadTaskByTaskId(Long taskId) {
         // 参数校验：taskId 为空时直接返回 null，避免无效查询
-        if (StringUtils.isEmpty(taskId)) {
+        if (taskId == null) {
             return null;
         }
         return Db.lambdaQuery(OperationTask.class)
@@ -181,31 +181,31 @@ public class TaskSchedulingQueryService {
         if (CollectionUtils.isEmpty(tasks)) {
             return new ArrayList<>();
         }
-        Map<String, OperationTask> distinctTaskMap = tasks.stream()
+        Map<Long, OperationTask> distinctTaskMap = tasks.stream()
                 .filter(Objects::nonNull)
-                .filter(item -> StringUtils.isNotEmpty(item.getTaskId()))
+                .filter(item -> item.getTaskId() != null)
                 .filter(item -> StatusConstants.READY_OPERATION_TASK.equals(item.getStatus()))
                 .collect(Collectors.toMap(OperationTask::getTaskId, item -> item, (left, right) -> left,
                         LinkedHashMap::new));
         if (distinctTaskMap.isEmpty()) {
             return new ArrayList<>();
         }
-        Set<String> assignedTaskIds = loadExistingAssignmentTaskIds(new ArrayList<>(distinctTaskMap.keySet()));
+        Set<Long> assignedTaskIds = loadExistingAssignmentTaskIds(new ArrayList<>(distinctTaskMap.keySet()));
         return normalizeReadyTasksForScheduling(new ArrayList<>(distinctTaskMap.values()), assignedTaskIds);
     }
 
     /**
      * 对外暴露纯内存标准化逻辑，便于单元测试。
      */
-    List<OperationTask> normalizeReadyTasksForScheduling(List<OperationTask> tasks, Set<String> assignedTaskIds) {
+    List<OperationTask> normalizeReadyTasksForScheduling(List<OperationTask> tasks, Set<Long> assignedTaskIds) {
         if (CollectionUtils.isEmpty(tasks)) {
             return new ArrayList<>();
         }
-        Set<String> existingTaskIds = assignedTaskIds == null ? Collections.emptySet() : assignedTaskIds;
+        Set<Long> existingTaskIds = assignedTaskIds == null ? Collections.emptySet() : assignedTaskIds;
         // 過濾空，非READY,已存在派工記錄的任務
-        Map<String, OperationTask> distinctTaskMap = tasks.stream()
+        Map<Long, OperationTask> distinctTaskMap = tasks.stream()
                 .filter(Objects::nonNull)
-                .filter(item -> StringUtils.isNotEmpty(item.getTaskId()))
+                .filter(item -> item.getTaskId() != null)
                 .filter(item -> StatusConstants.READY_OPERATION_TASK.equals(item.getStatus()))
                 .filter(item -> !existingTaskIds.contains(item.getTaskId()))
                 .collect(Collectors.toMap(OperationTask::getTaskId, item -> item, (left, right) -> left,
@@ -217,9 +217,9 @@ public class TaskSchedulingQueryService {
         // 按任務開始時間、批次id、工序順序、任務id
         orderedTasks.sort(Comparator
                 .comparing(OperationTask::getEarliestStart, Comparator.nullsLast(LocalDateTime::compareTo))
-                .thenComparing(OperationTask::getBatchId, Comparator.nullsLast(String::compareTo))
+                .thenComparing(OperationTask::getBatchId, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(OperationTask::getSequence, Comparator.nullsLast(Long::compareTo))
-                .thenComparing(OperationTask::getTaskId, Comparator.nullsLast(String::compareTo)));
+                .thenComparing(OperationTask::getTaskId, Comparator.nullsLast(Comparator.naturalOrder())));
         return orderedTasks;
     }
 
@@ -234,15 +234,15 @@ public class TaskSchedulingQueryService {
         if (CollectionUtils.isEmpty(tasks)) {
             return;
         }
-        List<String> taskIds = tasks.stream()
+        List<Long> taskIds = tasks.stream()
                 .map(OperationTask::getTaskId)
-                .filter(StringUtils::isNotEmpty)
+                .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
         if (CollectionUtils.isEmpty(taskIds)) {
             return;
         }
-        Map<String, List<TaskResourceRequirement>> requirementMap = Db.lambdaQuery(TaskResourceRequirement.class)
+        Map<Long, List<TaskResourceRequirement>> requirementMap = Db.lambdaQuery(TaskResourceRequirement.class)
                 .in(TaskResourceRequirement::getTaskId, taskIds)
                 .list()
                 .stream()
@@ -256,20 +256,20 @@ public class TaskSchedulingQueryService {
         if (CollectionUtils.isEmpty(tasks)) {
             return;
         }
-        Set<String> batchIds = tasks.stream()
+        Set<Long> batchIds = tasks.stream()
                 .map(OperationTask::getBatchId)
-                .filter(StringUtils::isNotEmpty)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
         if (batchIds.isEmpty()) {
             return;
         }
-        Map<String, Long> batchToOrderLine = Db.lambdaQuery(ProductionBatch.class)
+        Map<Long, Long> batchToOrderLine = Db.lambdaQuery(ProductionBatch.class)
                 .select(ProductionBatch::getBatchId, ProductionBatch::getOrderLineId)
                 .in(ProductionBatch::getBatchId, batchIds)
                 .list()
                 .stream()
                 .filter(Objects::nonNull)
-                .filter(item -> StringUtils.isNotEmpty(item.getBatchId()) && item.getOrderLineId() != null)
+                .filter(item -> item.getBatchId() != null && item.getOrderLineId() != null)
                 .collect(Collectors.toMap(ProductionBatch::getBatchId, ProductionBatch::getOrderLineId, (left, right) -> left));
         if (batchToOrderLine.isEmpty()) {
             return;
@@ -283,7 +283,7 @@ public class TaskSchedulingQueryService {
                 .filter(item -> item.getOrderLineId() != null)
                 .collect(Collectors.toMap(OrderLine::getOrderLineId, item -> item, (left, right) -> left));
         tasks.forEach(task -> {
-            if (task == null || StringUtils.isEmpty(task.getBatchId())) {
+            if (task == null || task.getBatchId() == null) {
                 return;
             }
             Long orderLineId = batchToOrderLine.get(task.getBatchId());
@@ -300,7 +300,7 @@ public class TaskSchedulingQueryService {
                 .one();
     }
 
-    public Map<String, MachineLastAssignmentDTO> loadMachineLastAssignments(Collection<String> machineIds) {
+    public Map<Long, MachineLastAssignmentDTO> loadMachineLastAssignments(Collection<Long> machineIds) {
         if (CollectionUtils.isEmpty(machineIds)) {
             return Map.of();
         }
@@ -313,9 +313,9 @@ public class TaskSchedulingQueryService {
         if (CollectionUtils.isEmpty(assignments)) {
             return Map.of();
         }
-        Map<String, TaskAssignment> latestByMachine = new LinkedHashMap<>();
+        Map<Long, TaskAssignment> latestByMachine = new LinkedHashMap<>();
         for (TaskAssignment assignment : assignments) {
-            if (assignment == null || StringUtils.isEmpty(assignment.getMachineId())) {
+            if (assignment == null || assignment.getMachineId() == null) {
                 continue;
             }
             latestByMachine.putIfAbsent(assignment.getMachineId(), assignment);
@@ -323,23 +323,23 @@ public class TaskSchedulingQueryService {
         if (latestByMachine.isEmpty()) {
             return Map.of();
         }
-        Set<String> taskIds = latestByMachine.values().stream()
+        Set<Long> taskIds = latestByMachine.values().stream()
                 .map(TaskAssignment::getTaskId)
-                .filter(StringUtils::isNotEmpty)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<String, String> taskToMold = Db.lambdaQuery(TaskAssignmentResource.class)
+        Map<Long, Long> taskToMold = Db.lambdaQuery(TaskAssignmentResource.class)
                 .select(TaskAssignmentResource::getTaskId, TaskAssignmentResource::getResourceId)
                 .in(TaskAssignmentResource::getTaskId, taskIds)
                 .eq(TaskAssignmentResource::getResourceType, ResourceConstants.RESOURCE_TYPE_MOLD)
                 .list()
                 .stream()
                 .filter(Objects::nonNull)
-                .filter(item -> StringUtils.isNotEmpty(item.getTaskId()) && StringUtils.isNotEmpty(item.getResourceId()))
+                .filter(item -> item.getTaskId() != null && item.getResourceId() != null)
                 .collect(Collectors.toMap(TaskAssignmentResource::getTaskId, TaskAssignmentResource::getResourceId,
                         (left, right) -> left));
-        Map<String, Long> taskToProduct = loadProductIdByTaskIds(taskIds);
+        Map<Long, Long> taskToProduct = loadProductIdByTaskIds(taskIds);
         Map<Long, Product> productMap = loadProductsByIds(new HashSet<>(taskToProduct.values()));
-        Map<String, MachineLastAssignmentDTO> result = new HashMap<>();
+        Map<Long, MachineLastAssignmentDTO> result = new HashMap<>();
         latestByMachine.forEach((machineId, assignment) -> {
             MachineLastAssignmentDTO dto = new MachineLastAssignmentDTO();
             dto.setMachineId(machineId);
@@ -357,28 +357,28 @@ public class TaskSchedulingQueryService {
         return result;
     }
 
-    private Map<String, Long> loadProductIdByTaskIds(Collection<String> taskIds) {
+    private Map<Long, Long> loadProductIdByTaskIds(Collection<Long> taskIds) {
         if (CollectionUtils.isEmpty(taskIds)) {
             return Map.of();
         }
-        Map<String, String> taskToBatch = Db.lambdaQuery(OperationTask.class)
+        Map<Long, Long> taskToBatch = Db.lambdaQuery(OperationTask.class)
                 .select(OperationTask::getTaskId, OperationTask::getBatchId)
                 .in(OperationTask::getTaskId, taskIds)
                 .list()
                 .stream()
                 .filter(Objects::nonNull)
-                .filter(item -> StringUtils.isNotEmpty(item.getTaskId()) && StringUtils.isNotEmpty(item.getBatchId()))
+                .filter(item -> item.getTaskId() != null && item.getBatchId() != null)
                 .collect(Collectors.toMap(OperationTask::getTaskId, OperationTask::getBatchId, (left, right) -> left));
         if (taskToBatch.isEmpty()) {
             return Map.of();
         }
-        Map<String, Long> batchToOrderLine = Db.lambdaQuery(ProductionBatch.class)
+        Map<Long, Long> batchToOrderLine = Db.lambdaQuery(ProductionBatch.class)
                 .select(ProductionBatch::getBatchId, ProductionBatch::getOrderLineId)
                 .in(ProductionBatch::getBatchId, taskToBatch.values())
                 .list()
                 .stream()
                 .filter(Objects::nonNull)
-                .filter(item -> StringUtils.isNotEmpty(item.getBatchId()) && item.getOrderLineId() != null)
+                .filter(item -> item.getBatchId() != null && item.getOrderLineId() != null)
                 .collect(Collectors.toMap(ProductionBatch::getBatchId, ProductionBatch::getOrderLineId, (left, right) -> left));
         Set<Long> orderLineIds = new HashSet<>(batchToOrderLine.values());
         Map<Long, Long> orderLineToProduct = Db.lambdaQuery(OrderLine.class)
@@ -389,7 +389,7 @@ public class TaskSchedulingQueryService {
                 .filter(Objects::nonNull)
                 .filter(item -> item.getOrderLineId() != null && item.getProductId() != null)
                 .collect(Collectors.toMap(OrderLine::getOrderLineId, OrderLine::getProductId, (left, right) -> left));
-        Map<String, Long> result = new HashMap<>();
+        Map<Long, Long> result = new HashMap<>();
         taskToBatch.forEach((taskId, batchId) -> {
             Long orderLineId = batchToOrderLine.get(batchId);
             if (orderLineId == null) {
@@ -452,21 +452,21 @@ public class TaskSchedulingQueryService {
         if (CollectionUtils.isEmpty(machines)) {
             return;
         }
-        List<String> machineIds = machines.stream()
+        List<Long> machineIds = machines.stream()
                 .map(Resource::getResourceId)
-                .filter(StringUtils::isNotEmpty)
+                .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
         if (CollectionUtils.isEmpty(machineIds)) {
             return;
         }
-        Map<String, Machine> machineMap = Db.lambdaQuery(Machine.class)
+        Map<Long, Machine> machineMap = Db.lambdaQuery(Machine.class)
                 .in(Machine::getMachineId, machineIds)
                 .list()
                 .stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toMap(Machine::getMachineId, item -> item, (left, right) -> left));
-        Map<String, List<MachineMoldCompatibility>> compatibilityMap = Db.lambdaQuery(MachineMoldCompatibility.class)
+        Map<Long, List<MachineMoldCompatibility>> compatibilityMap = Db.lambdaQuery(MachineMoldCompatibility.class)
                 .in(MachineMoldCompatibility::getMachineId, machineIds)
                 .list()
                 .stream()
@@ -492,9 +492,9 @@ public class TaskSchedulingQueryService {
         if (CollectionUtils.isEmpty(resources)) {
             return;
         }
-        List<String> resourceIds = resources.stream()
+        List<Long> resourceIds = resources.stream()
                 .map(Resource::getResourceId)
-                .filter(StringUtils::isNotEmpty)
+                .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
         if (CollectionUtils.isEmpty(resourceIds)) {
@@ -510,11 +510,11 @@ public class TaskSchedulingQueryService {
         if (CollectionUtils.isEmpty(resources)) {
             return;
         }
-        Map<String, List<ResourceCapability>> capabilityMap = CollectionUtils.isEmpty(capabilities)
+        Map<Long, List<ResourceCapability>> capabilityMap = CollectionUtils.isEmpty(capabilities)
                 ? Collections.emptyMap()
                 : capabilities.stream()
                         .filter(Objects::nonNull)
-                        .filter(item -> StringUtils.isNotEmpty(item.getResourceId()))
+                        .filter(item -> item.getResourceId() != null)
                         .collect(Collectors.groupingBy(ResourceCapability::getResourceId));
         resources.forEach(resource -> {
             if (resource != null) {
@@ -562,7 +562,7 @@ public class TaskSchedulingQueryService {
                 .flatMap(Collection::stream)
                 .filter(Objects::nonNull)
                 .map(TaskResourceRequirement::getResourceType)
-                .filter(StringUtils::isNotEmpty)
+                .filter(Objects::nonNull)
                 .forEach(resourceTypes::add);
         if (resourceTypes.isEmpty()) {
             resourceTypes.add(ResourceConstants.RESOURCE_TYPE_MACHINE);
@@ -574,7 +574,7 @@ public class TaskSchedulingQueryService {
         Set<String> normalizedTypes = new LinkedHashSet<>();
         if (CollectionUtils.isNotEmpty(resourceTypes)) {
             resourceTypes.stream()
-                    .filter(StringUtils::isNotEmpty)
+                    .filter(Objects::nonNull)
                     .forEach(normalizedTypes::add);
         }
         if (normalizedTypes.isEmpty()) {
@@ -586,7 +586,7 @@ public class TaskSchedulingQueryService {
     /**
      * 加载后置任务到前置任务 ID 的依赖映射。
      */
-    public Map<String, List<String>> loadPostToPredecessorsMap(List<String> taskIds) {
+    public Map<Long, List<Long>> loadPostToPredecessorsMap(List<Long> taskIds) {
         if (CollectionUtils.isEmpty(taskIds)) {
             return Map.of();
         }
@@ -595,8 +595,8 @@ public class TaskSchedulingQueryService {
                 .list()
                 .stream()
                 .filter(Objects::nonNull)
-                .filter(item -> StringUtils.isNotEmpty(item.getPostTaskId())
-                        && StringUtils.isNotEmpty(item.getPreTaskId()))
+                .filter(item -> item.getPostTaskId() != null
+                        && item.getPreTaskId() != null)
                 .collect(Collectors.groupingBy(
                         TaskDependency::getPostTaskId,
                         Collectors.mapping(TaskDependency::getPreTaskId, Collectors.toList())));
@@ -605,7 +605,7 @@ public class TaskSchedulingQueryService {
     /**
      * 批量加载任务的 planned_end，用于依赖约束。
      */
-    public Map<String, LocalDateTime> loadPlannedEndByTaskIds(Collection<String> taskIds) {
+    public Map<Long, LocalDateTime> loadPlannedEndByTaskIds(Collection<Long> taskIds) {
         if (CollectionUtils.isEmpty(taskIds)) {
             return Map.of();
         }
@@ -615,7 +615,7 @@ public class TaskSchedulingQueryService {
                 .list()
                 .stream()
                 .filter(Objects::nonNull)
-                .filter(item -> StringUtils.isNotEmpty(item.getTaskId()) && item.getPlannedEnd() != null)
+                .filter(item -> item.getTaskId() != null && item.getPlannedEnd() != null)
                 .collect(Collectors.toMap(
                         TaskAssignment::getTaskId,
                         TaskAssignment::getPlannedEnd,
@@ -632,7 +632,7 @@ public class TaskSchedulingQueryService {
      * @param taskIds 待检查的任务 ID 列表
      * @return 已有派工记录的任务 ID 集合，不会返回 null
      */
-    private Set<String> loadExistingAssignmentTaskIds(List<String> taskIds) {
+    private Set<Long> loadExistingAssignmentTaskIds(List<Long> taskIds) {
         // 防御性处理：空列表直接返回空集合
         if (CollectionUtils.isEmpty(taskIds)) {
             return Collections.emptySet();
@@ -648,7 +648,7 @@ public class TaskSchedulingQueryService {
                 .list() // 返回 List<TaskAssignment>
                 .stream() // 转为 Stream<TaskAssignment>
                 .map(TaskAssignment::getTaskId) // 提取 taskId：Stream<String>
-                .filter(StringUtils::isNotEmpty) // 过滤空字符串
+                .filter(Objects::nonNull) // 过滤空字符串
                 .collect(Collectors.toCollection(HashSet::new)); // 收集为 HashSet（自动去重）
     }
 
@@ -673,15 +673,15 @@ public class TaskSchedulingQueryService {
      * @param tasks 待排程任务列表
      * @return 任务ID → 优先级上下文（找不到关联订单时交期和优先级为 null）
      */
-    public Map<String, TaskSchedulingPriorityDTO> loadTaskPriorityMap(List<OperationTask> tasks) {
+    public Map<Long, TaskSchedulingPriorityDTO> loadTaskPriorityMap(List<OperationTask> tasks) {
         if (CollectionUtils.isEmpty(tasks)) {
             return new HashMap<>();
         }
 
         // 步骤1：提取所有 batchId（任务 → 批次）
-        Set<String> batchIds = tasks.stream()
+        Set<Long> batchIds = tasks.stream()
                 .map(OperationTask::getBatchId) // 提取 batchId
-                .filter(StringUtils::isNotEmpty) // 过滤空值
+                .filter(Objects::nonNull) // 过滤空值
                 .collect(Collectors.toSet()); // 去重收集
         if (batchIds.isEmpty()) {
             return new HashMap<>();
@@ -697,9 +697,9 @@ public class TaskSchedulingQueryService {
         }
 
         // 构建映射：batchId → orderLineId
-        Map<String, Long> batchToOrderLine = batches.stream()
+        Map<Long, Long> batchToOrderLine = batches.stream()
                 .filter(Objects::nonNull)
-                .filter(item -> StringUtils.isNotEmpty(item.getBatchId()) && item.getOrderLineId() != null)
+                .filter(item -> item.getBatchId() != null && item.getOrderLineId() != null)
                 .collect(Collectors.toMap(ProductionBatch::getBatchId, ProductionBatch::getOrderLineId, (a, b) -> a));
 
         // 步骤3：批量查询订单行，获取订单行与订单的映射
@@ -709,27 +709,27 @@ public class TaskSchedulingQueryService {
                 .in(OrderLine::getOrderLineId, orderLineIds)
                 .list();
         // 构建映射：orderLineId → orderId
-        Map<Long, String> orderLineToOrderId = orderLines.stream()
+        Map<Long, Long> orderLineToOrderId = orderLines.stream()
                 .filter(Objects::nonNull)
-                .filter(item -> item.getOrderLineId() != null && StringUtils.isNotEmpty(item.getOrderId()))
+                .filter(item -> item.getOrderLineId() != null && item.getOrderId() != null)
                 .collect(Collectors.toMap(OrderLine::getOrderLineId, OrderLine::getOrderId, (a, b) -> a));
 
         // 步骤4：批量查询订单，获取订单详情（交期、优先级）
-        Set<String> orderIds = new HashSet<>(orderLineToOrderId.values());
+        Set<Long> orderIds = new HashSet<>(orderLineToOrderId.values());
         List<CustomerOrder> orders = Db.lambdaQuery(CustomerOrder.class)
                 .select(CustomerOrder::getOrderId, CustomerOrder::getDueDate, CustomerOrder::getPriority)
                 .in(CustomerOrder::getOrderId, orderIds)
                 .list();
         // 构建映射：orderId → CustomerOrder
-        Map<String, CustomerOrder> orderMap = orders.stream()
+        Map<Long, CustomerOrder> orderMap = orders.stream()
                 .filter(Objects::nonNull)
-                .filter(item -> StringUtils.isNotEmpty(item.getOrderId()))
+                .filter(item -> item.getOrderId() != null)
                 .collect(Collectors.toMap(CustomerOrder::getOrderId, item -> item, (a, b) -> a));
 
         // 步骤5：组装最终结果，遍历任务建立完整的优先级上下文
-        Map<String, TaskSchedulingPriorityDTO> priorityMap = new HashMap<>();
+        Map<Long, TaskSchedulingPriorityDTO> priorityMap = new HashMap<>();
         for (OperationTask task : tasks) {
-            if (task == null || StringUtils.isEmpty(task.getTaskId())) {
+            if (task == null || task.getTaskId() == null) {
                 continue;
             }
             TaskSchedulingPriorityDTO context = new TaskSchedulingPriorityDTO();
@@ -739,8 +739,8 @@ public class TaskSchedulingQueryService {
             // 链式查找：task.batchId → orderLineId → orderId → order
             Long orderLineId = task.getBatchId() == null ? null : batchToOrderLine.get(task.getBatchId());
             if (orderLineId != null) {
-                String orderId = orderLineToOrderId.get(orderLineId);
-                if (StringUtils.isNotEmpty(orderId)) {
+                Long orderId = orderLineToOrderId.get(orderLineId);
+                if (orderId != null) {
                     CustomerOrder order = orderMap.get(orderId);
                     if (order != null) {
                         context.setDueDate(order.getDueDate()); // 设置交期

@@ -24,43 +24,43 @@ class TaskSchedulingQueryServiceTest {
 
     @Test
     void normalizeReadyTasksForSchedulingShouldFilterAndSortTasksDeterministically() {
-        OperationTask laterTask = buildTask("T-LATE", "B2", 2L,
+        OperationTask laterTask = buildTask(519L, 602L, 2L,
                 LocalDateTime.of(2026, 4, 21, 10, 0), StatusConstants.READY_OPERATION_TASK);
-        OperationTask earliestTask = buildTask("T-EARLY", "B1", 2L,
+        OperationTask earliestTask = buildTask(524L, 601L, 2L,
                 LocalDateTime.of(2026, 4, 21, 8, 0), StatusConstants.READY_OPERATION_TASK);
-        OperationTask sameTimeLowerSequence = buildTask("T-SEQ-1", "B1", 1L,
+        OperationTask sameTimeLowerSequence = buildTask(511L, 601L, 1L,
                 LocalDateTime.of(2026, 4, 21, 8, 0), StatusConstants.READY_OPERATION_TASK);
-        OperationTask duplicateTask = buildTask("T-SEQ-1", "B9", 9L,
+        OperationTask duplicateTask = buildTask(511L, 609L, 9L,
                 LocalDateTime.of(2026, 4, 21, 12, 0), StatusConstants.READY_OPERATION_TASK);
-        OperationTask nonReadyTask = buildTask("T-NOT-READY", "B3", 1L,
+        OperationTask nonReadyTask = buildTask(525L, 603L, 1L,
                 LocalDateTime.of(2026, 4, 21, 7, 0), StatusConstants.SCHEDULED_OPERATION_TASK);
-        OperationTask emptyIdTask = buildTask("", "B4", 1L,
+        OperationTask emptyIdTask = buildTask(null, 604L, 1L,
                 LocalDateTime.of(2026, 4, 21, 9, 0), StatusConstants.READY_OPERATION_TASK);
 
         List<OperationTask> result = queryService.normalizeReadyTasksForScheduling(
                 List.of(laterTask, earliestTask, sameTimeLowerSequence, duplicateTask, nonReadyTask, emptyIdTask),
-                Set.of("T-LATE"));
+                Set.of(519L));
 
-        assertEquals(List.of("T-SEQ-1", "T-EARLY"),
+        assertEquals(List.of(511L, 524L),
                 result.stream().map(OperationTask::getTaskId).toList());
     }
 
     @Test
     void normalizeReadyTasksForSchedulingShouldReturnEmptyWhenInputInvalid() {
-        OperationTask assignedTask = buildTask("T-1", "B1", 1L,
+        OperationTask assignedTask = buildTask(503L, 601L, 1L,
                 LocalDateTime.of(2026, 4, 21, 8, 0), StatusConstants.READY_OPERATION_TASK);
-        OperationTask nullStartTask = buildTask("T-2", "B1", 2L, null, StatusConstants.READY_OPERATION_TASK);
+        OperationTask nullStartTask = buildTask(526L, 601L, 2L, null, StatusConstants.READY_OPERATION_TASK);
 
         List<OperationTask> result = queryService.normalizeReadyTasksForScheduling(
                 Arrays.asList(assignedTask, null, nullStartTask),
-                Set.of("T-1", "T-2"));
+                Set.of(503L, 526L));
 
         assertTrue(result.isEmpty());
     }
 
     @Test
     void resolveRequiredResourceTypesShouldIncludeMachineAndCollaborativeTypes() {
-        OperationTask task = buildTask("T-1", "B1", 1L,
+        OperationTask task = buildTask(503L, 601L, 1L,
                 LocalDateTime.of(2026, 4, 21, 8, 0), StatusConstants.READY_OPERATION_TASK);
         TaskResourceRequirement person = new TaskResourceRequirement();
         person.setResourceType(ResourceConstants.RESOURCE_TYPE_PERSON);
@@ -77,15 +77,15 @@ class TaskSchedulingQueryServiceTest {
 
     @Test
     void buildSchedulingResourceContextShouldGroupResourcesAndAttachCapabilities() {
-        Resource machine = buildResource("M-1", ResourceConstants.RESOURCE_TYPE_MACHINE, 1L);
-        Resource person = buildResource("P-1", ResourceConstants.RESOURCE_TYPE_PERSON, 2L);
-        Resource workstation = buildResource("W-1", ResourceConstants.RESOURCE_TYPE_WORKSTATION, 3L);
+        Resource machine = buildResource(103L, ResourceConstants.RESOURCE_TYPE_MACHINE, 1L);
+        Resource person = buildResource(301L, ResourceConstants.RESOURCE_TYPE_PERSON, 2L);
+        Resource workstation = buildResource(401L, ResourceConstants.RESOURCE_TYPE_WORKSTATION, 3L);
 
         ResourceCapability machineCapability = new ResourceCapability();
-        machineCapability.setResourceId("M-1");
+        machineCapability.setResourceId(103L);
         machineCapability.setOpCode("INJECT");
         ResourceCapability personCapability = new ResourceCapability();
-        personCapability.setResourceId("P-1");
+        personCapability.setResourceId(301L);
         personCapability.setOpCode("SETUP");
 
         queryService.attachResourceCapabilities(List.of(machine, person, workstation),
@@ -111,8 +111,8 @@ class TaskSchedulingQueryServiceTest {
         assertEquals(3, context.getCalendarMap().size());
     }
 
-    private OperationTask buildTask(String taskId,
-                                    String batchId,
+    private OperationTask buildTask(Long taskId,
+                                    Long batchId,
                                     Long sequence,
                                     LocalDateTime earliestStart,
                                     String status) {
@@ -125,7 +125,7 @@ class TaskSchedulingQueryServiceTest {
         return task;
     }
 
-    private Resource buildResource(String resourceId, String resourceType, Long calendarId) {
+    private Resource buildResource(Long resourceId, String resourceType, Long calendarId) {
         Resource resource = new Resource();
         resource.setResourceId(resourceId);
         resource.setResourceType(resourceType);

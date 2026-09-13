@@ -22,7 +22,7 @@ public interface IProductionBatchService extends IService<ProductionBatch> {
      * @param batchId 生产批次（订单行拆批）主键
      * @return 生产批次（订单行拆批）
      */
-    ProductionBatch selectProductionBatchByBatchId(String batchId);
+    ProductionBatch selectProductionBatchByBatchId(Long batchId);
 
     /**
      * 查询生产批次（订单行拆批）列表
@@ -71,7 +71,7 @@ public interface IProductionBatchService extends IService<ProductionBatch> {
      * @param batchIds 主键集合
      * @return 是否成功
      */
-    boolean deleteProductionBatchByBatchIds(String[] batchIds);
+    boolean deleteProductionBatchByBatchIds(Long[] batchIds);
 
     /**
      * 删除生产批次（订单行拆批）信息
@@ -79,9 +79,9 @@ public interface IProductionBatchService extends IService<ProductionBatch> {
      * @param batchId 主键
      * @return 是否成功
      */
-    boolean deleteProductionBatchByBatchId(String batchId);
+    boolean deleteProductionBatchByBatchId(Long batchId);
 
-    boolean release(String batchId);
+    boolean release(Long batchId);
 
-    boolean cancelRelease(String batchId);
+    boolean cancelRelease(Long batchId);
 }

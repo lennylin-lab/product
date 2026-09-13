@@ -20,7 +20,7 @@ public class ChangeoverCalculator {
             return 0;
         }
         int baseMin;
-        if (StringUtils.isNotEmpty(previous.moldId) && StringUtils.equals(previous.moldId, current.moldId)) {
+        if (previous.moldId != null && Objects.equals(previous.moldId, current.moldId)) {
             baseMin = safeMin(rule.getSameMoldTimeMin());
         } else {
             baseMin = safeMin(rule.getDifferentMoldTimeMin());
@@ -60,17 +60,17 @@ public class ChangeoverCalculator {
      * 机台派工快照（换型比较用）。
      */
     public static final class MachineAssignmentSnapshot {
-        private final String moldId;
+        private final Long moldId;
         private final Long productId;
         private final String materialCode;
         private final String colorCode;
-        private final String sourceTaskId;
+        private final Long sourceTaskId;
 
-        public MachineAssignmentSnapshot(String moldId,
+        public MachineAssignmentSnapshot(Long moldId,
                                          Long productId,
                                          String materialCode,
                                          String colorCode,
-                                         String sourceTaskId) {
+                                         Long sourceTaskId) {
             this.moldId = moldId;
             this.productId = productId;
             this.materialCode = materialCode;
@@ -78,7 +78,7 @@ public class ChangeoverCalculator {
             this.sourceTaskId = sourceTaskId;
         }
 
-        public String getMoldId() {
+        public Long getMoldId() {
             return moldId;
         }
 
@@ -94,7 +94,7 @@ public class ChangeoverCalculator {
             return colorCode;
         }
 
-        public String getSourceTaskId() {
+        public Long getSourceTaskId() {
             return sourceTaskId;
         }
     }

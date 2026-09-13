@@ -1,14 +1,14 @@
 package com.product.execute.service.impl;
 
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.baomidou.mybatisplus.extension.toolkit.Db;
-import com.product.common.annotation.BizIdPrefix;
 import com.product.common.constant.StatusConstants;
 import com.product.common.constant.TaskEventConstants;
 import com.product.common.utils.StringUtils;
-import com.product.common.utils.uuid.IdUtils;
 import com.product.core.status.StatusEntityType;
 import com.product.core.status.StatusRefreshContext;
 import com.product.core.status.StatusRefreshService;
@@ -44,7 +44,7 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
      * @return 任务事件日志（全流程追溯核心）
      */
     @Override
-    public TaskEvent selectTaskEventByEventId(String eventId) {
+    public TaskEvent selectTaskEventByEventId(Long eventId) {
         return getById(eventId);
     }
 
@@ -79,8 +79,8 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
      */
     @Override
     public boolean insertTaskEvent(TaskEvent taskEvent) {
-        if (StringUtils.isEmpty(taskEvent.getEventId())) {
-            taskEvent.setEventId(buildBizId(taskEvent));
+        if (taskEvent.getEventId() == null) {
+            taskEvent.setEventId(IdWorker.getId());
         }
         boolean saved = save(taskEvent);
         return saved;
@@ -98,8 +98,8 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
             return 0;
         }
         taskEvents.forEach(item -> {
-            if (StringUtils.isEmpty(item.getEventId())) {
-                item.setEventId(buildBizId(item));
+            if (item.getEventId() == null) {
+                item.setEventId(IdWorker.getId());
             }
         });
         boolean success = saveBatch(taskEvents);
@@ -139,14 +139,14 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
      * @return 是否成功
      */
     @Override
-    public boolean deleteTaskEventByEventId(String eventId) {
+    public boolean deleteTaskEventByEventId(Long eventId) {
         return removeById(eventId);
     }
 
     /** 开始任务：将任务状态变更为 RUNNING，并记录开始事件 */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean start(String taskId) {
+    public boolean start(Long taskId) {
         return changeTaskStateAndRecordEvent(taskId,
                 StatusConstants.RUNNING_OPERATION_TASK,
                 TaskEventConstants.START_TASK_EVENT);
@@ -155,7 +155,7 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
     /** 暂停任务：将任务状态变更为 PAUSED，并记录暂停事件 */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean pause(String taskId) {
+    public boolean pause(Long taskId) {
         return changeTaskStateAndRecordEvent(taskId,
                 StatusConstants.PAUSED_OPERATION_TASK,
                 TaskEventConstants.PAUSE_TASK_EVENT);
@@ -164,7 +164,7 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
     /** 恢复任务：将任务状态变更为 RUNNING，并记录恢复事件 */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean resume(String taskId) {
+    public boolean resume(Long taskId) {
         return changeTaskStateAndRecordEvent(taskId,
                 StatusConstants.RUNNING_OPERATION_TASK,
                 TaskEventConstants.RESUME_TASK_EVENT);
@@ -173,7 +173,7 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
     /** 完成任务：将任务状态变更为 DONE，并记录完成事件，同时级联刷新生产批次状态 */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean complete(String taskId) {
+    public boolean complete(Long taskId) {
         return changeTaskStateAndRecordEvent(taskId,
                 StatusConstants.DONE_OPERATION_TASK,
                 TaskEventConstants.FINISH_TASK_EVENT);
@@ -184,8 +184,8 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
      *
      * @return 三个步骤全部成功返回 true，任一步骤失败返回 false
      */
-    boolean changeTaskStateAndRecordEvent(String taskId, String targetStatus, String eventType) {
-        if (StringUtils.isEmpty(taskId) || StringUtils.isEmpty(targetStatus) || StringUtils.isEmpty(eventType)) {
+    boolean changeTaskStateAndRecordEvent(Long taskId, String targetStatus, String eventType) {
+        if (taskId == null || StringUtils.isEmpty(targetStatus) || StringUtils.isEmpty(eventType)) {
             return false;
         }
         boolean updated = updateTaskStatus(taskId, targetStatus);
@@ -205,7 +205,7 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
     }
 
     /** 更新工序任务状态 */
-    protected boolean updateTaskStatus(String taskId, String targetStatus) {
+    protected boolean updateTaskStatus(Long taskId, String targetStatus) {
         return Db.lambdaUpdate(OperationTask.class)
                 .set(OperationTask::getStatus, targetStatus)
                 .eq(OperationTask::getTaskId, taskId)
@@ -213,7 +213,7 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
     }
 
     /** 根据任务ID查询其派工记录中的机台资源ID，用于事件日志关联 */
-    protected String loadMachineIdByTaskId(String taskId) {
+    protected Long loadMachineIdByTaskId(Long taskId) {
         TaskAssignment assignment = Db.lambdaQuery(TaskAssignment.class)
                 .select(TaskAssignment::getMachineId)
                 .eq(TaskAssignment::getTaskId, taskId)
@@ -223,9 +223,9 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
     }
 
     /** 刷新关联的生产批次状态：通过任务找到所属批次，触发级联状态刷新（批次→订单行→客户订单） */
-    protected boolean refreshRelatedBusinessStatus(String taskId) {
-        String batchId = loadBatchIdByTaskId(taskId);
-        if (StringUtils.isEmpty(batchId)) {
+    protected boolean refreshRelatedBusinessStatus(Long taskId) {
+        Long batchId = loadBatchIdByTaskId(taskId);
+        if (batchId == null) {
             return true;
         }
         triggerStatusRefresh(batchId);
@@ -233,7 +233,7 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
     }
 
     /** 根据任务ID查询其所属的生产批次ID */
-    protected String loadBatchIdByTaskId(String taskId) {
+    protected Long loadBatchIdByTaskId(Long taskId) {
         OperationTask task = Db.lambdaQuery(OperationTask.class)
                 .select(OperationTask::getBatchId)
                 .eq(OperationTask::getTaskId, taskId)
@@ -243,7 +243,7 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
     }
 
     /** 触发状态刷新链路：生产批次 → 订单行 → 客户订单 */
-    protected void triggerStatusRefresh(String batchId) {
+    protected void triggerStatusRefresh(Long batchId) {
         statusRefreshService.refresh(StatusRefreshContext.of(StatusEntityType.PRODUCTION_BATCH, batchId));
     }
 
@@ -261,12 +261,5 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
         wrapper.eq(taskEvent.getResourceId() != null, TaskEvent::getResourceId, taskEvent.getResourceId());
         wrapper.eq(taskEvent.getRemark() != null, TaskEvent::getRemark, taskEvent.getRemark());
         return wrapper;
-    }
-
-    private String buildBizId(Object entity) {
-        BizIdPrefix annotation = entity.getClass().getAnnotation(BizIdPrefix.class);
-        String prefix = annotation != null ? annotation.value() : null;
-        String suffix = IdUtils.simpleUUID();
-        return StringUtils.isNotEmpty(prefix) ? prefix + suffix : suffix;
     }
 }

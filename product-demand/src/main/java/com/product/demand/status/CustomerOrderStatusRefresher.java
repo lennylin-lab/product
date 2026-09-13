@@ -40,18 +40,18 @@ public class CustomerOrderStatusRefresher implements StatusRefresher {
         if (context == null) {
             return;
         }
-        List<String> orderIds = resolveOrderIds(context);
-        for (String orderId : orderIds) {
+        List<Long> orderIds = resolveOrderIds(context);
+        for (Long orderId : orderIds) {
             refreshCustomerOrder(orderId);
         }
     }
 
     /** 从刷新上下文中解析需要刷新的订单ID：支持直接指定订单、通过订单行反查、通过生产批次逐级反查 */
-    private List<String> resolveOrderIds(StatusRefreshContext context) {
+    private List<Long> resolveOrderIds(StatusRefreshContext context) {
         if (context.getEntityType() == StatusEntityType.CUSTOMER_ORDER) {
             return context.getIds().stream()
                     .filter(Objects::nonNull)
-                    .map(String::valueOf)
+                    .map(id -> (Long) id)
                     .distinct()
                     .collect(Collectors.toList());
         }
@@ -65,7 +65,7 @@ public class CustomerOrderStatusRefresher implements StatusRefresher {
         } else if (context.getEntityType() == StatusEntityType.PRODUCTION_BATCH) {
             orderLineIds = Db.lambdaQuery(ProductionBatch.class)
                     .select(ProductionBatch::getOrderLineId)
-                    .in(ProductionBatch::getBatchId, context.getIds().stream().filter(Objects::nonNull).map(String::valueOf).collect(Collectors.toList()))
+                    .in(ProductionBatch::getBatchId, context.getIds().stream().filter(Objects::nonNull).map(id -> (Long) id).collect(Collectors.toList()))
                     .list()
                     .stream()
                     .map(ProductionBatch::getOrderLineId)
@@ -90,7 +90,7 @@ public class CustomerOrderStatusRefresher implements StatusRefresher {
     }
 
     /** 刷新单个客户订单状态：汇总其下所有订单行状态，仅在目标状态与当前不同时才写入 */
-    private void refreshCustomerOrder(String orderId) {
+    private void refreshCustomerOrder(Long orderId) {
         CustomerOrder customerOrder = Db.lambdaQuery(CustomerOrder.class)
                 .select(CustomerOrder::getOrderId, CustomerOrder::getStatus)
                 .eq(CustomerOrder::getOrderId, orderId)

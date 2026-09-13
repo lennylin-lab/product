@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.product.common.annotation.BizIdPrefix;
 import com.product.common.annotation.Excel;
 import com.product.common.core.entity.BaseEntity;
 import lombok.Data;
@@ -23,7 +22,6 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
-@BizIdPrefix("OR")
 @TableName("customer_order")
 public class CustomerOrder extends BaseEntity {
     private static final long serialVersionUID = 1L;
@@ -31,7 +29,7 @@ public class CustomerOrder extends BaseEntity {
     /** 订单ID（主键） */
     @Excel(name = "订单ID", readConverterExp = "主键")
     @TableId(value = "order_id", type =  IdType.ASSIGN_ID )
-    private String orderId;
+    private Long orderId;
 
     /** 客户ID */
     @Excel(name = "客户ID")

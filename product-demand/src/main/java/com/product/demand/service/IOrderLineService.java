@@ -20,7 +20,7 @@ public interface IOrderLineService extends IService<OrderLine> {
      * @param orderLineId 订单明细主键
      * @return 订单明细
      */
-    OrderLine selectOrderLineByOrderLineId(String orderLineId);
+    OrderLine selectOrderLineByOrderLineId(Long orderLineId);
 
     /**
      * 查询订单明细列表
@@ -79,7 +79,7 @@ public interface IOrderLineService extends IService<OrderLine> {
      */
     boolean deleteOrderLineByOrderLineId(Long orderLineId);
 
-    boolean release(String orderLineId);
+    boolean release(Long orderLineId);
 
-    boolean cancelRelease(String orderLineId);
+    boolean cancelRelease(Long orderLineId);
 }

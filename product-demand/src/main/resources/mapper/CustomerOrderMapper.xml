@@ -50,7 +50,7 @@
     </select>
 
     <!-- 批量删除子表（按订单ID） -->
-    <delete id="deleteOrderLineByOrderIds" parameterType="java.lang.String">
+    <delete id="deleteOrderLineByOrderIds" parameterType="java.lang.Long">
         delete from order_line where order_id in
         <foreach item="orderId" collection="array" open="(" separator="," close=")">
             #{orderId}
@@ -58,7 +58,7 @@
     </delete>
 
     <!-- 根据主表主键删除子表 -->
-    <delete id="deleteOrderLineByOrderId" parameterType="java.lang.String">
+    <delete id="deleteOrderLineByOrderId" parameterType="java.lang.Long">
         delete from order_line where order_id = #{orderId}
     </delete>
 

@@ -19,7 +19,7 @@ public interface ICalendarService extends IService<Calendar> {
      * @param calendarId 班次/日历主键
      * @return 班次/日历
      */
-    Calendar selectCalendarByCalendarId(String calendarId);
+    Calendar selectCalendarByCalendarId(Long calendarId);
 
     /**
      * 查询班次/日历列表
@@ -76,5 +76,5 @@ public interface ICalendarService extends IService<Calendar> {
      * @param calendarId 主键
      * @return 是否成功
      */
-    boolean deleteCalendarByCalendarId(String calendarId);
+    boolean deleteCalendarByCalendarId(Long calendarId);
 }

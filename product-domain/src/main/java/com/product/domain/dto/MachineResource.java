@@ -10,7 +10,7 @@ import lombok.Data;
  */
 @Data
 public class MachineResource {
-    private String machineId;
+    private Long machineId;
     private String orgUnit;
     private String name;
     private Integer tonnage;

@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.product.common.annotation.BizIdPrefix;
 import com.product.common.annotation.Excel;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -23,13 +22,12 @@ import java.util.List;
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 @TableName("resource")
-@BizIdPrefix("RS")
 public class Resource  extends BaseEntity {
     private static final long serialVersionUID = 1L;
 
     /** 资源ID（主键） */
-    @TableId(value = "resource_id", type = IdType.ASSIGN_UUID )
-    private String resourceId;
+    @TableId(value = "resource_id", type = IdType.ASSIGN_ID )
+    private Long resourceId;
 
     /** 资源类型（MACHINE：注塑机 MOLD：模具 PERSON：人员 WORKSTATION：工位） */
     @Excel(name = "资源类型", readConverterExp = "MACHINE=注塑机,MOLD=模具,PERSON=人员,WORKSTATION=工位")

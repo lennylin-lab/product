@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.product.common.annotation.BizIdPrefix;
 import com.product.common.annotation.Excel;
 import com.product.common.core.entity.BaseEntity;
 import lombok.Data;
@@ -24,19 +23,18 @@ import java.util.List;
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 @TableName("operation_task")
-@BizIdPrefix("TK")
 public class OperationTask  extends BaseEntity {
     private static final long serialVersionUID = 1L;
 
     /** 任务ID（主键） */
     @Excel(name = "任务ID", readConverterExp = "任务ID（主键）")
-    @TableId(value = "task_id", type = IdType.ASSIGN_UUID )
-    private String taskId;
+    @TableId(value = "task_id", type = IdType.ASSIGN_ID )
+    private Long taskId;
 
     /** 所属批次ID（外键） */
     @Excel(name = "所属批次ID", readConverterExp = "所属批次ID（外键）")
     @TableField(value = "batch_id")
-    private String batchId;
+    private Long batchId;
 
     /** 工序（SETUP：换模调机 INJECT：注塑成型 POST_QC_PUTAWAY：后处理&检验&入库） */
     @Excel(name = "工序", readConverterExp = "SETUP=换模调机,INJECT=注塑成型,POST_QC_PUTAWAY=后处理&检验&入库")
@@ -81,7 +79,7 @@ public class OperationTask  extends BaseEntity {
 
     /** 本次换型参考的前序任务ID */
     @TableField(exist = false)
-    private String changeoverSourceTaskId;
+    private Long changeoverSourceTaskId;
 
     /** 本次任务推导出的换型时长（分钟） */
     @TableField(exist = false)

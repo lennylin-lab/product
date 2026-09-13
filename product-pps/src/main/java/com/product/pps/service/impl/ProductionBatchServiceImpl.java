@@ -40,7 +40,7 @@ public class ProductionBatchServiceImpl extends ServiceImpl<ProductionBatchMappe
      * @return 生产批次（订单行拆批）
      */
     @Override
-    public ProductionBatch selectProductionBatchByBatchId(String batchId) {
+    public ProductionBatch selectProductionBatchByBatchId(Long batchId) {
         return getById(batchId);
     }
 
@@ -155,11 +155,11 @@ public class ProductionBatchServiceImpl extends ServiceImpl<ProductionBatchMappe
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean deleteProductionBatchByBatchIds(String[] batchIds) {
+    public boolean deleteProductionBatchByBatchIds(Long[] batchIds) {
         if (batchIds == null || batchIds.length == 0) {
             return false;
         }
-        for (String batchId : batchIds) {
+        for (Long batchId : batchIds) {
             deleteOneWithRelease(batchId);
         }
         return true;
@@ -173,12 +173,12 @@ public class ProductionBatchServiceImpl extends ServiceImpl<ProductionBatchMappe
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean deleteProductionBatchByBatchId(String batchId) {
+    public boolean deleteProductionBatchByBatchId(Long batchId) {
         return deleteOneWithRelease(batchId);
     }
 
     @Override
-    public boolean release(String batchId) {
+    public boolean release(Long batchId) {
         ProductionBatch productionBatch = lambdaQuery()
                 .select(ProductionBatch::getOrderLineId, ProductionBatch::getStatus)
                 .eq(ProductionBatch::getBatchId, batchId)
@@ -203,7 +203,7 @@ public class ProductionBatchServiceImpl extends ServiceImpl<ProductionBatchMappe
     }
 
     @Override
-    public boolean cancelRelease(String batchId) {
+    public boolean cancelRelease(Long batchId) {
         ProductionBatch productionBatch = lambdaQuery()
                 .select(ProductionBatch::getStatus)
                 .eq(ProductionBatch::getBatchId, batchId)
@@ -220,7 +220,7 @@ public class ProductionBatchServiceImpl extends ServiceImpl<ProductionBatchMappe
                 .update();
     }
 
-    private boolean deleteOneWithRelease(String batchId) {
+    private boolean deleteOneWithRelease(Long batchId) {
         if (batchId == null) {
             return false;
         }

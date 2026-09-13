@@ -13,6 +13,6 @@ import lombok.EqualsAndHashCode;
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class TaskAssignmentVO extends TaskAssignment {
-    private String batchId;
+    private Long batchId;
     private String opCode;
 }

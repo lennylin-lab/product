@@ -21,7 +21,7 @@ public interface IOperationTaskService extends IService<OperationTask> {
      * @param taskId 工序任务主键
      * @return 工序任务
      */
-    OperationTask selectOperationTaskByTaskId(String taskId);
+    OperationTask selectOperationTaskByTaskId(Long taskId);
 
     /**
      * 查询工序任务列表
@@ -78,17 +78,17 @@ public interface IOperationTaskService extends IService<OperationTask> {
      * @param taskId 主键
      * @return 是否成功
      */
-    boolean deleteOperationTaskByTaskId(String taskId);
+    boolean deleteOperationTaskByTaskId(Long taskId);
 
-    AjaxResult generateTask(List<String> batchIds);
+    AjaxResult generateTask(List<Long> batchIds);
 
-    AjaxResult retryGenerateTask(String batchId);
+    AjaxResult retryGenerateTask(Long batchId);
 
-    boolean cancel(String taskId);
+    boolean cancel(Long taskId);
 
-    boolean restore(String taskId);
+    boolean restore(Long taskId);
 
-    boolean revokeSchedule(String taskId);
+    boolean revokeSchedule(Long taskId);
 
     Page<OperationTask> selectReadyAndScheduledPage(Page<OperationTask> page, OperationTask operationTask);
 }

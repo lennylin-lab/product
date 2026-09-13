@@ -83,7 +83,7 @@ public class ScheduleJobTimeoutService {
     }
 
     private int markPendingJobsTimeout(LocalDateTime now, LocalDateTime timeoutCutoff) {
-        List<String> jobIds = Db.lambdaQuery(ScheduleJob.class)
+        List<Long> jobIds = Db.lambdaQuery(ScheduleJob.class)
                 .eq(ScheduleJob::getStatus, StatusConstants.PENDING_SCHEDULE_JOB)
                 .lt(ScheduleJob::getCreateTime, timeoutCutoff)
                 .list()
@@ -98,7 +98,7 @@ public class ScheduleJobTimeoutService {
     }
 
     private int markRunningJobsTimeout(LocalDateTime now, LocalDateTime timeoutCutoff) {
-        List<String> jobIds = Db.lambdaQuery(ScheduleJob.class)
+        List<Long> jobIds = Db.lambdaQuery(ScheduleJob.class)
                 .eq(ScheduleJob::getStatus, StatusConstants.RUNNING_SCHEDULE_JOB)
                 .lt(ScheduleJob::getStartedAt, timeoutCutoff)
                 .list()
@@ -112,7 +112,7 @@ public class ScheduleJobTimeoutService {
                 "排程任务执行超时，已自动标记失败");
     }
 
-    private int markJobsFailed(List<String> jobIds, String expectedStatus, LocalDateTime now, String reason) {
+    private int markJobsFailed(List<Long> jobIds, String expectedStatus, LocalDateTime now, String reason) {
         if (CollectionUtils.isEmpty(jobIds)) {
             return 0;
         }
@@ -133,7 +133,7 @@ public class ScheduleJobTimeoutService {
                 .update();
         int updatedCount = updated ? (targetCount == null ? 0 : targetCount.intValue()) : 0;
         if (updatedCount > 0) {
-            log.warn("schedule job timeout sweep marked failed, expectedStatus={}, jobIds={}", expectedStatus, String.join(",", jobIds));
+            log.warn("schedule job timeout sweep marked failed, expectedStatus={}, jobIds={}", expectedStatus, jobIds.stream().map(String::valueOf).collect(Collectors.joining(",")));
         }
         return updatedCount;
     }

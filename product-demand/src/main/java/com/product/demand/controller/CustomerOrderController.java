@@ -75,7 +75,7 @@ public class CustomerOrderController extends BaseController {
      * 获取订单详细信息
      */
     @GetMapping(value = "/{orderId}")
-    public AjaxResult getInfo(@PathVariable("orderId") String orderId) {
+    public AjaxResult getInfo(@PathVariable("orderId") Long orderId) {
         return success(customerOrderService.selectCustomerOrderByOrderId(orderId));
     }
 
@@ -107,7 +107,7 @@ public class CustomerOrderController extends BaseController {
      * 确认订单
      */
     @PutMapping("/check/{orderId}")
-    public AjaxResult check(@PathVariable("orderId") String orderId) {
+    public AjaxResult check(@PathVariable("orderId") Long orderId) {
         return toAjax(customerOrderService.check(orderId));
     }
 
@@ -115,7 +115,7 @@ public class CustomerOrderController extends BaseController {
      * 取消确认订单
      */
     @PutMapping("/cancelCheck/{orderId}")
-    public AjaxResult cancelCheck(@PathVariable("orderId") String orderId) {
+    public AjaxResult cancelCheck(@PathVariable("orderId") Long orderId) {
         return toAjax(customerOrderService.cancelCheck(orderId));
     }
 }

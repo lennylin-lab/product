@@ -17,7 +17,7 @@ public class ResourceRuntimeStatsDTO {
     /** 资源类型（MACHINE / MOLD / PERSON / WORKSTATION） */
     private String resourceType;
     /** 资源ID */
-    private String resourceId;
+    private Long resourceId;
     /** 该资源上最近任务的计划结束时间 */
     private LocalDateTime latestEndTime;
     /** 该资源上的最大序号 */

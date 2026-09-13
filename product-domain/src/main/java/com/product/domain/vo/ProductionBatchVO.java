@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 @EqualsAndHashCode(callSuper = true)
 public class ProductionBatchVO extends ProductionBatch {
     @Excel(name = "订单id")
-    private String orderId;
+    private Long orderId;
 
     @Excel(name = "交期")
     private LocalDateTime dueDate;

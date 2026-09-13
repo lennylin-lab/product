@@ -35,7 +35,7 @@ public final class ProductMoldParamValidator {
         if (param == null) {
             throw new ServiceException("产品模具参数不能为空: productId=" + productId);
         }
-        if (StringUtils.isBlank(param.getMoldId())) {
+        if (param.getMoldId() == null) {
             throw new ServiceException("产品模具参数缺少 moldId: productId=" + productId);
         }
         BigDecimal cycleTimeSec = param.getCycleTimeSec();
@@ -51,7 +51,7 @@ public final class ProductMoldParamValidator {
         validateOptionalRate(param.getUtilization(), "利用率", productId, param.getMoldId());
     }
 
-    private static void validateOptionalRate(BigDecimal rate, String label, Long productId, String moldId) {
+    private static void validateOptionalRate(BigDecimal rate, String label, Long productId, Long moldId) {
         if (rate == null) {
             return;
         }

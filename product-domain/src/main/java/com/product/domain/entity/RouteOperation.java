@@ -18,13 +18,13 @@ import lombok.NoArgsConstructor;
 @TableName("route_operation")
 public class RouteOperation {
 
-    @TableId(value = "op_id", type = IdType.ASSIGN_UUID)
-    private String opId;
+    @TableId(value = "op_id", type = IdType.ASSIGN_ID)
+    private Long opId;
 
     /** 所属路线ID */
     @Excel(name = "路线ID")
     @TableField("route_id")
-    private String routeId;
+    private Long routeId;
 
     /** 工序编码：SETUP/INJECT/POST_QC_PUTAWAY */
     @Excel(name = "工序编码")

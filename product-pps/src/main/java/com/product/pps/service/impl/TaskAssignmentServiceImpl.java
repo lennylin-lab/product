@@ -152,7 +152,7 @@ public class TaskAssignmentServiceImpl extends ServiceImpl<TaskAssignmentMapper,
         if (assignmentIds == null || assignmentIds.length == 0) {
             return false;
         }
-        List<String> taskIds = lambdaQuery().select(TaskAssignment::getTaskId)
+        List<Long> taskIds = lambdaQuery().select(TaskAssignment::getTaskId)
                 .in(TaskAssignment::getAssignmentId, Arrays.asList(assignmentIds))
                 .list()
                 .stream()
@@ -189,7 +189,7 @@ public class TaskAssignmentServiceImpl extends ServiceImpl<TaskAssignmentMapper,
      */
     @Override
     public boolean schedule(TaskAssignmentDTO taskAssignmentDTO) {
-        if (taskAssignmentDTO == null || StringUtils.isEmpty(taskAssignmentDTO.getTaskId())) {
+        if (taskAssignmentDTO == null || taskAssignmentDTO.getTaskId() == null) {
             return scheduleAll(taskAssignmentDTO);
         }
 
@@ -249,12 +249,12 @@ public class TaskAssignmentServiceImpl extends ServiceImpl<TaskAssignmentMapper,
     }
 
     @Override
-    public String scheduleAllAsync(TaskAssignmentDTO taskAssignmentDTO) {
+    public Long scheduleAllAsync(TaskAssignmentDTO taskAssignmentDTO) {
         return scheduleJobService.scheduleAllAsync(taskAssignmentDTO);
     }
 
     @Override
-    public ScheduleJob selectScheduleJobByJobId(String jobId) {
+    public ScheduleJob selectScheduleJobByJobId(Long jobId) {
         return scheduleJobService.selectScheduleJobByJobId(jobId);
     }
 

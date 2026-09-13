@@ -17,5 +17,5 @@ import com.product.domain.entity.Machine;
 public interface MachineMapper extends BaseMapper<Machine> {
     Page<MachineResourceVO> selectMachinePage(Page<MachineResourceVO> page, MachineResource machineResource);
 
-    MachineResourceVO selectMachineByMachineId(String machineId);
+    MachineResourceVO selectMachineByMachineId(Long machineId);
 }

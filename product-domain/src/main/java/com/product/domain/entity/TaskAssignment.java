@@ -28,18 +28,18 @@ public class TaskAssignment  extends BaseEntity {
     private static final long serialVersionUID = 1L;
 
     /** 派工记录ID */
-    @TableId(value = "assignment_id", type = IdType.AUTO)
+    @TableId(value = "assignment_id", type = IdType.ASSIGN_ID)
     private Long assignmentId;
 
     /** 任务ID */
     @Excel(name = "任务ID")
     @TableField(value = "task_id")
-    private String taskId;
+    private Long taskId;
 
     /** 注塑机ID */
     @Excel(name = "注塑机ID")
     @TableField(value = "machine_id")
-    private String machineId;
+    private Long machineId;
 
     /** 计划开始时间 */
     @Excel(name = "计划开始时间")
@@ -59,21 +59,21 @@ public class TaskAssignment  extends BaseEntity {
     /** 模具ID */
     @Excel(name = "模具ID")
     @TableField(exist = false)
-    private String moldId;
+    private Long moldId;
 
     /** 人员ID */
     @Excel(name = "人员ID")
     @TableField(exist = false)
-    private String personId;
+    private Long personId;
 
     /** 工位ID */
     @Excel(name = "工位ID")
     @TableField(exist = false)
-    private String workstationId;
+    private Long workstationId;
 
     /** 换型来源任务ID */
     @TableField(exist = false)
-    private String changeoverSourceTaskId;
+    private Long changeoverSourceTaskId;
 
     /** 换型时间（分钟） */
     @TableField(exist = false)
@@ -94,7 +94,7 @@ public class TaskAssignment  extends BaseEntity {
     /** 批次ID（关联任务） */
     @Excel(name = "批次ID")
     @TableField(exist = false)
-    private String batchId;
+    private Long batchId;
 
     /** 工序（关联任务） */
     @Excel(name = "工序")

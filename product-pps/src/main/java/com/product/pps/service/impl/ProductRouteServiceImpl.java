@@ -36,8 +36,8 @@ public class ProductRouteServiceImpl implements IProductRouteService {
     private RouteOperationValidator routeOperationValidator;
 
     @Override
-    public ProductRoute getByRouteId(String routeId) {
-        if (StringUtils.isEmpty(routeId)) {
+    public ProductRoute getByRouteId(Long routeId) {
+        if (routeId == null) {
             return null;
         }
         ProductRoute route = Db.lambdaQuery(ProductRoute.class)
@@ -77,7 +77,7 @@ public class ProductRouteServiceImpl implements IProductRouteService {
                 .orderByDesc(ProductRoute::getIsActive)
                 .list();
         for (ProductRoute route : routes) {
-            if (route != null && StringUtils.isNotEmpty(route.getRouteId())) {
+            if (route != null && route.getRouteId() != null) {
                 route.setOperations(loadOperations(route.getRouteId()));
             }
         }
@@ -96,7 +96,7 @@ public class ProductRouteServiceImpl implements IProductRouteService {
                 .page(page);
         if (result != null && CollectionUtils.isNotEmpty(result.getRecords())) {
             for (ProductRoute route : result.getRecords()) {
-                if (route != null && StringUtils.isNotEmpty(route.getRouteId())) {
+                if (route != null && route.getRouteId() != null) {
                     route.setOperations(loadOperations(route.getRouteId()));
                 }
             }
@@ -106,7 +106,7 @@ public class ProductRouteServiceImpl implements IProductRouteService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public String createRoute(ProductRoute route) {
+    public Long createRoute(ProductRoute route) {
         if (route == null) {
             throw new ServiceException("工艺路线不能为空");
         }
@@ -126,7 +126,7 @@ public class ProductRouteServiceImpl implements IProductRouteService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateRoute(ProductRoute route) {
-        if (route == null || StringUtils.isEmpty(route.getRouteId())) {
+        if (route == null || route.getRouteId() == null) {
             throw new ServiceException("路线ID不能为空");
         }
         ProductRoute existing = Db.lambdaQuery(ProductRoute.class)
@@ -155,7 +155,7 @@ public class ProductRouteServiceImpl implements IProductRouteService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void activateRoute(String routeId) {
+    public void activateRoute(Long routeId) {
         ProductRoute route = requireRoute(routeId);
         if (Integer.valueOf(1).equals(route.getIsActive())) {
             return;
@@ -173,7 +173,7 @@ public class ProductRouteServiceImpl implements IProductRouteService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void deleteRoute(String routeId) {
+    public void deleteRoute(Long routeId) {
         ProductRoute route = requireRoute(routeId);
         if (Integer.valueOf(1).equals(route.getIsActive()) && hasBlockingTasksForProduct(route.getProductId())) {
             throw new ServiceException("启用中的工艺路线存在进行中的工序任务，无法删除");
@@ -199,7 +199,7 @@ public class ProductRouteServiceImpl implements IProductRouteService {
         }
         route.setProductId(productId);
         route.setIsActive(1);
-        if (StringUtils.isEmpty(route.getRouteId())) {
+        if (route.getRouteId() == null) {
             createRoute(route);
             return;
         }
@@ -214,7 +214,7 @@ public class ProductRouteServiceImpl implements IProductRouteService {
         activateRoute(route.getRouteId());
     }
 
-    private ProductRoute requireRoute(String routeId) {
+    private ProductRoute requireRoute(Long routeId) {
         ProductRoute route = Db.lambdaQuery(ProductRoute.class)
                 .eq(ProductRoute::getRouteId, routeId)
                 .one();
@@ -246,7 +246,7 @@ public class ProductRouteServiceImpl implements IProductRouteService {
         }
     }
 
-    private List<RouteOperation> loadOperations(String routeId) {
+    private List<RouteOperation> loadOperations(Long routeId) {
         return Db.lambdaQuery(RouteOperation.class)
                 .eq(RouteOperation::getRouteId, routeId)
                 .list()
@@ -257,7 +257,7 @@ public class ProductRouteServiceImpl implements IProductRouteService {
                 .toList();
     }
 
-    private void saveOperations(String routeId, List<RouteOperation> operations) {
+    private void saveOperations(Long routeId, List<RouteOperation> operations) {
         if (CollectionUtils.isEmpty(operations)) {
             return;
         }
@@ -270,14 +270,14 @@ public class ProductRouteServiceImpl implements IProductRouteService {
         }
     }
 
-    private void replaceOperations(String routeId, List<RouteOperation> operations) {
+    private void replaceOperations(Long routeId, List<RouteOperation> operations) {
         Db.lambdaUpdate(RouteOperation.class)
                 .eq(RouteOperation::getRouteId, routeId)
                 .remove();
         saveOperations(routeId, operations);
     }
 
-    private void deactivateOtherRoutes(Long productId, String activeRouteId) {
+    private void deactivateOtherRoutes(Long productId, Long activeRouteId) {
         Db.lambdaUpdate(ProductRoute.class)
                 .set(ProductRoute::getIsActive, 0)
                 .eq(ProductRoute::getProductId, productId)
@@ -297,13 +297,13 @@ public class ProductRouteServiceImpl implements IProductRouteService {
         if (CollectionUtils.isEmpty(orderLineIds)) {
             return false;
         }
-        List<String> batchIds = Db.lambdaQuery(ProductionBatch.class)
+        List<Long> batchIds = Db.lambdaQuery(ProductionBatch.class)
                 .select(ProductionBatch::getBatchId)
                 .in(ProductionBatch::getOrderLineId, orderLineIds)
                 .list()
                 .stream()
                 .map(ProductionBatch::getBatchId)
-                .filter(StringUtils::isNotEmpty)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
         if (CollectionUtils.isEmpty(batchIds)) {
             return false;

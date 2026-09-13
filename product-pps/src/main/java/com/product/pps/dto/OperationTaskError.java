@@ -11,6 +11,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class OperationTaskError {
-    private String batchId;
+    private Long batchId;
     private String errorMessage;
 }

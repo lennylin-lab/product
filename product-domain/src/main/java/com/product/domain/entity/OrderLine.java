@@ -25,13 +25,13 @@ public class OrderLine{
     private static final long serialVersionUID = 1L;
 
     /** 订单行ID（主键） */
-    @TableId(value = "order_line_id", type =  IdType.AUTO )
+    @TableId(value = "order_line_id", type =  IdType.ASSIGN_ID )
     private Long orderLineId;
 
     /** 所属订单ID（外键） */
     @Excel(name = "所属订单ID")
     @TableField(value = "order_id")
-    private String orderId;
+    private Long orderId;
 
     /** 产品/SKU */
     @Excel(name = "产品/SKU")

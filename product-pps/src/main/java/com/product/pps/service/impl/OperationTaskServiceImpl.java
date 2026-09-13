@@ -1,16 +1,16 @@
 package com.product.pps.service.impl;
 
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.baomidou.mybatisplus.extension.toolkit.Db;
-import com.product.common.annotation.BizIdPrefix;
 import com.product.common.constant.RouteOperationConstants;
 import com.product.common.constant.StatusConstants;
 import com.product.common.core.result.AjaxResult;
 import com.product.common.exception.ServiceException;
 import com.product.common.utils.StringUtils;
-import com.product.common.utils.uuid.IdUtils;
 import com.product.domain.entity.OperationTask;
 import com.product.domain.entity.OrderLine;
 import com.product.domain.entity.ProductMoldParam;
@@ -69,7 +69,7 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
      * @return 工序任务
      */
     @Override
-    public OperationTask selectOperationTaskByTaskId(String taskId) {
+    public OperationTask selectOperationTaskByTaskId(Long taskId) {
         return getById(taskId);
     }
 
@@ -104,8 +104,8 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
      */
     @Override
     public boolean insertOperationTask(OperationTask operationTask) {
-        if (StringUtils.isEmpty(operationTask.getTaskId())) {
-            operationTask.setTaskId(buildBizId(operationTask));
+        if (operationTask.getTaskId() == null) {
+            operationTask.setTaskId(IdWorker.getId());
         }
         if (StringUtils.isEmpty(operationTask.getStatus())) {
             operationTask.setStatus(StatusConstants.READY_OPERATION_TASK);
@@ -126,8 +126,8 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
             return 0;
         }
         operationTasks.forEach(item -> {
-            if (StringUtils.isEmpty(item.getTaskId())) {
-                item.setTaskId(buildBizId(item));
+            if (item.getTaskId() == null) {
+                item.setTaskId(IdWorker.getId());
             }
         });
         boolean success = saveBatch(operationTasks);
@@ -167,12 +167,12 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
      * @return 是否成功
      */
     @Override
-    public boolean deleteOperationTaskByTaskId(String taskId) {
+    public boolean deleteOperationTaskByTaskId(Long taskId) {
         return removeById(taskId);
     }
 
     @Override
-    public AjaxResult generateTask(List<String> batchIds) {
+    public AjaxResult generateTask(List<Long> batchIds) {
         if (batchIds == null || batchIds.isEmpty()) {
             return AjaxResult.success("批次不能为空");
         }
@@ -182,7 +182,7 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
                                 .in(ProductionBatch::getBatchId, batchIds)
                                 .list(),
                 threadPoolTaskExecutor);
-        CompletableFuture<List<String>> existingTaskBatchFuture = CompletableFuture.supplyAsync(() ->
+        CompletableFuture<List<Long>> existingTaskBatchFuture = CompletableFuture.supplyAsync(() ->
                         lambdaQuery()
                                 .select(OperationTask::getBatchId)
                                 .in(OperationTask::getBatchId, batchIds)
@@ -193,7 +193,7 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
                                 .collect(Collectors.toList()),
                 threadPoolTaskExecutor);
         List<ProductionBatch> productionBatches;
-        List<String> list;
+        List<Long> list;
         try {
             CompletableFuture.allOf(productionBatchFuture, existingTaskBatchFuture).join();
             productionBatches = productionBatchFuture.join();
@@ -209,7 +209,7 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
 
         List<TaskDependency> taskDependencies = new ArrayList<>();
         List<TaskResourceRequirement> resourceRequirements = new ArrayList<>();
-        Map<String, ProductionBatch> batchMap = productionBatches.stream()
+        Map<Long, ProductionBatch> batchMap = productionBatches.stream()
                 .collect(Collectors.toMap(ProductionBatch::getBatchId, item -> item, (a, b) -> a));
         Map<Long, OrderLine> orderLineMap = loadOrderLineMap(productionBatches);
         Map<Long, ProductMoldParam> productMoldParamMap = loadProductMoldParamMap(orderLineMap.values());
@@ -220,7 +220,7 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
                         .filter(Objects::nonNull)
                         .collect(Collectors.toSet()));
         // 开始循环添加任务
-        for (String batchId : batchIds) {
+        for (Long batchId : batchIds) {
             ProductionBatch item = batchMap.get(batchId);
             if (item == null) {
                 OperationTaskError error = new OperationTaskError();
@@ -289,7 +289,7 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public AjaxResult retryGenerateTask(String batchId) {
+    public AjaxResult retryGenerateTask(Long batchId) {
         List<OperationTask> tasks = lambdaQuery()
                 .select(OperationTask::getStatus, OperationTask::getTaskId)
                 .eq(OperationTask::getBatchId, batchId)
@@ -302,9 +302,9 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
             errors.add(new OperationTaskError(batchId, "仅允许READY或SCHEDULED状态的任务重新生成"));
             return AjaxResult.error("重新生成失败", errors);
         }
-        List<String> taskIds = tasks.stream()
+        List<Long> taskIds = tasks.stream()
                 .map(OperationTask::getTaskId)
-                .filter(StringUtils::isNotEmpty)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
         if (CollectionUtils.isNotEmpty(taskIds)) {
             taskAssignmentResourceMapper.deleteByTaskIds(taskIds);
@@ -365,14 +365,14 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
     }
 
     @Override
-    public boolean cancel(String taskId) {
+    public boolean cancel(Long taskId) {
         return lambdaUpdate().set(OperationTask::getStatus, StatusConstants.CANCELLED_OPERATION_TASK)
                 .eq(OperationTask::getTaskId, taskId)
                 .update();
     }
 
     @Override
-    public boolean restore(String taskId) {
+    public boolean restore(Long taskId) {
         return lambdaUpdate().set(OperationTask::getStatus, StatusConstants.READY_OPERATION_TASK)
                 .eq(OperationTask::getTaskId, taskId)
                 .update();
@@ -380,8 +380,8 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean revokeSchedule(String taskId) {
-        if (StringUtils.isNotEmpty(taskId)) {
+    public boolean revokeSchedule(Long taskId) {
+        if (taskId != null) {
             taskAssignmentResourceMapper.deleteByTaskIds(List.of(taskId));
         }
         // 删除派工记录
@@ -435,7 +435,7 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
                 continue;
             }
             OperationTask operationTask = new OperationTask();
-            operationTask.setTaskId(buildBizId(operationTask));
+            operationTask.setTaskId(IdWorker.getId());
             operationTask.setBatchId(batch.getBatchId());
             operationTask.setStatus(StatusConstants.READY_OPERATION_TASK);
             operationTask.setOpCode(routeOperation.getOpCode());
@@ -470,16 +470,6 @@ public class OperationTaskServiceImpl extends ServiceImpl<OperationTaskMapper, O
     private record BatchTaskGenerationResult(List<OperationTask> tasks,
                                              List<TaskDependency> dependencies,
                                              List<TaskResourceRequirement> resourceRequirements) {
-    }
-
-    /**
-     * 构建业务主键
-     */
-    private String buildBizId(Object entity) {
-        BizIdPrefix annotation = entity.getClass().getAnnotation(BizIdPrefix.class);
-        String prefix = annotation != null ? annotation.value() : null;
-        String suffix = IdUtils.simpleUUID();
-        return StringUtils.isNotEmpty(prefix) ? prefix + suffix : suffix;
     }
 
     private Map<Long, OrderLine> loadOrderLineMap(Collection<ProductionBatch> batches) {

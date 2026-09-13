@@ -10,7 +10,7 @@ import java.util.List;
  */
 public interface IProductRouteService {
 
-    ProductRoute getByRouteId(String routeId);
+    ProductRoute getByRouteId(Long routeId);
 
     ProductRoute getActiveByProductId(Long productId);
 
@@ -18,13 +18,13 @@ public interface IProductRouteService {
 
     Page<ProductRoute> selectProductRoutePage(Page<ProductRoute> page, ProductRoute query);
 
-    String createRoute(ProductRoute route);
+    Long createRoute(ProductRoute route);
 
     void updateRoute(ProductRoute route);
 
-    void activateRoute(String routeId);
+    void activateRoute(Long routeId);
 
-    void deleteRoute(String routeId);
+    void deleteRoute(Long routeId);
 
     void saveActiveRouteForProduct(Long productId, ProductRoute route);
 }

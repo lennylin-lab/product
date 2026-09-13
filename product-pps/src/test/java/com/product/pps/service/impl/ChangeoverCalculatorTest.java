@@ -12,8 +12,8 @@ class ChangeoverCalculatorTest {
     @Test
     void calculateChangeoverMinShouldUseSameMoldTimeWhenMoldUnchanged() {
         ChangeoverRule rule = buildRule(10, 60, 15, 20);
-        ChangeoverCalculator.MachineAssignmentSnapshot previous = snapshot("MOLD-1", 1L, "ABS", "RED", "T0");
-        ChangeoverCalculator.MachineAssignmentSnapshot current = snapshot("MOLD-1", 1L, "ABS", "RED", "T1");
+        ChangeoverCalculator.MachineAssignmentSnapshot previous = snapshot(201L, 1L, "ABS", "RED", 500L);
+        ChangeoverCalculator.MachineAssignmentSnapshot current = snapshot(201L, 1L, "ABS", "RED", 501L);
 
         assertEquals(10, calculator.calculateChangeoverMin(rule, previous, current));
     }
@@ -21,8 +21,8 @@ class ChangeoverCalculatorTest {
     @Test
     void calculateChangeoverMinShouldAddMaterialAndColorExtras() {
         ChangeoverRule rule = buildRule(10, 60, 15, 20);
-        ChangeoverCalculator.MachineAssignmentSnapshot previous = snapshot("MOLD-1", 1L, "ABS", "RED", "T0");
-        ChangeoverCalculator.MachineAssignmentSnapshot current = snapshot("MOLD-2", 2L, "PP", "BLUE", "T1");
+        ChangeoverCalculator.MachineAssignmentSnapshot previous = snapshot(201L, 1L, "ABS", "RED", 500L);
+        ChangeoverCalculator.MachineAssignmentSnapshot current = snapshot(202L, 2L, "PP", "BLUE", 501L);
 
         assertEquals(75, calculator.calculateChangeoverMin(rule, previous, current));
     }
@@ -30,8 +30,8 @@ class ChangeoverCalculatorTest {
     @Test
     void calculateChangeoverMinShouldAddOnlyColorExtraWhenMaterialSame() {
         ChangeoverRule rule = buildRule(10, 60, 15, 20);
-        ChangeoverCalculator.MachineAssignmentSnapshot previous = snapshot("MOLD-1", 1L, "ABS", "RED", "T0");
-        ChangeoverCalculator.MachineAssignmentSnapshot current = snapshot("MOLD-2", 1L, "ABS", "BLUE", "T1");
+        ChangeoverCalculator.MachineAssignmentSnapshot previous = snapshot(201L, 1L, "ABS", "RED", 500L);
+        ChangeoverCalculator.MachineAssignmentSnapshot current = snapshot(202L, 1L, "ABS", "BLUE", 501L);
 
         assertEquals(80, calculator.calculateChangeoverMin(rule, previous, current));
     }
@@ -45,11 +45,11 @@ class ChangeoverCalculatorTest {
         return rule;
     }
 
-    private ChangeoverCalculator.MachineAssignmentSnapshot snapshot(String moldId,
+    private ChangeoverCalculator.MachineAssignmentSnapshot snapshot(Long moldId,
                                                                     Long productId,
                                                                     String materialCode,
                                                                     String colorCode,
-                                                                    String taskId) {
+                                                                    Long taskId) {
         return new ChangeoverCalculator.MachineAssignmentSnapshot(
                 moldId, productId, materialCode, colorCode, taskId);
     }

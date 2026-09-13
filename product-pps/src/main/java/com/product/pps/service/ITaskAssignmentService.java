@@ -98,9 +98,9 @@ public interface ITaskAssignmentService extends IService<TaskAssignment> {
     ScheduleExecutionResult executeSchedulePlan(TaskAssignmentDTO taskAssignmentDTO,
                                                 java.util.function.Consumer<ScheduleProgressDTO> progressConsumer);
 
-    String scheduleAllAsync(TaskAssignmentDTO taskAssignmentDTO);
+    Long scheduleAllAsync(TaskAssignmentDTO taskAssignmentDTO);
 
-    ScheduleJob selectScheduleJobByJobId(String jobId);
+    ScheduleJob selectScheduleJobByJobId(Long jobId);
 
     Page<ScheduleJob> selectScheduleJobPage(Page<ScheduleJob> page, ScheduleJob scheduleJob);
 }

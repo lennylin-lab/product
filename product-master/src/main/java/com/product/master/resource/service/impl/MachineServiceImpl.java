@@ -1,14 +1,14 @@
 package com.product.master.resource.service.impl;
 
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.baomidou.mybatisplus.extension.toolkit.Db;
-import com.product.common.annotation.BizIdPrefix;
 import com.product.common.constant.ResourceConstants;
 import com.product.common.constant.StatusConstants;
 import com.product.common.utils.StringUtils;
-import com.product.common.utils.uuid.IdUtils;
 import com.product.domain.dto.MachineResource;
 import com.product.domain.entity.Calendar;
 import com.product.domain.entity.CalendarBreak;
@@ -54,7 +54,7 @@ public class MachineServiceImpl extends ServiceImpl<MachineMapper, Machine> impl
      * @return 注塑机扩展信息
      */
     @Override
-    public MachineResourceVO selectMachineByMachineId(String machineId) {
+    public MachineResourceVO selectMachineByMachineId(Long machineId) {
         MachineResourceVO machine = machineMapper.selectMachineByMachineId(machineId);
         fillEffectiveStatus(Collections.singletonList(machine));
         return machine;
@@ -99,7 +99,7 @@ public class MachineServiceImpl extends ServiceImpl<MachineMapper, Machine> impl
         // 需要插入资源表
         Resource resource = new Resource();
         BeanUtils.copyProperties(machineResource, resource);
-        resource.setResourceId(buildBizId(resource));
+        resource.setResourceId(IdWorker.getId());
         machine.setMachineId(resource.getResourceId());
         resource.setResourceType(ResourceConstants.RESOURCE_TYPE_MACHINE);
         resource.setStatus(StatusConstants.AVAILABLE_RESOURCE_STATUS);
@@ -120,8 +120,8 @@ public class MachineServiceImpl extends ServiceImpl<MachineMapper, Machine> impl
             return 0;
         }
         machines.forEach(item -> {
-            if (StringUtils.isEmpty(item.getMachineId())) {
-                item.setMachineId(buildBizId(item));
+            if (item.getMachineId() == null) {
+                item.setMachineId(IdWorker.getId());
             }
         });
         boolean success = saveBatch(machines);
@@ -173,14 +173,14 @@ public class MachineServiceImpl extends ServiceImpl<MachineMapper, Machine> impl
      * @return 是否成功
      */
     @Override
-    public boolean deleteMachineByMachineId(String machineId) {
+    public boolean deleteMachineByMachineId(Long machineId) {
         boolean removeMachine = removeById(machineId);
         boolean removeResource = Db.removeById(machineId, Resource.class);
         return removeMachine && removeResource;
     }
 
     @Override
-    public boolean down(String machineId) {
+    public boolean down(Long machineId) {
         return Db.lambdaUpdate(Resource.class)
                 .set(Resource::getStatus, StatusConstants.DOWN_RESOURCE_STATUS)
                 .eq(Resource::getResourceId, machineId)
@@ -188,7 +188,7 @@ public class MachineServiceImpl extends ServiceImpl<MachineMapper, Machine> impl
     }
 
     @Override
-    public boolean maintenance(String machineId) {
+    public boolean maintenance(Long machineId) {
         return Db.lambdaUpdate(Resource.class)
                 .set(Resource::getStatus, StatusConstants.MAINTENANCE_RESOURCE_STATUS)
                 .eq(Resource::getResourceId, machineId)
@@ -196,7 +196,7 @@ public class MachineServiceImpl extends ServiceImpl<MachineMapper, Machine> impl
     }
 
     @Override
-    public boolean restore(String machineId) {
+    public boolean restore(Long machineId) {
         return Db.lambdaUpdate(Resource.class)
                 .set(Resource::getStatus, StatusConstants.AVAILABLE_RESOURCE_STATUS)
                 .eq(Resource::getResourceId, machineId)
@@ -382,12 +382,5 @@ public class MachineServiceImpl extends ServiceImpl<MachineMapper, Machine> impl
             default:
                 return null;
         }
-    }
-
-    private String buildBizId(Object entity) {
-        BizIdPrefix annotation = entity.getClass().getAnnotation(BizIdPrefix.class);
-        String prefix = annotation != null ? annotation.value() : null;
-        String suffix = IdUtils.simpleUUID();
-        return StringUtils.isNotEmpty(prefix) ? prefix + suffix : suffix;
     }
 }

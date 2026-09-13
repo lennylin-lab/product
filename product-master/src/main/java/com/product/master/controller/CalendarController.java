@@ -80,7 +80,7 @@ public class CalendarController extends BaseController {
      * 获取班次/日历详细信息
      */
     @GetMapping(value = "/{calendarId}")
-    public AjaxResult getInfo(@PathVariable("calendarId") String calendarId) {
+    public AjaxResult getInfo(@PathVariable("calendarId") Long calendarId) {
         return success(calendarService.selectCalendarByCalendarId(calendarId));
     }
 

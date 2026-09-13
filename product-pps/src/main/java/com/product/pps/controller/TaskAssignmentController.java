@@ -138,12 +138,12 @@ public class TaskAssignmentController extends BaseController {
     @PostMapping("/scheduleAllAsync")
     public AjaxResult scheduleAllAsync(@RequestBody TaskAssignmentDTO taskAssignmentDTO) {
         // 异步接口只返回 jobId，实际排程在后台线程执行。
-        String jobId = taskAssignmentService.scheduleAllAsync(taskAssignmentDTO);
+        Long jobId = taskAssignmentService.scheduleAllAsync(taskAssignmentDTO);
         return AjaxResult.success("排程任务已提交", jobId);
     }
 
     @GetMapping("/scheduleJob/{jobId}")
-    public AjaxResult getScheduleJob(@PathVariable("jobId") String jobId) {
+    public AjaxResult getScheduleJob(@PathVariable("jobId") Long jobId) {
         // 供前端轮询异步排程任务状态（PENDING/RUNNING/SUCCESS/FAILED）。
         ScheduleJob scheduleJob = taskAssignmentService.selectScheduleJobByJobId(jobId);
         return AjaxResult.success(scheduleJob);

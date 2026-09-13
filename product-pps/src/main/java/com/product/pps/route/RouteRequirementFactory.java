@@ -10,7 +10,7 @@ public final class RouteRequirementFactory {
     private RouteRequirementFactory() {
     }
 
-    public static TaskResourceRequirement createRequirement(String taskId,
+    public static TaskResourceRequirement createRequirement(Long taskId,
                                                      String resourceType,
                                                      String resourceRole,
                                                      String capabilityCode) {

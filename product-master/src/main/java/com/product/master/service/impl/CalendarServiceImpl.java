@@ -31,7 +31,7 @@ public class CalendarServiceImpl extends ServiceImpl<CalendarMapper, Calendar> i
      * @return 班次/日历
      */
     @Override
-    public Calendar selectCalendarByCalendarId(String calendarId) {
+    public Calendar selectCalendarByCalendarId(Long calendarId) {
         return getById(calendarId);
     }
 
@@ -123,7 +123,7 @@ public class CalendarServiceImpl extends ServiceImpl<CalendarMapper, Calendar> i
      * @return 是否成功
      */
     @Override
-    public boolean deleteCalendarByCalendarId(String calendarId) {
+    public boolean deleteCalendarByCalendarId(Long calendarId) {
         return removeById(calendarId);
     }
 

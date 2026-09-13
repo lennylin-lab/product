@@ -12,9 +12,9 @@ import java.time.LocalDateTime;
 @Data
 public class TaskSchedulingPriorityDTO {
     /** 工序任务ID */
-    private String taskId;
+    private Long taskId;
     /** 关联的生产批次ID */
-    private String batchId;
+    private Long batchId;
     /** 订单交期（从 CustomerOrder 关联获取） */
     private LocalDateTime dueDate;
     /** 订单优先级（数值越大越紧急） */

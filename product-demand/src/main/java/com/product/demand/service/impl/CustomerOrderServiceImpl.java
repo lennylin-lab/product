@@ -1,13 +1,13 @@
 package com.product.demand.service.impl;
 
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.product.common.annotation.BizIdPrefix;
 import com.product.common.constant.StatusConstants;
 import com.product.common.exception.ServiceException;
 import com.product.common.utils.StringUtils;
-import com.product.common.utils.uuid.IdUtils;
 import com.product.demand.mapper.CustomerOrderMapper;
 import com.product.demand.service.ICustomerOrderService;
 import com.product.domain.entity.CustomerOrder;
@@ -45,7 +45,7 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
      * @return 订单
      */
     @Override
-    public CustomerOrder selectCustomerOrderByOrderId(String orderId) {
+    public CustomerOrder selectCustomerOrderByOrderId(Long orderId) {
         CustomerOrder customerOrder = getById(orderId);
         if (customerOrder == null) {
             return null;
@@ -86,8 +86,8 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
      */
     @Override
     public boolean insertCustomerOrder(CustomerOrder customerOrder) {
-        if (StringUtils.isEmpty(customerOrder.getOrderId())) {
-            customerOrder.setOrderId(buildBizId(customerOrder));
+        if (customerOrder.getOrderId() == null) {
+            customerOrder.setOrderId(IdWorker.getId());
         }
         if (StringUtils.isEmpty(customerOrder.getStatus())) {
             customerOrder.setStatus(StatusConstants.NEW_CUSTOMER_ORDER);
@@ -108,8 +108,8 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
             return 0;
         }
         customerOrders.forEach(order -> {
-            if (StringUtils.isEmpty(order.getOrderId())) {
-                order.setOrderId(buildBizId(order));
+            if (order.getOrderId() == null) {
+                order.setOrderId(IdWorker.getId());
             }
         });
         boolean success = saveBatch(customerOrders);
@@ -156,14 +156,14 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
      * @return 是否成功
      */
     @Override
-    public boolean deleteCustomerOrderByOrderId(String orderId) {
+    public boolean deleteCustomerOrderByOrderId(Long orderId) {
         baseMapper.deleteOrderLineByOrderId(orderId);
         return removeById(orderId);
     }
 
     /** 确认订单：将订单状态从 NEW 变更为 CONFIRMED，确认后可进入排程流程 */
     @Override
-    public boolean check(String orderId) {
+    public boolean check(Long orderId) {
         CustomerOrder customerOrder = requireCustomerOrder(orderId);
         validateOrderStatusTransition(customerOrder.getStatus(), StatusConstants.CONFIRMED_CUSTOMER_ORDER);
         return persistCustomerOrderStatus(orderId, StatusConstants.CONFIRMED_CUSTOMER_ORDER);
@@ -171,15 +171,15 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
 
     /** 反确认订单：将订单状态从 CONFIRMED 回退为 NEW */
     @Override
-    public boolean cancelCheck(String orderId) {
+    public boolean cancelCheck(Long orderId) {
         CustomerOrder customerOrder = requireCustomerOrder(orderId);
         validateOrderStatusTransition(customerOrder.getStatus(), StatusConstants.NEW_CUSTOMER_ORDER);
         return persistCustomerOrderStatus(orderId, StatusConstants.NEW_CUSTOMER_ORDER);
     }
 
     /** 获取订单实体，不存在时抛出异常 */
-    protected CustomerOrder requireCustomerOrder(String orderId) {
-        if (StringUtils.isEmpty(orderId)) {
+    protected CustomerOrder requireCustomerOrder(Long orderId) {
+        if (orderId == null) {
             throw new ServiceException("订单不存在");
         }
         CustomerOrder customerOrder = loadCustomerOrderForGuard(orderId);
@@ -190,7 +190,7 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
     }
 
     /** 轻量加载订单状态，用于状态校验（只查 orderId 和 status，避免加载完整实体） */
-    protected CustomerOrder loadCustomerOrderForGuard(String orderId) {
+    protected CustomerOrder loadCustomerOrderForGuard(Long orderId) {
         return lambdaQuery()
                 .select(CustomerOrder::getOrderId, CustomerOrder::getStatus)
                 .eq(CustomerOrder::getOrderId, orderId)
@@ -204,7 +204,7 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
     }
 
     /** 单独持久化订单状态变更（只更新 status 字段，避免整行更新） */
-    protected boolean persistCustomerOrderStatus(String orderId, String targetStatus) {
+    protected boolean persistCustomerOrderStatus(Long orderId, String targetStatus) {
         return lambdaUpdate()
                 .set(CustomerOrder::getStatus, targetStatus)
                 .eq(CustomerOrder::getOrderId, orderId)
@@ -250,13 +250,5 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
         wrapper.eq(customerOrder.getPriority() != null, CustomerOrder::getPriority, customerOrder.getPriority());
         wrapper.eq(customerOrder.getStatus() != null, CustomerOrder::getStatus, customerOrder.getStatus());
         return wrapper;
-    }
-
-    /** 根据实体类上的 @BizIdPrefix 注解生成业务ID：前缀 + UUID */
-    private String buildBizId(Object entity) {
-        BizIdPrefix annotation = entity.getClass().getAnnotation(BizIdPrefix.class);
-        String prefix = annotation != null ? annotation.value() : null;
-        String suffix = IdUtils.simpleUUID();
-        return StringUtils.isNotEmpty(prefix) ? prefix + suffix : suffix;
     }
 }

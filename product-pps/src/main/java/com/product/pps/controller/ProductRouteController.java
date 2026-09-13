@@ -47,13 +47,13 @@ public class ProductRouteController extends BaseController {
     }
 
     @GetMapping("/{routeId}")
-    public AjaxResult getInfo(@PathVariable String routeId) {
+    public AjaxResult getInfo(@PathVariable Long routeId) {
         return success(productRouteService.getByRouteId(routeId));
     }
 
     @PostMapping
     public AjaxResult add(@RequestBody ProductRoute productRoute) {
-        String routeId = productRouteService.createRoute(productRoute);
+        Long routeId = productRouteService.createRoute(productRoute);
         AjaxResult result = success("操作成功");
         result.put("routeId", routeId);
         return result;
@@ -66,13 +66,13 @@ public class ProductRouteController extends BaseController {
     }
 
     @PutMapping("/{routeId}/activate")
-    public AjaxResult activate(@PathVariable String routeId) {
+    public AjaxResult activate(@PathVariable Long routeId) {
         productRouteService.activateRoute(routeId);
         return success();
     }
 
     @DeleteMapping("/{routeId}")
-    public AjaxResult remove(@PathVariable String routeId) {
+    public AjaxResult remove(@PathVariable Long routeId) {
         productRouteService.deleteRoute(routeId);
         return success();
     }

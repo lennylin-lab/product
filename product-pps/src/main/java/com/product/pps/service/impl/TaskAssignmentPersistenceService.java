@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 派工结果持久化服务。
@@ -45,9 +46,9 @@ public class TaskAssignmentPersistenceService extends ServiceImpl<TaskAssignment
             return true;
         }
 
-        List<String> existingTaskIds = baseMapper.selectExistingTaskIds(batchResult.getTaskIds());
+        List<Long> existingTaskIds = baseMapper.selectExistingTaskIds(batchResult.getTaskIds());
         if (CollectionUtils.isNotEmpty(existingTaskIds)) {
-            throw new ServiceException("任务已存在派工记录: " + String.join(",", existingTaskIds));
+            throw new ServiceException("任务已存在派工记录: " + existingTaskIds.stream().map(String::valueOf).collect(Collectors.joining(",")));
         }
         // 这里需要
         boolean saved = saveBatch(batchResult.getAssignments(), batchSize);
@@ -102,7 +103,7 @@ public class TaskAssignmentPersistenceService extends ServiceImpl<TaskAssignment
                                          Set<String> dedupeKeys,
                                          TaskAssignment assignment,
                                          Long assignmentId) {
-        if (assignment == null || assignmentId == null || org.apache.commons.lang3.StringUtils.isBlank(assignment.getMachineId())) {
+        if (assignment == null || assignmentId == null || assignment.getMachineId() == null) {
             return;
         }
         String dedupeKey = buildDedupeKey(ResourceConstants.RESOURCE_TYPE_MACHINE, assignment.getMachineId());
@@ -129,7 +130,7 @@ public class TaskAssignmentPersistenceService extends ServiceImpl<TaskAssignment
         }
         Map<String, Long> resourceSequenceMap = assignment.getResourceSequenceMap();
         for (TaskResourceRequirement requirement : assignment.getResourceRequirementList()) {
-            if (requirement == null || org.apache.commons.lang3.StringUtils.isBlank(requirement.getResourceId())
+            if (requirement == null || requirement.getResourceId() == null
                     || org.apache.commons.lang3.StringUtils.isBlank(requirement.getResourceType())) {
                 continue;
             }
@@ -155,7 +156,7 @@ public class TaskAssignmentPersistenceService extends ServiceImpl<TaskAssignment
         }
     }
 
-    private String buildDedupeKey(String resourceType, String resourceId) {
+    private String buildDedupeKey(String resourceType, Long resourceId) {
         return String.join("::",
                 Objects.toString(resourceType, ""),
                 Objects.toString(resourceId, ""));

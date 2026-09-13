@@ -110,36 +110,36 @@ public class TaskSchedulingCoordinator {
         }
         notifyScheduleProgress(progressConsumer, totalTaskCount, 0, 0, 0, SchedulePhase.STARTED);
 
-        List<String> machineIds = machines == null ? List.of() : machines.stream()
+        List<Long> machineIds = machines == null ? List.of() : machines.stream()
                 .filter(Objects::nonNull)
                 .map(Resource::getResourceId)
-                .filter(StringUtils::isNotEmpty)
+                .filter(Objects::nonNull)
                 .toList();
-        Map<String, com.product.pps.dto.MachineLastAssignmentDTO> machineLastAssignments =
+        Map<Long, com.product.pps.dto.MachineLastAssignmentDTO> machineLastAssignments =
                 taskSchedulingQueryService.loadMachineLastAssignments(machineIds);
 
         TaskSchedulingCalculator.ResourceRuntimeContext runtimeContext =
                 taskSchedulingCalculator.buildResourceRuntimeContext(schedulingContext, machineLastAssignments);
 
-        Map<String, TaskSchedulingPriorityDTO> priorityMap = SchedulingStrategy.DUE_DATE_PRIORITY == strategy
+        Map<Long, TaskSchedulingPriorityDTO> priorityMap = SchedulingStrategy.DUE_DATE_PRIORITY == strategy
                 ? taskSchedulingQueryService.loadTaskPriorityMap(readyTasks)
                 : Map.of();
         List<com.product.domain.entity.OperationTask> orderedTasks =
                 taskSchedulingCalculator.orderTasks(readyTasks, strategy, priorityMap);
 
-        List<String> schedulableTaskIds = orderedTasks.stream()
+        List<Long> schedulableTaskIds = orderedTasks.stream()
                 .filter(Objects::nonNull)
                 .map(com.product.domain.entity.OperationTask::getTaskId)
-                .filter(StringUtils::isNotEmpty)
+                .filter(Objects::nonNull)
                 .toList();
-        Map<String, List<String>> postToPredecessors =
+        Map<Long, List<Long>> postToPredecessors =
                 taskSchedulingQueryService.loadPostToPredecessorsMap(schedulableTaskIds);
-        java.util.Set<String> predecessorTaskIds = postToPredecessors.values().stream()
+        java.util.Set<Long> predecessorTaskIds = postToPredecessors.values().stream()
                 .filter(CollectionUtils::isNotEmpty)
                 .flatMap(List::stream)
-                .filter(StringUtils::isNotEmpty)
+                .filter(Objects::nonNull)
                 .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
-        Map<String, LocalDateTime> predecessorEndTimes = new HashMap<>(
+        Map<Long, LocalDateTime> predecessorEndTimes = new HashMap<>(
                 taskSchedulingQueryService.loadPlannedEndByTaskIds(predecessorTaskIds));
 
         // 阶段2: 分批计算（核心耗时），进度 0-90%

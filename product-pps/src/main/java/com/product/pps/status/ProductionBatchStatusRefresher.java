@@ -43,12 +43,12 @@ public class ProductionBatchStatusRefresher implements StatusRefresher {
             if (id == null) {
                 continue;
             }
-            refreshBatch(String.valueOf(id));
+            refreshBatch((Long) id);
         }
     }
 
     /** 刷新单个生产批次状态：汇总其下所有工序任务状态，仅在目标状态与当前不同时才写入 */
-    private void refreshBatch(String batchId) {
+    private void refreshBatch(Long batchId) {
         ProductionBatch batch = Db.lambdaQuery(ProductionBatch.class)
                 .select(ProductionBatch::getBatchId, ProductionBatch::getStatus)
                 .eq(ProductionBatch::getBatchId, batchId)

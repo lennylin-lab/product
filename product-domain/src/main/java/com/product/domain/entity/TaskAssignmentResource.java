@@ -26,7 +26,7 @@ public class TaskAssignmentResource extends BaseEntity {
     private static final long serialVersionUID = 1L;
 
     /** 明细主键 */
-    @TableId(value = "assignment_resource_id", type = IdType.AUTO)
+    @TableId(value = "assignment_resource_id", type = IdType.ASSIGN_ID)
     private Long assignmentResourceId;
 
     /** 派工记录ID */
@@ -36,12 +36,12 @@ public class TaskAssignmentResource extends BaseEntity {
     /** 任务ID */
     @Excel(name = "任务ID")
     @TableField("task_id")
-    private String taskId;
+    private Long taskId;
 
     /** 资源ID */
     @Excel(name = "资源ID")
     @TableField("resource_id")
-    private String resourceId;
+    private Long resourceId;
 
     /** 资源类型 */
     @Excel(name = "资源类型")
@@ -54,7 +54,7 @@ public class TaskAssignmentResource extends BaseEntity {
 
     /** 关联需求ID */
     @TableField("requirement_id")
-    private String requirementId;
+    private Long requirementId;
 
     /** 计划开始时间 */
     @TableField("planned_start")

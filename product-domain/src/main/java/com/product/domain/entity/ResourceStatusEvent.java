@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.product.common.annotation.BizIdPrefix;
 import com.product.common.annotation.Excel;
 import com.product.common.core.entity.BaseEntity;
 import lombok.Data;
@@ -20,16 +19,15 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 @TableName("resource_status_event")
-@BizIdPrefix("RSE")
 public class ResourceStatusEvent extends BaseEntity {
 
-    @TableId(value = "event_id", type = IdType.ASSIGN_UUID)
-    private String eventId;
+    @TableId(value = "event_id", type = IdType.ASSIGN_ID)
+    private Long eventId;
 
     /** 资源ID */
     @Excel(name = "资源ID")
     @TableField("resource_id")
-    private String resourceId;
+    private Long resourceId;
 
     /** 发生时间 */
     @Excel(name = "发生时间")
@@ -51,5 +49,5 @@ public class ResourceStatusEvent extends BaseEntity {
 
     /** 关联任务ID */
     @TableField("related_task_id")
-    private String relatedTaskId;
+    private Long relatedTaskId;
 }

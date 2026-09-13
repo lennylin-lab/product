@@ -14,8 +14,8 @@ import lombok.Data;
 @TableName("task_dependency")
 public class TaskDependency {
     @TableField("pre_task_id")
-    private String preTaskId;
+    private Long preTaskId;
 
     @TableField("post_task_id")
-    private String postTaskId;
+    private Long postTaskId;
 }

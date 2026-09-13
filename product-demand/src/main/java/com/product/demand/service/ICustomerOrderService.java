@@ -21,7 +21,7 @@ public interface ICustomerOrderService extends IService<CustomerOrder> {
      * @param orderId 订单主键
      * @return 订单
      */
-    CustomerOrder selectCustomerOrderByOrderId(String orderId);
+    CustomerOrder selectCustomerOrderByOrderId(Long orderId);
 
     /**
      * 查询订单列表
@@ -78,9 +78,9 @@ public interface ICustomerOrderService extends IService<CustomerOrder> {
      * @param orderId 主键
      * @return 是否成功
      */
-    boolean deleteCustomerOrderByOrderId(String orderId);
+    boolean deleteCustomerOrderByOrderId(Long orderId);
 
-    boolean check(String orderId);
+    boolean check(Long orderId);
 
-    boolean cancelCheck(String orderId);
+    boolean cancelCheck(Long orderId);
 }

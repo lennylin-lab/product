@@ -80,7 +80,7 @@ public class OrderLineController extends BaseController {
      * 获取订单明细详细信息
      */
     @GetMapping(value = "/{orderLineId}")
-    public AjaxResult getInfo(@PathVariable("orderLineId") String orderLineId) {
+    public AjaxResult getInfo(@PathVariable("orderLineId") Long orderLineId) {
         return success(orderLineService.selectOrderLineByOrderLineId(orderLineId));
     }
 
@@ -112,7 +112,7 @@ public class OrderLineController extends BaseController {
      * 释放订单行
      */
     @PutMapping("/release/{orderLineId}")
-    public AjaxResult release(@PathVariable("orderLineId") String orderLineId) {
+    public AjaxResult release(@PathVariable("orderLineId") Long orderLineId) {
         return toAjax(orderLineService.release(orderLineId));
     }
 
@@ -120,7 +120,7 @@ public class OrderLineController extends BaseController {
      * 取消释放订单行
      */
     @PutMapping("/cancelRelease/{orderLineId}")
-    public AjaxResult cancelRelease(@PathVariable("orderLineId") String orderLineId) {
+    public AjaxResult cancelRelease(@PathVariable("orderLineId") Long orderLineId) {
         return toAjax(orderLineService.cancelRelease(orderLineId));
     }
 }

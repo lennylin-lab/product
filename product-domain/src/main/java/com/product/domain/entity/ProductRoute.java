@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.product.common.annotation.BizIdPrefix;
 import com.product.common.annotation.Excel;
 import com.product.common.core.entity.BaseEntity;
 import lombok.Data;
@@ -20,11 +19,10 @@ import java.util.List;
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 @TableName("product_route")
-@BizIdPrefix("RT")
 public class ProductRoute extends BaseEntity {
 
-    @TableId(value = "route_id", type = IdType.ASSIGN_UUID)
-    private String routeId;
+    @TableId(value = "route_id", type = IdType.ASSIGN_ID)
+    private Long routeId;
 
     /** 产品ID */
     @Excel(name = "产品ID")

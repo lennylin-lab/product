@@ -84,7 +84,7 @@
 
     <!-- 查询已存在的任务ID（防重检查） -->
     <!-- 用途：代码侧防重校验，与数据库唯一索引配合 -->
-    <select id="selectExistingTaskIds" resultType="java.lang.String">
+    <select id="selectExistingTaskIds" resultType="java.lang.Long">
         SELECT task_id
         FROM task_assignment
         WHERE task_id IN

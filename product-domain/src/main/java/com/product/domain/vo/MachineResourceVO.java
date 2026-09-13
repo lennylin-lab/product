@@ -13,7 +13,7 @@ import lombok.EqualsAndHashCode;
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class MachineResourceVO extends Resource {
-    private String machineId;
+    private Long machineId;
     private Integer tonnage;
     private Integer defaultSetupTimeMin;
     private String calendarName;
