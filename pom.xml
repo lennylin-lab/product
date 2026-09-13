@@ -57,6 +57,7 @@
         <aliyun-oss-version>3.17.4</aliyun-oss-version>
         <velocity.version>2.3</velocity.version>
         <springdoc.version>2.8.13</springdoc.version>
+        <lombok.version>1.18.48</lombok.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -213,6 +214,13 @@
                         <target>17</target>
                         <encoding>UTF-8</encoding>
                         <parameters>true</parameters>
+                        <annotationProcessorPaths>
+                            <path>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                                <version>${lombok.version}</version>
+                            </path>
+                        </annotationProcessorPaths>
                     </configuration>
                 </plugin>
                 <plugin>

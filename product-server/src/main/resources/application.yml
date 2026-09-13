@@ -63,7 +63,7 @@ spring:
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:127.0.0.1}
-      port: ${SPRING_DATA_REDIS_PORT:6379}
+      port: ${SPRING_DATA_REDIS_PORT:6380}
       password: ${SPRING_DATA_REDIS_PASSWORD:change-me-in-env}
       database: ${SPRING_DATA_REDIS_DATABASE:0}
       timeout: ${SPRING_DATA_REDIS_TIMEOUT:10000ms}

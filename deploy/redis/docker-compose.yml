@@ -6,7 +6,7 @@ services:
     environment:
       TZ: ${TZ:-Asia/Taipei}
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_PORT:-6380}:6379"
     volumes:
       - redis_data:/data
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro

@@ -125,8 +125,8 @@ cp .env.example .env
 该脚本会通过根目录 `compose.dev.yml` 启动本地开发依赖：
 
 - MySQL：`${MYSQL_PORT}`，默认 `33066`
-- Redis：`${REDIS_PORT}`，默认 `6379`
-- Elasticsearch：`${ELASTICSEARCH_PORT}`，默认 `9200`
+- Redis：`${REDIS_PORT}`，默认 `6380`
+- Elasticsearch：`${ELASTICSEARCH_PORT}`，默认 `9201`
 - Kibana：`${KIBANA_PORT}`，默认 `5601`
 - Logstash API：`${LOGSTASH_API_PORT}`，默认 `9600`
 
@@ -174,7 +174,7 @@ http://localhost:8081
 本地日志与观测入口：
 
 - Kibana：`http://localhost:5601`
-- Elasticsearch：`http://localhost:9200`
+- Elasticsearch：`http://localhost:9201`
 
 ## 开发指南
 

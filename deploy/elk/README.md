@@ -23,7 +23,7 @@
 PRODUCT_LOG_PATH=./logs
 SERVICE_NAME=product-server
 APP_ENV=local
-ELASTICSEARCH_PORT=9200
+ELASTICSEARCH_PORT=9201
 KIBANA_PORT=5601
 LOGSTASH_BEATS_PORT=5044
 LOGSTASH_API_PORT=9600
@@ -54,7 +54,7 @@ docker compose -f deploy/elk/docker-compose.yml up -d
 ### Elasticsearch
 
 ```bash
-curl http://localhost:9200/_cat/indices?v
+curl http://localhost:9201/_cat/indices?v
 ```
 
 ### Kibana
@@ -102,7 +102,7 @@ docker compose -f deploy/elk/docker-compose.yml logs [服务名]
 
 ### Kibana 无法显示数据
 
-1. 确认索引已创建：`curl http://localhost:9200/_cat/indices?v`
+1. 确认索引已创建：`curl http://localhost:9201/_cat/indices?v`
 2. 检查索引模式是否正确配置：`product-*`
 3. 等待 1-2 分钟让数据索引完成
 

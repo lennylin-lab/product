@@ -36,7 +36,7 @@ services:
     environment:
       TZ: ${TZ:-Asia/Taipei}
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_PORT:-6380}:6379"
     volumes:
       - redis_data:/data
       - ./deploy/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
@@ -66,7 +66,7 @@ services:
       xpack.security.enabled: "false"
       ES_JAVA_OPTS: ${ES_JAVA_OPTS:-"-Xms1g -Xmx1g"}
     ports:
-      - "${ELASTICSEARCH_PORT:-9200}:9200"
+      - "${ELASTICSEARCH_PORT:-9201}:9200"
     volumes:
       - es_data:/usr/share/elasticsearch/data
 

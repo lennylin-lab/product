@@ -26,7 +26,7 @@
 1. 确认本机当前 Redis 端口
 
 ```bash
-ss -lntp | grep 6379
+ss -lntp | grep 6380
 ```
 
 2. 准备容器参数
@@ -35,7 +35,7 @@ ss -lntp | grep 6379
 
 ```dotenv
 TZ=Asia/Taipei
-REDIS_PORT=6379
+REDIS_PORT=6380
 REDIS_PASSWORD=123456
 REDIS_MAXMEMORY=256mb
 REDIS_MAXMEMORY_POLICY=allkeys-lru
@@ -48,10 +48,10 @@ REDIS_DATABASES=16
 docker compose -f deploy/redis/docker-compose.yml up -d
 ```
 
-如果宿主机已经占用 `6379`，可以临时改端口：
+如果宿主机已经占用 `6380`，可以临时改端口：
 
 ```bash
-REDIS_PORT=6380 docker compose -f deploy/redis/docker-compose.yml up -d
+REDIS_PORT=6381 docker compose -f deploy/redis/docker-compose.yml up -d
 ```
 
 4. 验证 Redis 可用
@@ -72,12 +72,12 @@ PONG
 
 ```bash
 export SPRING_DATA_REDIS_HOST=127.0.0.1
-export SPRING_DATA_REDIS_PORT=6379
+export SPRING_DATA_REDIS_PORT=6380
 export SPRING_DATA_REDIS_PASSWORD=change-me-in-env
 export SPRING_DATA_REDIS_DATABASE=0
 ```
 
-如果 Redis 容器映射的是其他端口，例如 `6380`，把 `SPRING_DATA_REDIS_PORT` 一起改掉即可。
+如果 Redis 容器映射的是其他端口，把 `SPRING_DATA_REDIS_PORT` 一起改掉即可。
 
 6. 启动后端并回归验证
 

@@ -276,10 +276,12 @@ CREATE TABLE product_route (
     product_id  BIGINT(20)  DEFAULT NULL COMMENT '产品ID',
     version     VARCHAR(20) DEFAULT '' COMMENT '版本',
     is_active   INT(1)      DEFAULT 0 COMMENT '是否启用(1启用 0停用)',
+    active_flag BIGINT(20)  GENERATED ALWAYS AS (IF(is_active = 1, product_id, NULL)) STORED COMMENT '生成列:is_active=1时等于product_id,用于数据库级保证单产品仅一条活跃路线',
     create_time DATETIME    DEFAULT NULL COMMENT '创建时间',
     update_time DATETIME    DEFAULT NULL COMMENT '更新时间',
     PRIMARY KEY (route_id),
-    KEY idx_product_route_product (product_id)
+    KEY idx_product_route_product (product_id, is_active, version),
+    UNIQUE KEY uk_product_route_active (active_flag)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='产品工艺路线表';
 
 DROP TABLE IF EXISTS route_operation;
