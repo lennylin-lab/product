@@ -19,6 +19,7 @@
     <modules>
         <module>product-cloud-common</module>
         <module>product-cloud-security</module>
+        <module>product-master-data-api</module>
         <module>product-gateway</module>
         <module>product-identity</module>
         <module>product-master-data</module>
@@ -42,6 +43,12 @@
             <dependency>
                 <groupId>com.product</groupId>
                 <artifactId>product-cloud-security</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- 服务契约模块（ADR-0002 决策 1：每服务独立 API contract，禁止共享持久化 Entity） -->
+            <dependency>
+                <groupId>com.product</groupId>
+                <artifactId>product-master-data-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

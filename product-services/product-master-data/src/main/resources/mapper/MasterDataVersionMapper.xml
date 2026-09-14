@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.product.masterdata.mapper.MasterDataVersionMapper">
+
+    <update id="bump">
+        insert into master_data_data_version(scope, data_version, updated_at)
+        values(#{scope}, 1, now())
+        on duplicate key update data_version = data_version + 1, updated_at = now()
+    </update>
+
+    <select id="selectVersion" resultType="java.lang.Long">
+        select data_version from master_data_data_version where scope = #{scope}
+    </select>
+</mapper>

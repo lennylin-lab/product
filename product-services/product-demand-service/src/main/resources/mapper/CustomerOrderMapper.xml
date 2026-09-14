@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.product.demand.mapper.CustomerOrderMapper">
+
+    <resultMap id="CustomerOrderMap" type="com.product.demand.domain.vo.CustomerOrderVO">
+        <id property="orderId" column="order_id"></id>
+        <result property="customerId" column="customer_id"></result>
+        <result property="customerName" column="customer_name"></result>
+        <result property="priority" column="priority"></result>
+        <result property="status" column="status"></result>
+        <result property="dueDate" column="due_date"></result>
+        <result property="createTime" column="create_time"></result>
+        <result property="updateTime" column="update_time"></result>
+    </resultMap>
+
+    <sql id="selectCustomerOrderVO">
+        select co.order_id, co.customer_id, co.priority, co.status, co.due_date, co.create_time, co.update_time,
+               c.customer_name
+        from customer_order co
+        left join customer c
+        on co.customer_id = c.customer_id
+    </sql>
+
+    <!-- 子表查询 -->
+    <select id="selectOrderLineList" resultType="com.product.demand.domain.entity.OrderLine">
+        select order_line_id, order_id, product_id, qty, status
+        from order_line
+        where order_id = #{orderId}
+    </select>
+
+    <select id="selectCustomerOrderPage" resultType="com.product.demand.domain.vo.CustomerOrderVO">
+        <include refid="selectCustomerOrderVO"/>
+        <where>
+            <if test="customerOrder.params.beginTime != null">
+                date_format(co.due_date, '%Y%m%d') &gt;= date_format(#{customerOrder.params.beginTime}, '%Y%m%d')
+            </if>
+            <if test="customerOrder.params.endTime != null">
+                and date_format(co.due_date, '%Y%m%d') &lt;= date_format(#{customerOrder.params.endTime}, '%Y%m%d')
+            </if>
+            <if test="customerOrder.priority != null">
+                and co.priority = #{customerOrder.priority}
+            </if>
+            <if test="customerOrder.status != null and customerOrder.status != ''">
+                and co.status = #{customerOrder.status}
+            </if>
+        </where>
+        order by co.priority desc
+    </select>
+
+    <!-- 批量删除子表（按订单ID） -->
+    <delete id="deleteOrderLineByOrderIds" parameterType="java.lang.Long">
+        delete from order_line where order_id in
+        <foreach item="orderId" collection="array" open="(" separator="," close=")">
+            #{orderId}
+        </foreach>
+    </delete>
+
+    <!-- 根据主表主键删除子表 -->
+    <delete id="deleteOrderLineByOrderId" parameterType="java.lang.Long">
+        delete from order_line where order_id = #{orderId}
+    </delete>
+
+    <!-- 批量新增子表数据 -->
+    <insert id="batchOrderLine">
+        insert into order_line( order_line_id, order_id, product_id, qty, status) values
+        <foreach item="item" index="index" collection="list" separator=",">
+            ( #{item.orderLineId}, #{item.orderId}, #{item.productId}, #{item.qty}, #{item.status})
+        </foreach>
+    </insert>
+</mapper>

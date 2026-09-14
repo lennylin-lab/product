@@ -16,6 +16,31 @@ spring:
         group: PRODUCT_GROUP
       config:
         namespace: ${NACOS_NAMESPACE:dev}
+    # Feign 契约超时（design.md §4：明确超时、禁止无界重试；key 为 @FeignClient contextId）。
+    # 重试维持 OpenFeign 默认 Retryer.NEVER_RETRY；超时/不可达由消费方按契约 fail-closed
+    # （MasterDataReferenceValidator：拒绝写入，不做本地降级放行）。
+    openfeign:
+      client:
+        config:
+          masterDataBatchQueryClient:
+            connect-timeout: 2000
+            read-timeout: 3000
+  # 数据源：demand_db（ADR-0005 database per service；独立最小权限账号 demand_svc，
+  # 仅 demand_db 的 DML 权限，见 db/init/demand_schema.sql）
+  datasource:
+    url: jdbc:mysql://${DEMAND_DB_HOST:127.0.0.1}:${DEMAND_DB_PORT:33066}/demand_db?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Taipei&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DEMAND_DB_USERNAME:demand_svc}
+    password: ${DEMAND_DB_PASSWORD:demand-dev-pwd}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+# MyBatis-Plus（与单体 mybatis 配置项一致；分页 maxLimit=100/overflow=true 见 MybatisPlusConfig）
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.product.demand.domain.entity
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
 
 # ---- 可观测性基线（健康检查 liveness/readiness、Prometheus 指标） ----
 management:
@@ -33,7 +58,24 @@ management:
     sampling:
       probability: 1.0
 
+# ---- OpenAPI 基线 ----
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+
+# 服务安全基线：本地验签（ADR-0003：直连端口必须携带有效签名 token；
+# 公钥取自 identity 的 JWKS 端点）。permitAll 基线（swagger/健康检查/skeleton）内建于
+# product-cloud-security，/demand/** 业务端点一律要求有效签名 token。
 product:
-  skeleton:
-    config-marker: local-default
-    shared-marker: local-default
+  security:
+    enabled: true
+    header: Authorization
+    jwks-uri: ${PRODUCT_SECURITY_JWKS_URI:http://127.0.0.1:8101/jwks}
+
+logging:
+  level:
+    com.product: info

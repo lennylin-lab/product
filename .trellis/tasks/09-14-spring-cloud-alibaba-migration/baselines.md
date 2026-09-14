@@ -66,6 +66,19 @@
 - 主键策略：显式 ID（订单/批次/任务/事件等由应用生成）与 `AUTO_INCREMENT` 并存，迁移脚本保留各表 AUTO 起点与种子 ID。
 - 状态字段全部为 `VARCHAR` + 注释枚举，无 DB 级 CHECK；状态机合法性由应用保证（事件链路改造时沿用）。
 
+### 2.3 数据版本字段方案（Phase 3 补充记录，2026-09-14；原 2.1/2.2 冻结内容不变）
+
+为 Phase 4 排程"版本化输入快照"（design §4/ADR-0004）定义三级版本语义，经
+`product-master-data-api` 契约暴露：
+
+- 行级 `version`：该行 `update_time` 的 epoch 毫秒（null 记 0）。主数据任意写路径触碰 update_time，
+  作为"该行是否变化"判定。
+- 路线业务版本：沿用单体 `product_route.version` 原生字段（如 "v1"），即契约 DTO 的 `routeVersion`。
+- 域级 `snapshotVersion`：master_data_db 服务权属表 `master_data_data_version`（scope=MASTER_DATA）
+  的单调递增计数，任一主数据写事务内 +1（与业务写同事务）。供排程运行前后对比检测输入漂移。
+  资源扩展表（machine/mold/resource_capability）无时间戳列（单体基线如此），其变化由 snapshotVersion
+  体现。该表为服务自建权属表，不属本基线 32 表清单，根 schema.sql 零改动（ADR-0005 服务自建表同款权属逻辑）。
+
 ## 3. 核心 E2E 用例清单（统一切换验收从 Gateway 入口执行）
 
 ### 3.1 认证与权限（identity/gateway）

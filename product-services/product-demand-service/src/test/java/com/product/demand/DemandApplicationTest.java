@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -12,16 +13,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * product-demand 骨架冒烟测试（离线，禁用 Nacos 注册/配置）。
+ * product-demand 冒烟测试（离线，禁用 Nacos 注册/配置、数据源与本地验签安全链——
+ * 数据访问与 JWKS 拉取不参与离线单测，见 spec/backend/microservices-platform.md 测试约定）。
  */
 @SpringBootTest(properties = {
         "spring.cloud.nacos.discovery.enabled=false",
         "spring.cloud.nacos.config.enabled=false",
         "spring.cloud.service-registry.auto-registration.enabled=false",
-        // 离线单测关闭本地验签安全链（无 JWKS 可拉取）；live 环境默认开启（ADR-0003）。
-        // cloud-security 引入 spring-security-web/config 后，还需排除 Boot 默认 servlet 安全链，
-        // 否则 @ConditionalOnDefaultWebSecurity 的兜底链会对 /skeleton/info 返回 401。
-        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration,org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration",
+        // 离线：无 MySQL/JWKS。排除 DataSource/MyBatis-Plus 自动装配（否则 /actuator/health
+        // 的 DB health indicator 因连不上库返回 DOWN → 503），并关闭本地验签安全链与 Boot 默认链。
+        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration,org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration",
         "product.security.enabled=false"
 })
 @AutoConfigureMockMvc
@@ -29,6 +30,11 @@ class DemandApplicationTest {
 
     @Autowired
     MockMvc mockMvc;
+
+    /** 数据访问离线替换（MyBatis-Plus 自动装配已排除，Mapper 用 mock 占位）。 */
+    @MockitoBean com.product.demand.mapper.CustomerMapper customerMapper;
+    @MockitoBean com.product.demand.mapper.CustomerOrderMapper customerOrderMapper;
+    @MockitoBean com.product.demand.mapper.OrderLineMapper orderLineMapper;
 
     @Test
     void skeletonInfoShouldExposeServiceIdentity() throws Exception {

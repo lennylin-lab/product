@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.product</groupId>
+        <artifactId>product-services</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>product-master-data-api</artifactId>
+
+    <name>product-master-data-api</name>
+    <description>product-master-data-api: 主数据域对外服务契约（产品/工艺/资源批量查询 Feign 接口 + DTO；ADR-0002 决策 1：每个服务独立 API contract 模块，禁止共享持久化 Entity）</description>
+
+    <dependencies>
+        <!-- 契约模块仅依赖 OpenFeign 注解（spring-web 的 MediaType 等也不引入，保持纯接口 + DTO）。
+             版本由根 POM 的 Spring Cloud BOM 管理。消费方（product-demand-service，Phase 4 起
+             product-planning）自行引入 spring-cloud-starter-openfeign 与负载均衡；
+             提供方（product-master-data）实现同一路径的 HTTP 端点，不依赖本模块编译亦可，
+             引入它是为了让契约测试与提供方实现共享同一接口定义。 -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+    </dependencies>
+</project>

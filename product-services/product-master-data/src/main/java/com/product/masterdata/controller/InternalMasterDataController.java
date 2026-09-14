@@ -1,0 +1,263 @@
+package com.product.masterdata.controller;
+
+import com.baomidou.mybatisplus.extension.toolkit.Db;
+import com.product.masterdata.api.dto.ProductBatchQueryRequest;
+import com.product.masterdata.api.dto.ProductBatchResponse;
+import com.product.masterdata.api.dto.ProductDTO;
+import com.product.masterdata.api.dto.ProductExistenceResponse;
+import com.product.masterdata.api.dto.ProductRouteDTO;
+import com.product.masterdata.api.dto.ResourceBatchQueryRequest;
+import com.product.masterdata.api.dto.ResourceBatchResponse;
+import com.product.masterdata.api.dto.ResourceDTO;
+import com.product.masterdata.common.exception.ServiceException;
+import com.product.masterdata.domain.entity.Machine;
+import com.product.masterdata.domain.entity.Mold;
+import com.product.masterdata.domain.entity.Product;
+import com.product.masterdata.domain.entity.ProductMoldParam;
+import com.product.masterdata.domain.entity.ProductRoute;
+import com.product.masterdata.domain.entity.Resource;
+import com.product.masterdata.domain.entity.ResourceCapability;
+import com.product.masterdata.domain.entity.RouteOperation;
+import com.product.masterdata.service.MasterDataVersionService;
+import org.apache.commons.collections4.CollectionUtils;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+/**
+ * 主数据批量查询契约端点（product-master-data-api 的 MasterDataBatchQueryApi 实现）。
+ *
+ * <p>鉴权与其余端点一致：调用方透传用户 JWT，本地验签（ADR-0003 两层校验）；
+ * 无有效 token 的内部调用一律 401（防伪造内部头）。超时/重试语义由消费方配置
+ * （契约 javadoc 与 demand application.yml），本端点为只读查询。</p>
+ */
+@RestController
+@RequestMapping("/internal/master-data")
+public class InternalMasterDataController implements com.product.masterdata.api.MasterDataBatchQueryApi {
+
+    private final MasterDataVersionService versionService;
+
+    public InternalMasterDataController(MasterDataVersionService versionService) {
+        this.versionService = versionService;
+    }
+
+    @Override
+    public ProductExistenceResponse existsProducts(@RequestBody ProductBatchQueryRequest request) {
+        requireIds(request == null ? null : request.getProductIds(), "产品ID集合不能为空");
+        ProductBatchResponse batch = getProducts(request);
+        ProductExistenceResponse response = new ProductExistenceResponse();
+        response.setSnapshotVersion(batch.getSnapshotVersion());
+        response.setExistingIds(batch.getProducts().stream()
+                .map(ProductDTO::getProductId)
+                .collect(Collectors.toList()));
+        return response;
+    }
+
+    @Override
+    public ProductBatchResponse getProducts(@RequestBody ProductBatchQueryRequest request) {
+        List<Long> ids = request == null ? null : request.getProductIds();
+        if (ids != null && !ids.isEmpty()) {
+            requireIds(ids, "产品ID集合不能为空");
+        }
+        List<Product> products = Db.lambdaQuery(Product.class)
+                .in(ids != null && !ids.isEmpty(), Product::getProductId, ids == null ? null : ids)
+                .list();
+        List<Long> productIds = products.stream()
+                .map(Product::getProductId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        Map<Long, List<ProductMoldParam>> moldParamsByProduct = productIds.isEmpty() ? Map.of()
+                : Db.lambdaQuery(ProductMoldParam.class)
+                        .in(ProductMoldParam::getProductId, productIds)
+                        .list()
+                        .stream()
+                        .collect(Collectors.groupingBy(ProductMoldParam::getProductId));
+
+        Map<Long, ProductRoute> activeRouteByProduct = loadActiveRoutes(productIds);
+
+        ProductBatchResponse response = new ProductBatchResponse();
+        response.setSnapshotVersion(versionService.currentVersion());
+        response.setProducts(products.stream()
+                .map(product -> toProductDTO(product,
+                        moldParamsByProduct.get(product.getProductId()),
+                        activeRouteByProduct.get(product.getProductId())))
+                .collect(Collectors.toList()));
+        return response;
+    }
+
+    @Override
+    public ResourceBatchResponse getResources(@RequestBody ResourceBatchQueryRequest request) {
+        List<Long> ids = request == null ? null : request.getResourceIds();
+        if (ids != null && !ids.isEmpty()) {
+            requireIds(ids, "资源ID集合不能为空");
+        }
+        List<String> types = request == null ? null : request.getResourceTypes();
+        List<Resource> resources = Db.lambdaQuery(Resource.class)
+                .in(ids != null && !ids.isEmpty(), Resource::getResourceId, ids == null ? null : ids)
+                .in(CollectionUtils.isNotEmpty(types), Resource::getResourceType, types)
+                .list();
+        List<Long> resourceIds = resources.stream()
+                .map(Resource::getResourceId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        Map<Long, Machine> machineById = resourceIds.isEmpty() ? Map.of()
+                : Db.lambdaQuery(Machine.class)
+                        .in(Machine::getMachineId, resourceIds)
+                        .list()
+                        .stream()
+                        .collect(Collectors.toMap(Machine::getMachineId, Function.identity(), (a, b) -> a));
+        Map<Long, Mold> moldById = resourceIds.isEmpty() ? Map.of()
+                : Db.lambdaQuery(Mold.class)
+                        .in(Mold::getMoldId, resourceIds)
+                        .list()
+                        .stream()
+                        .collect(Collectors.toMap(Mold::getMoldId, Function.identity(), (a, b) -> a));
+        Map<Long, List<ResourceCapability>> capabilityByResource = resourceIds.isEmpty() ? Map.of()
+                : Db.lambdaQuery(ResourceCapability.class)
+                        .in(ResourceCapability::getResourceId, resourceIds)
+                        .list()
+                        .stream()
+                        .collect(Collectors.groupingBy(ResourceCapability::getResourceId));
+
+        ResourceBatchResponse response = new ResourceBatchResponse();
+        response.setSnapshotVersion(versionService.currentVersion());
+        response.setResources(resources.stream()
+                .map(resource -> toResourceDTO(resource,
+                        machineById.get(resource.getResourceId()),
+                        moldById.get(resource.getResourceId()),
+                        capabilityByResource.get(resource.getResourceId())))
+                .collect(Collectors.toList()));
+        return response;
+    }
+
+    private Map<Long, ProductRoute> loadActiveRoutes(List<Long> productIds) {
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+        return Db.lambdaQuery(ProductRoute.class)
+                .in(ProductRoute::getProductId, productIds)
+                .eq(ProductRoute::getIsActive, 1)
+                .list()
+                .stream()
+                .filter(route -> route.getProductId() != null)
+                .collect(Collectors.toMap(ProductRoute::getProductId, Function.identity(), (a, b) -> a));
+    }
+
+    private ProductDTO toProductDTO(Product product, List<ProductMoldParam> moldParams, ProductRoute activeRoute) {
+        ProductDTO dto = new ProductDTO();
+        dto.setProductId(product.getProductId());
+        dto.setProductName(product.getProductName());
+        dto.setImage(product.getImage());
+        dto.setMaterialCode(product.getMaterialCode());
+        dto.setColorCode(product.getColorCode());
+        dto.setVersion(epochMillis(product.getUpdateTime()));
+        if (CollectionUtils.isNotEmpty(moldParams)) {
+            dto.setMoldParams(moldParams.stream().map(param -> {
+                ProductDTO.ProductMoldParamDTO paramDTO = new ProductDTO.ProductMoldParamDTO();
+                paramDTO.setMoldId(param.getMoldId());
+                paramDTO.setCycleTimeSec(param.getCycleTimeSec());
+                paramDTO.setCavity(param.getCavity());
+                paramDTO.setYieldRate(param.getYieldRate());
+                paramDTO.setUtilization(param.getUtilization());
+                return paramDTO;
+            }).collect(Collectors.toList()));
+        }
+        if (activeRoute != null) {
+            dto.setActiveRoute(toRouteDTO(activeRoute));
+        }
+        return dto;
+    }
+
+    private ProductRouteDTO toRouteDTO(ProductRoute route) {
+        ProductRouteDTO dto = new ProductRouteDTO();
+        dto.setRouteId(route.getRouteId());
+        dto.setProductId(route.getProductId());
+        dto.setRouteVersion(route.getVersion());
+        dto.setIsActive(route.getIsActive());
+        dto.setVersion(epochMillis(route.getUpdateTime()));
+        List<RouteOperation> operations = Db.lambdaQuery(RouteOperation.class)
+                .eq(RouteOperation::getRouteId, route.getRouteId())
+                .list()
+                .stream()
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparing(RouteOperation::getSequence, Comparator.nullsLast(Integer::compareTo))
+                        .thenComparing(RouteOperation::getOpCode, Comparator.nullsLast(String::compareTo)))
+                .toList();
+        dto.setOperations(operations.stream().map(operation -> {
+            ProductRouteDTO.RouteOperationDTO opDTO = new ProductRouteDTO.RouteOperationDTO();
+            opDTO.setOpId(operation.getOpId());
+            opDTO.setOpCode(operation.getOpCode());
+            opDTO.setSequence(operation.getSequence());
+            opDTO.setEligibleResourceRule(operation.getEligibleResourceRule());
+            opDTO.setStdTimeModel(operation.getStdTimeModel());
+            opDTO.setQueuePolicy(operation.getQueuePolicy());
+            return opDTO;
+        }).collect(Collectors.toList()));
+        return dto;
+    }
+
+    private ResourceDTO toResourceDTO(Resource resource, Machine machine, Mold mold, List<ResourceCapability> capabilities) {
+        ResourceDTO dto = new ResourceDTO();
+        dto.setResourceId(resource.getResourceId());
+        dto.setResourceType(resource.getResourceType());
+        dto.setName(resource.getName());
+        dto.setStatus(resource.getStatus());
+        dto.setCalendarId(resource.getCalendarId());
+        dto.setOrgUnit(resource.getOrgUnit());
+        dto.setVersion(epochMillis(resource.getUpdateTime()));
+        if (machine != null) {
+            ResourceDTO.MachineDTO machineDTO = new ResourceDTO.MachineDTO();
+            machineDTO.setMachineId(machine.getMachineId());
+            machineDTO.setTonnage(machine.getTonnage());
+            machineDTO.setDefaultSetupTimeMin(machine.getDefaultSetupTimeMin());
+            dto.setMachine(machineDTO);
+        }
+        if (mold != null) {
+            ResourceDTO.MoldDTO moldDTO = new ResourceDTO.MoldDTO();
+            moldDTO.setMoldId(mold.getMoldId());
+            moldDTO.setMoldCode(mold.getMoldCode());
+            moldDTO.setCavity(mold.getCavity());
+            moldDTO.setMoldStatus(mold.getMoldStatus());
+            moldDTO.setNextMaintDue(mold.getNextMaintDue());
+            dto.setMold(moldDTO);
+        }
+        if (CollectionUtils.isNotEmpty(capabilities)) {
+            dto.setCapabilities(capabilities.stream().map(capability -> {
+                ResourceDTO.CapabilityDTO capabilityDTO = new ResourceDTO.CapabilityDTO();
+                capabilityDTO.setOpCode(capability.getOpCode());
+                capabilityDTO.setProductId(capability.getProductId());
+                capabilityDTO.setIsEnabled(capability.getIsEnabled());
+                capabilityDTO.setPriorityWeight(capability.getPriorityWeight());
+                return capabilityDTO;
+            }).collect(Collectors.toList()));
+        }
+        return dto;
+    }
+
+    private long epochMillis(java.time.LocalDateTime time) {
+        return time == null ? 0L : time.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+    }
+
+    private void requireIds(List<Long> ids, String emptyMessage) {
+        if (ids == null || ids.isEmpty()) {
+            throw new ServiceException(emptyMessage);
+        }
+        if (ids.size() > ProductBatchQueryRequest.MAX_IDS) {
+            throw new ServiceException("批量查询ID数超限: " + ids.size() + " > " + ProductBatchQueryRequest.MAX_IDS);
+        }
+        if (new LinkedHashSet<>(ids).size() != ids.size()) {
+            throw new ServiceException("批量查询ID存在重复");
+        }
+    }
+}

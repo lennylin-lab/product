@@ -187,11 +187,125 @@
 
 ## Phase 3: Master Data And Demand
 
-- [ ] 按设计迁移主数据及订单域，消除 `demand -> pps` Java 依赖。
-- [ ] 建立产品/工艺/资源批量查询契约，定义数据版本字段。
-- [ ] 拆分 schema、Mapper、Entity 和 API DTO；禁止共享持久化模型。
+- [x] 按设计迁移主数据及订单域，消除 `demand -> pps` Java 依赖。
+- [x] 建立产品/工艺/资源批量查询契约，定义数据版本字段。
+- [x] 拆分 schema、Mapper、Entity 和 API DTO；禁止共享持久化模型。
 - Validation: 主数据 CRUD、订单全生命周期、权限、分页/导入导出和跨域引用校验测试通过。
 - Rollback point: 每个 schema 独立初始化和校验；迁移失败可清库重建或恢复备份。
+
+### Phase 3 执行记录（2026-09-14，含中断续作审计）
+
+**续作说明**：前一次 trellis-implement 会话因用量中断，树上遗留未提交的部分工作。本次先审计后补齐：
+部分工作中 master-data 已完成忠实移植（11 表实体/服务/控制器 + `InternalMasterDataController` +
+`master_data_data_version` 版本计数 + 写路径 bump），demand 仅有基础设施（common/core/config/domain 实体/VO +
+schema 脚本）；api 契约模块完整。审计发现并修复的部分工作缺陷：① master-data 缺
+`common/exception/ServiceException`（多处 import 悬空，编译失败）；② 两服务均缺 `UtilException`、
+`core/domain/CurrentUser`、`core/utils/SecurityUtils`（identity 有同类，按包路径移植）；③ 4 个文件
+（IMachineService/IResourceService/MachineServiceImpl/ResourceServiceImpl）package 声明仍是旧的
+`com.product.masterdata.resource.*` 与物理路径不符（duplicate class）；④ 两服务 pom 缺 lombok（实体
+@Data 不生效）；⑤ MachineServiceImpl 缺 MasterDataVersionService import；⑥ gateway 仍是 Phase 1 前缀
+占位路由、`.env.example` 缺 MASTER_DATA_DB_*/DEMAND_DB_*。
+
+**产出**：
+- `product-services/product-master-data-api`（新契约模块，ADR-0002 决策 1）：`MasterDataBatchQueryApi`
+  （@FeignClient name=product-master-data, contextId=masterDataBatchQueryClient, path=/internal/master-data）
+  + 8 个纯 Java DTO（无任何 MyBatis/持久化注解，仅依赖 openfeign 注解）。语义：existsProducts（空集合
+  拒绝）、products/batch（空=全量，供 Phase 4 快照）、resources/batch（id+type 过滤）；单次 ID 上限
+  1000、重复 ID 拒绝。javadoc 记录超时/不重试/fail-closed/透传用户 JWT 契约。
+- `product-master-data`：产品归位（原 `/demand/product` 在单体 product-demand 模块，随数据所有权迁入，
+  对外路由保持 `/demand/product`）、`/pps/product-route` 保持路径（baselines §1.2）；`/demand/product`+
+  `/pps/product-route` 的 Entity/Mapper/XML（MachineMapper.xml）/Service/Controller 忠实移植 + 全部写路径
+  同事务 `MasterDataVersionService.bump()`；产品存在性校验改本库查询；`hasBlockingTasksForProduct` 在
+  planning 迁移前返回 false（planning_db 为空 ⇒ 行为等价，**Phase 4 必须接线** demand/planning 契约）；
+  完整 Mapper 集（含 ProductMoldParamMapper，见下方"单体冻结缺陷"——该 Mapper 的存在恰好修复了单体的
+  TableInfoCache 崩溃）。
+- `product-demand-service`：Customer/CustomerOrder/OrderLine + CustomerOrderVO/ProductionBatchView 的
+  Mapper/XML/Service/Controller 忠实移植（订单全生命周期：NEW↔CONFIRMED 人工流转守卫、IN_PRODUCTION/
+  DONE 禁改、check/cancelCheck、release/cancelRelease、订单删除级联删行）；`/export /importTemplate
+  /importData` 三资源齐全（ExcelUtil 为单体 core/utils 的服务内拷贝）；orderLine 保留"必须指定存在订单"
+  守卫（订单行必须指定所属订单ID / 所属订单不存在: {id}）。与单体的差异（ADR-0005 权属重排，均有
+  javadoc）：
+  1. **跨域引用校验（新增，Phase 3 验收项）**：写路径（insert/batchInsert/update 且 product_id 非空）
+     经 `MasterDataReferenceValidator`→OpenFeign 批量契约校验产品存在；不存在→`产品不存在: productId=..`；
+     master-data 不可达/超时/响应非法→`主数据服务不可用/响应异常...`（**fail-closed，无静默默认**，
+     Retryer.NEVER_RETRY，connect 2s/read 3s，`FeignForwardAuthConfig` 透传调用方 Authorization）。
+     单体同库时代无此校验（接受任意 product_id）——契约 diff 单列为显式差异。
+  2. 订单行详情的 `productionBatchList` 恒为空列表（production_batch 归 planning；Phase 4 经契约填充；
+     与单体"未拆批"场景响应一致）。
+  3. 删除订单行不再级联删 production_batch（跨服务表不可写；Phase 3 planning_db 为空 ⇒ 等价；
+     **Phase 4 接线** planning 契约/补偿）。
+  4. 单体 release() 中的 `System.out.println` 调试输出未移植（非契约行为）。
+- Gateway 正式路由（声明顺序敏感）：`/demand/product**`→master-data、`/pps/product-route**`→master-data
+  （均在 `/demand/**`→product-demand 之前）；Phase 1 前缀冒烟路由保留。
+- 数据版本字段方案（baselines §2 补充，为 Phase 4 快照）：行级 `version`=该行 update_time epoch 毫秒
+  （null 记 0）；路线业务版本沿用单体 product_route.version（"v1"）；信封 `snapshotVersion`=服务权属表
+  `master_data_data_version`（scope=MASTER_DATA 单计数器，写事务内 ON DUPLICATE KEY 单调递增）。
+  资源扩展表/能力矩阵无时间戳列（单体如此），其变化由 snapshotVersion 承载。
+- SQL：`master_data_schema.sql`（11 表逐字节自根 schema.sql + master_data_data_version 服务权属表 +
+  master_data_svc 账号）；`demand_schema.sql`（3 表逐字节 + demand_svc）。两脚本注释已声明权属边界。
+
+**验证结果（本机实测，temurin 17.0.20+8 / Maven 3.9.16）**：
+1. 根构建（回滚点）：`mvn -B -ntp -DskipTests compile` **25/25 模块** BUILD SUCCESS（24+新增 api 模块；
+   单体 0 改动，git status 仅 product-services/** 与 .env.example）。
+2. 离线测试：`product-services` 下 `mvn -B -ntp clean test` **10/10 模块 BUILD SUCCESS，91 用例全绿**
+   （cloud-common 19、cloud-security 11、gateway 9、identity 25、master-data 4、demand-service 15
+   【含 MasterDataReferenceValidatorTest 6 + OrderLineServiceImplTest 5 的新增跨域校验单测】、planning 4、
+   execution 4；日志存 `scratch/phase3/phase3_clean_test.log`）。测试修正：两服务 ApplicationTest 按
+   identity 方式排除 DataSource/MyBatis-Plus 自动装配并 @MockitoBean 占位 Mapper（否则 DB health
+   indicator 离线 503）。
+3. Schema：两脚本连续执行 2 次通过（重置语义）；AUTO_INCREMENT 起点 customer/order_line/calendar/product
+   均保持 100；master_data_db 12 表（11 基线+版本表）、demand_db 3 表；隔离实测：master_data_svc 查
+   product.sys_user → ERROR 1142；demand_svc 查 identity_db.sys_user → ERROR 1142、CREATE TABLE → 1142
+   （DML-only 成立）；本服务库 SELECT 正常。
+4. 实机（nacos v3.0.3+rabbitmq compose、既有 mysql 33066/redis 6380；identity 8101 / master-data 8102 /
+   demand 8103 / gateway 8080，均注册 PRODUCT_GROUP、健康 UP）：
+   - 主数据：建产品（带 moldParams+3 工序启用路线）→ getInfo 聚合返回、分页 list（total/rows、
+     Long→String）、`/pps/product-route` 建 v2 非启用路线→activate→旧路线自动停用（单活跃约束）→
+     product/{id}/active、list desc 正确；再建第二条启用路线被 `uk_product_route_active` 拦截（数据已存在，
+     请检查重复数据——与单体同款 SQL 映射错误体）。
+   - Excel：产品 export/importTemplate 200（xlsx）；客户 importTemplate→openpyxl 注入行→importData
+     `导入成功1条信息！`→list 可见→export 200。产品 importData 报"产品必须指定至少一条模具参数"与单体
+     一致（模具参数无 @Excel 列，单体往返同样必败，冻结缺陷，见下）。
+   - 订单全生命周期：建客户→建订单（IdWorker 主键）→订单行（valid product 经 Feign 校验通过）→
+     check→release→cancelRelease；订单 getInfo 内嵌 orderLineList；行 getInfo 内嵌
+     productionBatchList:[]；DELETE 订单级联删行（DB 验证 0 残留）；无 orderId 建行→"订单行必须指定所属
+     订单ID"；未确认订单 release→"订单未确认"。
+   - 跨域校验：product=999999 建行→`产品不存在: productId=999999`（Feign 经 Nacos 直连 8102）；
+     杀掉 master-data 后建行→`主数据服务不可用，无法校验产品引用，请稍后重试`（~30ms 快速失败，
+     无静默放行）；重启后恢复。
+   - 内部契约端点：`POST /internal/master-data/products/exists|products/batch` 直连带 token 返回
+     snapshotVersion（写路径后实测递增至 4）+ existingIds/version；不带 token→单体逐字节 401 错误体；
+     经网关对字面路径 404。**check 勘误**：Phase 1 冒烟前缀路由 `/master-data/**`（StripPrefix=1）仍可
+     使 `/master-data/internal/master-data/**` 携带合法 JWT 穿透网关（只读、仍需登录，非鉴权绕过，
+     但违背"内部端点不外暴"意图；planning/execution 冒烟路由同款隐患）→ Phase 4 必修：网关增加
+     `/internal/**` 显式拒绝（404 体），并复核冒烟路由边界。
+   - 权限：无 token 经网关→逐字节 401；ptester（common 角色）业务端点（/demand/customer、/demand/product、
+     /pps/product-route）200（业务域仅要求登录——quality spec 冻结现状），/system/menu/list→403
+     `没有权限，请联系管理员授权`。
+5. 契约 diff（临时单体 8082 自当前源码 spring-boot:run 拉起；8081 用户常驻实例未动）：
+   脚本 `scratch/phase3/contract_diff.py`（双端各自建数、归一化雪花 id/时间戳、键集+归一值双重比对）
+   **12/12 PASS**（customer list/{id}、product list、order list(本运行行)/{id}（check 后再验）、
+   orderLine list/{id}、release/cancelRelease、缺失资源错误体、缺 orderId 错误体）+ 补充 ASCII 同名
+   product/list 逐字段 PASS。日志 `scratch/phase3/diff_final.log`。
+   **显式差异（3 类，均已记录）**：
+   a. **单体冻结缺陷（非本次引入）**：单体 `/demand/product` 创建+详情 与 `/pps/product-route` 全部端点
+      运行时 500 `数据库操作异常：...Not Found TableInfoCache.`——ProductMoldParam/ProductRoute 在单体无
+      Mapper 注册（Db 工具链必需 TableInfo）。服务侧因完整 Mapper 集而可用：属"修复"，已按差异记录；
+      统一切换评审时按"冻结缺陷修复"归类，不属行为回归。
+   b. **刻意新增**：orderLine 引用不存在产品→单体接受、服务拒绝（Phase 3 验收项"跨域引用校验"）。
+   c. **删除级联重排**：服务删订单行不触碰 production_batch（planning 权属），Phase 4 接线。
+6. 清理：本次启动的 6 个 JVM（4 服务+临时单体及其 mvn 父进程）全部终止，8080/8082/8101-8103 端口释放；
+   nacos/rabbitmq 容器停止；既有 mysql/redis/ELK 容器与 8081 用户单体未受影响（8081 实测 200）；
+   master_data_db/demand_db 已重置为种子空库；diff 测试行已双向清理。
+
+**遗留/移交 Phase 4**：
+- **必修：网关 `/internal/**` 显式拒绝**（check 发现 Phase 1 冒烟前缀路由可穿透到内部契约端点，见上）。
+- master-data `hasBlockingTasksForProduct` 当前恒 false（启用路线删除保护缺失）→ 需 demand 契约
+  listOrderLineIdsByProduct + planning 契约 hasBlockingTasks。
+- demand 删行不再级联删批次 + `ProductionBatchView` 恒空 → planning 契约/事件填充与补偿。
+- Feign 服务身份令牌（无请求上下文的异步调用，如排程任务）随 Phase 4 补充；当前透传用户 JWT。
+- Sentinel 规则 Nacos 持久化、OpenAPI 网关聚合正式路由仍挂起（沿 Phase 2 遗留；springdoc 各服务已启用，
+  网关 swagger urls 仍指 Phase 1 前缀路由，统一切换前收敛）。
 
 ## Phase 4: Planning
 

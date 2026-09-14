@@ -47,6 +47,22 @@ spring:
               uri: lb://product-identity
               predicates:
                 - Path=/system/user/**,/system/menu/**,/system/dict/**
+            # ---- Master Data 正式路由（Phase 3）：产品与工艺路线归 master-data 所有，
+            # 对外路径与单体保持一致（baselines.md §1.2：/demand/product、/pps/product-route）。
+            # /demand/product 必须声明在下方 /demand/** 之前（SCG 按声明顺序匹配）。 ----
+            - id: master-data-product
+              uri: lb://product-master-data
+              predicates:
+                - Path=/demand/product,/demand/product/**
+            - id: master-data-product-route
+              uri: lb://product-master-data
+              predicates:
+                - Path=/pps/product-route,/pps/product-route/**
+            # ---- Demand 正式路由（Phase 3）：客户/订单/订单行及订单生命周期，路径不变 ----
+            - id: demand-business
+              uri: lb://product-demand
+              predicates:
+                - Path=/demand/**
             # ---- Phase 1 骨架冒烟路由（StripPrefix=1，服务本地路径以 / 开头）----
             # 未迁移服务（Phase 3-5）继续使用前缀占位路由；经网关访问同样需要有效 JWT。
             - id: identity
