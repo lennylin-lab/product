@@ -27,10 +27,13 @@ public class GatewaySecurityProperties {
      * 匿名放行端点（Ant 风格）。对照单体 SecurityConfig permitAll：
      * /login、/register（冻结为不存在）、/captchaImage；静态资源与 /druid/** 属单体进程内资产，
      * 网关不代理；新增 /jwks（公钥发布）与网关自身运维端点。
+     * Phase 6：各服务 api-docs 收敛为 /{service-prefix}/v3/api-docs（文档路由 StripPrefix=1），
+     * swagger 语义与单体一致（匿名可读）——放行单段前缀形态。
      */
     private List<String> permitPaths = new ArrayList<>(List.of(
             "/login", "/register", "/captchaImage", "/jwks",
             "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/v3/api-docs.yaml",
+            "/*/v3/api-docs", "/*/v3/api-docs/**",
             "/actuator/**"));
 
     /**

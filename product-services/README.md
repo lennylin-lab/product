@@ -1,24 +1,63 @@
-# product-services — Spring Cloud Alibaba 微服务骨架（Phase 1）
+# product-services — Spring Cloud Alibaba 微服务体系
 
 > 依据：`adr/0001-version-baseline.md`（JDK 17 / Boot 3.5.16 / SC 2025.0.3 / SCA 2025.0.0.0 / Nacos 3.0.x / Sentinel 1.8.9）、
-> `adr/0002-service-boundaries.md`（5 服务 + 1 网关）。Phase 1 仅平台骨架，不含业务代码；业务迁移自 Phase 2 开始。
+> `adr/0002-service-boundaries.md`（5 服务 + 1 网关）。Phase 6 统一切换完成：全部业务已迁移，
+> Phase 1 冒烟前缀路由移除，路由/限流/文档聚合/OTLP 为收敛后形态（见 §统一切换基线）。
+> 运维（启动顺序/备份恢复/回滚/故障处理）：`docs/微服务运维手册.md`；数据补偿：`docs/数据补偿手册.md`。
 
 ## 模块与端口
 
-| Maven 模块 | `spring.application.name`（= Nacos 注册名） | 端口 | ADR-0002 职责 |
+| Maven 模块 | `spring.application.name`（= Nacos 注册名） | 端口 | 职责 |
 | --- | --- | --- | --- |
-| product-gateway | `product-gateway` | 8080 | 唯一入口、路由、CORS、限流、JWT 前置校验、trace 注入 |
-| product-identity | `product-identity` | 8101 | 登录、验证码、JWT 签发、用户/角色/菜单/字典/权限（Phase 2 迁移） |
-| product-master-data | `product-master-data` | 8102 | 产品/工艺路线/资源/机台/模具/日历/换型规则（Phase 3 迁移） |
-| product-demand-service | `product-demand` | 8103 | 客户/订单/订单行及订单生命周期（Phase 3 迁移） |
-| product-planning | `product-planning` | 8104 | 批次/工序任务/资源需求/派工/排程（Phase 4 迁移） |
-| product-execution | `product-execution` | 8105 | 任务/资源状态事件、现场追溯（Phase 5 迁移） |
+| product-gateway | `product-gateway` | 8080 | 唯一入口、路由、CORS、限流（Nacos 持久化规则）、JWT 前置校验、trace 注入 |
+| product-identity | `product-identity` | 8101 | 登录、验证码、JWT 签发、用户/角色/菜单/字典/权限、服务身份令牌 |
+| product-master-data | `product-master-data` | 8102 | 产品/工艺路线/资源/机台/模具/日历/换型规则、数据版本计数 |
+| product-demand-service | `product-demand` | 8103 | 客户/订单/订单行及订单生命周期、批次投影消费、订单状态聚合 |
+| product-planning | `product-planning` | 8104 | 批次/工序任务/资源需求/派工/异步排程（快照+漂移守卫）、任务事件消费 |
+| product-execution | `product-execution` | 8105 | 任务/资源状态事件（outbox 出站）、现场追溯 |
 | product-cloud-common | （库，不部署） | — | 统一错误契约、请求上下文、日志基线（SERVLET 条件装配，WebFlux 网关自动跳过） |
 | product-cloud-security | （库，不部署） | — | JWT RS256 验签核心 + JWKS + 服务端本地验签安全链 + @ss 权限（ADR-0003；SERVLET 条件装配，网关只复用纯 Java 验签核心） |
-| product-cloud-messaging | （库，不部署） | — | 跨服务事件一致性基础设施（ADR-0004，Phase 5）：版本化 envelope、事务内 Outbox + publisher confirm 中继、eventId 幂等消费、有界重试 + DLX 死信审计、对账/重放/运维审计（JdbcTemplate 访问各服务自有库同名权属表） |
+| product-cloud-messaging | （库，不部署） | — | 跨服务事件一致性基础设施（ADR-0004）：版本化 envelope、事务内 Outbox + publisher confirm 中继、eventId 幂等消费、有界重试 + DLX 死信审计、对账/重放/运维审计（JdbcTemplate 访问各服务自有库同名权属表） |
 
 > 命名说明：demand 的 Maven 模块叫 `product-demand-service`（避免与旧业务模块 `product-demand` 坐标冲突），
 > Nacos 注册名与配置 Data ID 仍用目标服务名 `product-demand`。
+
+## 网关正式路由（Phase 6 收敛版）
+
+| 路由 | 目标 | 说明 |
+| --- | --- | --- |
+| /login,/register,/captchaImage,/jwks,/getInfo,/getRouters | product-identity | 登录/匿名端点（permitPaths 由网关 JWT 过滤器处理） |
+| /system/user/**,/system/menu/**,/system/dict/** | product-identity | system 管理 |
+| /demand/product,/demand/product/** | product-master-data | 产品（baselines §1.2 路径冻结） |
+| /pps/product-route,/pps/product-route/** | product-master-data | 工艺路线 |
+| /master/calendar,/master/calendar/**；/master/resource/machine,/master/resource/machine/** | product-master-data | 日历/机台（Phase 6 补齐的正式路由） |
+| /pps/batch,/pps/task,/pps/assignment（含 /**） | product-planning | 批次/工序任务/派工 |
+| /demand/** | product-demand | 客户/订单/订单行 |
+| /execute/event,/execute/event/** | product-execution | 任务事件 |
+| /{identity\|master-data\|demand-svc\|planning\|execution}/v3/api-docs** | 各服务（StripPrefix=1） | OpenAPI 文档聚合（springdoc.swagger-ui.urls 引用；匿名可读，baselines §1.3 显式差异） |
+
+- Phase 1 的 StripPrefix 冒烟前缀路由（/identity/**、/planning/** 等）已全部移除，仅保留文档收敛路径。
+- `/internal/**` 由 InternalPathDenyFilter 显式拒绝（404 统一错误体），含 URL 解码/矩阵参数变形；
+  内部契约端点仅服务间直连与运维脚本可达。
+
+## Sentinel 规则 Nacos 持久化（Phase 6）
+
+- 依赖 `sentinel-datasource-nacos`（SCA BOM 1.8.9）；`spring.cloud.sentinel.datasource.gateway-flow-rules.nacos`：
+  data-id=`product-gateway-flow-rules.json`、**group-id=PRODUCT_GATEWAY**（注意属性名是 `group-id`，
+  写成 `group` 会静默回退 DEFAULT_GROUP——Phase 6 live 踩坑）、rule-type=`gw-flow`。
+- 规则 JSON：`[{"resource":"identity-auth","grade":1,"count":200}, ...]`；Nacos 发布/修改即时热加载；
+  未发布配置时 application.yml 的 `product.gateway.sentinel.routes` 属性规则兜底。
+- 限流响应：429 + 统一 {msg,code} 错误体 + X-Trace-Id。
+
+## 可观测性（Phase 6 收敛后）
+
+- 健康：`/actuator/health`（liveness/readiness 匿名）；**指标**：`/actuator/prometheus`
+  （受 JWT 保护，需管理员 token）；日志：各服务 JSON（ELK 字段）。
+- **追踪/OTLP**：micrometer-tracing-otel + `io.opentelemetry:opentelemetry-exporter-otlp`；
+  `OTLP_TRACES_ENABLED=true` 打开导出（默认关闭），端点 `OTLP_TRACES_ENDPOINT`
+  （compose 提供 jaeger all-in-one：OTLP :4318、UI :16686）。网关入口一次请求的 traceId
+  贯穿网关 span（Jaeger）+ 目标服务 JSON 日志；异步事件链以 envelope correlationId（=命令 traceId）
+  贯穿三域 outbox（Phase 6 实测 transcript：scratch/phase6/observability_transcript.txt）。
 
 ## Nacos namespace / group / Data ID 规范
 
@@ -63,6 +102,7 @@
 - **健康检查**：`/actuator/health`（含 liveness `/actuator/health/liveness`、readiness
   `/actuator/health/readiness`，`management.endpoint.health.probes.enabled=true`）。
 - **指标**：`/actuator/prometheus`（Prometheus 文本格式，micrometer-registry-prometheus）。
+  指标端点受 JWT 保护（需管理员 token）；健康探针匿名。告警规则基线见 `deploy/alerts/product-microservices-alerts.yml`。
 - **日志**：各服务 `logback-spring.xml` include `logback/product-cloud-base.xml`；控制台格式与 JSON 文件
   （`app.json.log`/`error.json.log`）字段与现有单体 ELK 管线一致，`service.name` 取 `spring.application.name`。
 - **追踪**：micrometer-tracing-otel 桥接，W3C 传播。traceId 一致性链路（Phase 1 实测）：
@@ -75,16 +115,23 @@
     日志 JSON 的 `traceId` 与 `/skeleton/info` 应答的 `traceId` 一致；
   - 已知边界：网关自身的非代理错误响应（如路由无实例时的 503）尚无统一错误体/X-Trace-Id，
     属 Phase 2 网关错误契约范围。
-- 骨架阶段不配置 span 导出器（无 OTLP collector，不产生导出报错）；collector 接入在统一切换前（Phase 6）完成。
+- **span 导出（Phase 6 已接入）**：`OTLP_TRACES_ENABLED=true` 打开 OTLP 导出
+  （端点 `OTLP_TRACES_ENDPOINT`，compose 提供 jaeger all-in-one）；未开启时不配置导出器、不产生导出报错。
   开发期采样率 `management.tracing.sampling.probability=1.0`。
 
-## 认证基线（Phase 2，ADR-0003）
+## 认证基线（ADR-0003；Phase 6 收口）
 
 - Identity 签发 RS256 JWT（jjwt 0.12.6），`GET /jwks` 匿名发布公钥（kid=公钥模组 SHA-256 指纹前 16 hex）。
   私钥经 `IDENTITY_JWT_PRIVATE_KEY`（PEM/PKCS#8）注入；未注入时生成临时开发密钥（重启后 token 失效）。
   `IDENTITY_JWT_PREVIOUS_PUBLIC_KEY` 发布轮换窗口公钥，新旧 kid 并存，仅当前密钥签名。
-- 两层校验：网关 `JwtAuthGlobalFilter` 前置验签（permitAll 对照单体 SecurityConfig），服务端
+  **轮换演练已实测**（scratch/phase6/jwt_rotation_transcript.txt）：窗口内旧 token 可验签、新登录用新 kid；
+  窗口关闭（重启 Identity+刷新网关 JWKS 缓存）后旧 token 401。生产注入方式与撤销语义见
+  `docs/微服务运维手册.md` §5。
+- 两层校验：网关 `JwtAuthGlobalFilter` 前置验签（permitPaths 对照单体 SecurityConfig），服务端
   `JwtAuthenticationFilter` 本地验签重建 SecurityContext；`@PreAuthorize("@ss.hasPermi(...)")` 与单体同语义。
+- **ops 端点管理员门禁（Phase 6 决策）**：planning/demand OpsController 与 execution `/ops/*` 运维端点
+  追加 `@PreAuthorize("@ss.hasPermi('*:*:*')")`（重放/人工改写等同生产操作，最小暴露）；服务身份令牌
+  permissions 为空集不可调用；失败语义与单体权限契约一致（HTTP 200 + code 403）。契约端点保持 token 语义不变。
 - 防伪：服务只信任验签 token，不读明文内部头；网关入口强制剥离 X-User-Id/X-User-Name/X-User-Account/
   X-User-Permissions/X-Internal-Client；直连服务端口必须携带有效签名 token（`product.security.enabled` 默认开启，
   离线单测显式关闭；网关已排除 Boot 默认 Reactive Security，避免默认链抢先 401）。

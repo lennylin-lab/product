@@ -1,0 +1,20 @@
+== 准备：清理旧基准数据 ==
+  cleaned
+== 准备：资源池 ==
+  resource pool ready
+== 准备：200 产品 ==
+  products=200 routes=200 ops=600 capabilities=6000
+== 准备：50 订单 / 100 订单行 / 100 批次 ==
+  orders=50 lines=100 batches=100
+== generateTask ==
+  generateTask http=200 code=200 errors=0 wall=2.1s
+  tasks generated: 300
+== scheduleAllAsync ==
+  submit http=200 jobId=2099631187246260225 submit_wall=0.02s
+  job status=SUCCESS tasks=300 err=None
+  TOTAL wall (submit->terminal) = 1.0s
+  planning RSS before=779MB after=797MB (delta=18MB)
+  planning log: 2026-09-15 06:47:39.389  INFO 1730826 --- [TaskExecutor-10] [N/A] c.p.p.s.impl.TaskSchedulingCoordinator   : scheduleAll completed: tasks=300, batches=2, machines=29, batchSize=200, strategy=EARLIEST_START, calculateCostMs=84, persistCostMs=124, totalCostMs=426
+  assignments persisted: 300
+== 清理基准数据 ==
+  cleaned

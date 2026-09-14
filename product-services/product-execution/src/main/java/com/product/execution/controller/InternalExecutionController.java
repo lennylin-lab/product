@@ -32,7 +32,10 @@ import java.util.Map;
  *       （新 eventId + 原 correlationId/payload，ADR-0004 §6；写 ops_audit 留痕）。</li>
  * </ul>
  *
- * <p>鉴权与其余端点一致：有效签名 token（网关对 /internal/** 显式拒绝，仅服务间直连）。</p>
+ * <p>鉴权：契约端点与其余端点一致（有效签名 token；网关对 /internal/** 显式拒绝，
+ * 仅服务间直连）；{@code /ops/*} 两个端点为运维工具，Phase 6 决策追加管理员门禁
+ * {@code @ss.hasPermi('*:*:*')}（Identity 种子 admin 一类管理员可调用，服务身份令牌
+ * permissions 为空集不可调用；失败语义与单体权限契约一致：HTTP 200 + code 403）。</p>
  */
 @Slf4j
 @RestController
@@ -61,7 +64,8 @@ public class InternalExecutionController {
         return AjaxResult.success(resourceStatusEventService.listByResourceId(resourceId));
     }
 
-    /** 发件箱巡检（状态计数 + 可选筛选，供对账脚本/巡检用）。 */
+    /** 发件箱巡检（状态计数 + 可选筛选，供对账脚本/巡检用；管理员门禁，见类注释）。 */
+    @org.springframework.security.access.prepost.PreAuthorize("@ss.hasPermi('*:*:*')")
     @GetMapping("/ops/outbox")
     public AjaxResult outboxInspection(@RequestParam(required = false) String status,
                                        @RequestParam(required = false) String aggregateId,
@@ -81,7 +85,8 @@ public class InternalExecutionController {
         return AjaxResult.success(result);
     }
 
-    /** 人工重放 outbox 事件（请求体：{"outboxId": 123}）。 */
+    /** 人工重放 outbox 事件（请求体：{"outboxId": 123}；管理员门禁，见类注释）。 */
+    @org.springframework.security.access.prepost.PreAuthorize("@ss.hasPermi('*:*:*')")
     @PostMapping("/ops/replay-outbox")
     public AjaxResult replayOutbox(@RequestBody Map<String, Object> body) {
         Object raw = body == null ? null : body.get("outboxId");

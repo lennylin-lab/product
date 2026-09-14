@@ -44,6 +44,14 @@
             <groupId>com.alibaba.cloud</groupId>
             <artifactId>spring-cloud-alibaba-sentinel-gateway</artifactId>
         </dependency>
+        <!-- Phase 6：Sentinel 规则 Nacos 持久化（sentinel-datasource；版本由 SCA BOM 管理，1.8.9）。
+             网关流控规则 dataId=product-gateway-flow-rules.json（group=PRODUCT_GATEWAY，namespace=dev），
+             规则 JSON 推送后经 GatewayRuleManager 热加载；application.yml 中的
+             product.gateway.sentinel.routes 属性规则仍作为 Nacos 未发布配置时的兜底默认。 -->
+        <dependency>
+            <groupId>com.alibaba.csp</groupId>
+            <artifactId>sentinel-datasource-nacos</artifactId>
+        </dependency>
 
         <!-- 可观测性基线：健康检查/指标/追踪 -->
         <dependency>
@@ -57,6 +65,11 @@
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-tracing-bridge-otel</artifactId>
+        </dependency>
+        <!-- Phase 6：OTLP span 导出（management.otlp.tracing.endpoint；导出开关见 application.yml） -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
         </dependency>
 
         <!-- OpenAPI：网关聚合各服务文档 -->

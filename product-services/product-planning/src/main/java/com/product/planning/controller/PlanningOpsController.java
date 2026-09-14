@@ -34,13 +34,19 @@ import java.util.Map;
  *       人工修正：按任务聚合重算批次状态（变更则发布 batch.progress.changed）。</li>
  * </ul>
  *
- * <p>鉴权：有效签名 token；网关对 /internal/** 显式拒绝，仅服务间/运维脚本直连。</p>
+ * <p>鉴权（Phase 6 决策，随统一切换收口）：全部端点要求管理员权限
+ * {@code @PreAuthorize("@ss.hasPermi('*:*:*')")}（token 内嵌 permissions 含 {@code *:*:*}，
+ * 即 Identity 种子 admin 一类管理员；服务身份令牌 permissions 为空集，不可调用）。
+ * 理由：ops 端点可重放事件/人工改写状态，等同生产操作，必须最小暴露——网关对
+ * /internal/** 显式拒绝（仅内网直连可达），再加管理员门禁与 ops_audit 留痕双层约束；
+ * 失败语义与单体权限契约一致（HTTP 200 + code 403 "没有权限，请联系管理员授权"）。</p>
  */
 @Slf4j
 @RestController
 @ConditionalOnProperty(prefix = "product.messaging", name = "enabled", havingValue = "true")
 @RequestMapping("/internal/planning/ops")
 @RequiredArgsConstructor
+@org.springframework.security.access.prepost.PreAuthorize("@ss.hasPermi('*:*:*')")
 public class PlanningOpsController {
 
     private final EventReplayService eventReplayService;

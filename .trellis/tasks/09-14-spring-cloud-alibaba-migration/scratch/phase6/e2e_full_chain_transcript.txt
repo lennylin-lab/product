@@ -1,0 +1,54 @@
+[PASS] GET /captchaImage 匿名可访问 | {"msg": "\u64cd\u4f5c\u6210\u529f", "img": "/9j/4AAQSkZJRgABAgAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a
+[PASS] POST /login（验证码校验）返回 token | code=200 msg=操作成功
+[PASS] POST /master/calendar 建日历（网关 Phase 6 新增正式路由；重跑=已存在） | {"msg": "数据已存在，请检查重复数据", "code": 500}
+[PASS] POST /master/resource/machine 建机台（重跑=已存在） | {"msg": "操作成功", "code": 200}
+[PASS] GET /master/resource/machine/list 可查且含新建机台 | rows=12 machineIds=['600', '610', '700', '800', '2099621112909664258', '2099621339066535938', '2099621502719889410', '2099621666981416961', '2099621770505228289', '2099621899954032641', '2099622644656902146', '2099622765507383298']
+mysql: [Warning] Using a password on the command line interface can be insecure.
+[PASS] POST /demand/product 建产品（模具参数+3 工序启用路线） | {"msg": "操作成功", "code": 200}
+[PASS] GET /demand/product/list 可查 | total=7
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  productId=2099622765821956098
+[PASS] 第二条启用路线被单活跃约束拦截 | {"msg": "数据已存在，请检查重复数据", "code": 500}
+[PASS] POST /demand/customer 建客户 | {"msg": "操作成功", "code": 200}
+[PASS] POST /demand/order 建订单 | {"msg": "操作成功", "code": 200}
+[PASS] 订单行引用不存在产品被拒（跨域校验） | {"msg": "产品不存在: productId=999999", "code": 500}
+[PASS] POST /demand/orderLine 建订单行（产品存在，Feign 校验通过） | {"msg": "操作成功", "code": 200}
+[PASS] PUT /demand/order/check 订单确认 | {"msg": "操作成功", "code": 200}
+[PASS] PUT /demand/orderLine/release 订单行释放 | {"msg": "操作成功", "code": 200}
+[PASS] POST /pps/batch 拆批（数量预占用经 demand 契约） | {"msg": "操作成功", "code": 200}
+[PASS] GET /pps/batch/list（orderId 过滤 + 跨域字段填充） | {"createTime": null, "updateTime": null, "batchId": "2099622766765682689", "orderLineId": "2099622766543380481", "batchQty": "30", "status": "PLANNED", "plannedStart": null, "plannedEnd": null, "order
+[PASS] PUT /pps/batch/release 批次释放（PLANNED -> RELEASED） | {"msg": "操作成功", "code": 200}
+[PASS] POST /pps/batch/generateTask 生成工序任务 | {"msg": "操作成功", "code": 200, "errors": []}
+[PASS] GET /pps/task/list 3 道工序任务 READY | n=3
+[PASS] POST /pps/assignment/scheduleAllAsync 受理异步排程 | {"msg": "排程任务已提交", "code": 200, "data": "2099622767344496641"}
+[PASS] 排程任务 SUCCESS（异步 + 轮询） | {"createTime": "2026-09-15 06:14:11", "updateTime": "2026-09-15 06:14:11", "jobId": "2099622767344496641", "jobType": "FULL", "status": "SUCCESS", "assignmentStart": "2026-09-16 08:00:00", "startedAt"
+[PASS] GET /pps/assignment/list 派工已生成（机台/计划起止） | {"createTime": null, "updateTime": null, "assignmentId": "2099622767843618817", "taskId": "2099622767172530177", "machineId": "2099621770505228289", "plannedStart": "2026-10-03 20:00:00", "plannedEnd"
+[PASS] 排程后任务全部 SCHEDULED | SCHEDULED,SCHEDULED,SCHEDULED
+[PASS] POST /execute/event/start/2099622767172530177 -> 200 | {"msg": "操作成功", "code": 200}
+[PASS] start 事件链收敛：line IN_PRODUCTION / order IN_PRODUCTION | line=IN_PRODUCTION order=IN_PRODUCTION
+[PASS] planning 任务状态 RUNNING（事件消费） | RUNNING
+[PASS] 批次状态 IN_PROCESS（事件聚合） | IN_PROCESS
+[PASS] POST /execute/event/pause/2099622767172530177 -> 200 | {"msg": "操作成功", "code": 200}
+[PASS] 任务 PAUSED（暂停） | status=PAUSED want=PAUSED
+[PASS] POST /execute/event/resume/2099622767172530177 -> 200 | {"msg": "操作成功", "code": 200}
+[PASS] 任务 RUNNING（恢复） | status=RUNNING want=RUNNING
+[PASS] POST /execute/event/start/999999 -> 500 | {"msg": "操作失败", "code": 500}
+[PASS] 幽灵任务失败语义（操作失败, code 500）且不留事件行 | before=0 after=0
+[PASS] POST /execute/event/complete/2099622767172530177 -> 200 | {"msg": "操作成功", "code": 200}
+[PASS] POST /execute/event/start/2099622767172530178 -> 200 | {"msg": "操作成功", "code": 200}
+[PASS] POST /execute/event/complete/2099622767172530178 -> 200 | {"msg": "操作成功", "code": 200}
+[PASS] POST /execute/event/start/2099622767172530179 -> 200 | {"msg": "操作成功", "code": 200}
+[PASS] POST /execute/event/complete/2099622767172530179 -> 200 | {"msg": "操作成功", "code": 200}
+[PASS] 完工闭环：line DONE / order DONE | line=DONE order=DONE
+[PASS] 批次 DONE | DONE
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+[PASS] 漂移守卫：输入版本漂移 -> job FAILED（不部分落库） | {"createTime": "2026-09-15 06:14:16", "updateTime": "2026-09-15 06:14:16", "jobId": "2099622787598790658", "jobType": "FULL", "status": "FAILED", "assignmentStart": "2026-09-17 08:00:00", "startedAt":
+mysql: [Warning] Using a password on the command line interface can be insecure.
+[PASS] 漂移任务保持 READY（无部分落库） | ready_count=120
+mysql: [Warning] Using a password on the command line interface can be insecure.
+
+E2E ALL PASS

@@ -1,0 +1,48 @@
+== 行数快照 ==
+  identity_db.sys_user = 2
+  identity_db.sys_role = 2
+  identity_db.sys_menu = 44
+  identity_db.sys_dict_type = 2
+  identity_db.sys_dict_data = 5
+  master_data_db.product = 7
+  master_data_db.product_route = 7
+  master_data_db.route_operation = 21
+  master_data_db.resource = 12
+  master_data_db.machine = 9
+  master_data_db.mold = 2
+  master_data_db.machine_mold_compatibility = 18
+  master_data_db.resource_capability = 21
+  master_data_db.calendar = 2
+  master_data_db.changeover_rule = 2
+  demand_db.customer = 7
+  demand_db.customer_order = 7
+  demand_db.order_line = 7
+  demand_db.planning_batch_state = 7
+  planning_db.production_batch = 7
+  planning_db.operation_task = 21
+  planning_db.task_assignment = 21
+  planning_db.task_assignment_resource = 49
+  planning_db.task_dependency = 14
+  planning_db.task_resource_requirement = 49
+  planning_db.schedule_job = 38
+  execution_db.task_event = 38
+  execution_db.resource_status_event = 0
+== 关键不变式 ==
+  planning 批次状态分布: DONE	4
+IN_PROCESS	3
+  demand 订单行状态分布: IN_PRODUCTION	3
+DONE	4
+  demand 订单状态分布: DONE	4
+IN_PRODUCTION	3
+[PASS] planning_batch_state 投影与 planning 批次一致（比较 7 个共同批次） | mismatch=[]
+[PASS] 无孤儿投影（demand 有、planning 无） | orphan=[]
+[PASS] X2 任务事件流水与 planning 终态一致（15 个任务，outbox 收敛） | bad=[]
+[PASS] X3 allocated_qty 与 SUM(batch_qty) 一致 | bad=[]
+[PASS] execution_db outbox/死信健康（PENDING=0 HALTED=0 DLQ未重放=0）
+[PASS] planning_db outbox/死信健康（PENDING=0 HALTED=0 DLQ未重放=0）
+[PASS] demand_db outbox/死信健康（PENDING=0 HALTED=0 DLQ未重放=0）
+== recon.py 终局判定 ==
+  checks=50 drifts=0
+[PASS] recon.py drifts=[] | []
+
+VALIDATE DATA: ALL PASS

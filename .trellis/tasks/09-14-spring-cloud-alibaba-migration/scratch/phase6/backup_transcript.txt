@@ -1,0 +1,9 @@
+== [backup] 备份 6 库 -> /home/lenny/Projects/pps/product/.trellis/tasks/09-14-spring-cloud-alibaba-migration/scratch/phase6/backups ==
+  OK product -> product.sql (48K)
+  OK identity_db -> identity_db.sql (16K)
+  OK master_data_db -> master_data_db.sql (24K)
+  OK demand_db -> demand_db.sql (28K)
+  OK planning_db -> planning_db.sql (68K)
+  OK execution_db -> execution_db.sql (32K)
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  snapshot: tables_before_restore.txt (77 tables)

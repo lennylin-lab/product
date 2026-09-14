@@ -104,6 +104,11 @@
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-tracing-bridge-otel</artifactId>
         </dependency>
+        <!-- Phase 6：OTLP span 导出（management.otlp.tracing.endpoint；导出开关见 application.yml） -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
 
         <!-- OpenAPI 基线 -->
         <dependency>

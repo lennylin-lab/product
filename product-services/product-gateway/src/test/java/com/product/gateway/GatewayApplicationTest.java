@@ -64,12 +64,24 @@ class GatewayApplicationTest {
 
     @Test
     void protectedRouteWithoutTokenShouldReturnMonolithByteCompatible401Body() {
-        // Phase 1 的 /identity 前缀路由仍存在，但 Phase 2 起需要有效 JWT（匿名不可达）
+        // 正式业务路由（/system/**，Phase 6 收敛后 Phase 1 前缀冒烟路由已全部移除）需要有效 JWT（匿名不可达）
+        ResponseEntity<String> response = restTemplate.getForEntity(
+                "http://localhost:" + port + "/system/menu/list", String.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("{\"msg\":\"请求访问：/system/menu/list，认证失败，无法访问系统资源\",\"code\":401}",
+                response.getBody());
+        assertNotNull(response.getHeaders().getFirst("X-Trace-Id"));
+    }
+
+    @Test
+    void removedPhase1PrefixRoutesShouldNoLongerRoute() {
+        // Phase 6 收敛：冒烟前缀路由（StripPrefix=1 的 /identity/**、/planning/** 等）已移除，
+        // 仅保留各服务 api-docs 收敛路径（/identity/v3/api-docs 等）。
+        // 业务前缀 /identity/skeleton/info 现在应落到统一 404 错误体。
         ResponseEntity<String> response = restTemplate.getForEntity(
                 "http://localhost:" + port + "/identity/skeleton/info", String.class);
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertEquals("{\"msg\":\"请求访问：/identity/skeleton/info，认证失败，无法访问系统资源\",\"code\":401}",
-                response.getBody());
+        assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
+        assertEquals("{\"msg\":\"请求路径不存在\",\"code\":404}", response.getBody());
         assertNotNull(response.getHeaders().getFirst("X-Trace-Id"));
     }
 

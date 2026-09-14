@@ -1,0 +1,28 @@
+[PASS] [identity] 网关入口请求回写 X-Trace-Id | http=200
+[PASS] [identity] traceId b70da88e1f64fabe5f802999e6798e4e 出现在 identity JSON 日志(1 处，网关经 Jaeger span 留痕)
+[FAIL] [identity] Jaeger OTLP 导出：trace 同时含 gateway 与 identity span | services=['product-gateway']
+[PASS] [master-data] 网关入口请求回写 X-Trace-Id | http=200
+[PASS] [master-data] traceId e9a0341ef337e1792523968b467b9890 出现在 master-data JSON 日志(1 处，网关经 Jaeger span 留痕)
+Traceback (most recent call last):
+  File "/home/lenny/Projects/pps/product/.trellis/tasks/09-14-spring-cloud-alibaba-migration/scratch/phase6/scripts/observability_check.py", line 82, in <module>
+    st, _, body = get(f"{JAEGER}/api/traces/{trace_id}")
+                  ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenny/Projects/pps/product/.trellis/tasks/09-14-spring-cloud-alibaba-migration/scratch/phase6/scripts/observability_check.py", line 41, in get
+    with urllib.request.urlopen(req, timeout=15) as r:
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/lenny/.local/share/mise/installs/python/3.14.7/lib/python3.14/urllib/request.py", line 187, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/home/lenny/.local/share/mise/installs/python/3.14.7/lib/python3.14/urllib/request.py", line 493, in open
+    response = meth(req, response)
+  File "/home/lenny/.local/share/mise/installs/python/3.14.7/lib/python3.14/urllib/request.py", line 602, in http_response
+    response = self.parent.error(
+        'http', request, response, code, msg, hdrs)
+  File "/home/lenny/.local/share/mise/installs/python/3.14.7/lib/python3.14/urllib/request.py", line 531, in error
+    return self._call_chain(*args)
+           ~~~~~~~~~~~~~~~~^^^^^^^
+  File "/home/lenny/.local/share/mise/installs/python/3.14.7/lib/python3.14/urllib/request.py", line 464, in _call_chain
+    result = func(*args)
+  File "/home/lenny/.local/share/mise/installs/python/3.14.7/lib/python3.14/urllib/request.py", line 611, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 404: Not Found

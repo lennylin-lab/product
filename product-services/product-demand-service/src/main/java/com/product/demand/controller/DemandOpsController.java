@@ -40,12 +40,19 @@ import java.util.Map;
  *       人工修正：按投影批次聚合重算订单行/订单状态；</li>
  *   <li>{@code GET  /internal/demand/ops/health}：outbox/死信/审计巡检。</li>
  * </ul>
+ *
+ * <p>鉴权（Phase 6 决策，随统一切换收口）：全部端点要求管理员权限
+ * {@code @PreAuthorize("@ss.hasPermi('*:*:*')")}（Identity 种子 admin 一类管理员可调用；
+ * 服务身份令牌 permissions 为空集，不可调用）。ops 端点可重放事件/人工改写状态，
+ * 网关 /internal/** 拒绝 + 管理员门禁 + ops_audit 留痕三层约束；失败语义与单体权限
+ * 契约一致（HTTP 200 + code 403 "没有权限，请联系管理员授权"）。</p>
  */
 @Slf4j
 @RestController
 @RequestMapping("/internal/demand/ops")
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "product.messaging", name = "enabled", havingValue = "true")
+@org.springframework.security.access.prepost.PreAuthorize("@ss.hasPermi('*:*:*')")
 public class DemandOpsController {
 
     private final EventReplayService eventReplayService;

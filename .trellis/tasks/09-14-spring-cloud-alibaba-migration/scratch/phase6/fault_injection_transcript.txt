@@ -1,0 +1,46 @@
+seeded 3 probe batches (8150001-8150003, tasks READY, order_line_id=999999001)
+== F1 demand 故障注入 ==
+[PASS] F1 前置：demand 在位排程 SUCCESS | SUCCESS
+  >> kill -9 demand pid=1709129
+[PASS] F1 demand 停机：网关返回统一 503 错误体 + X-Trace-Id | http=503 body={"msg":"服务暂时不可用，请稍后重试","code":503}
+[PASS] F1 demand 停机：排程 job FAILED（需求服务不可用） | {"createTime": "2026-09-15 06:40:45", "updateTime": "2026-09-15 06:40:45", "jobId": "2099629449269235714", "jobType": "FULL", "status": "FAILED", "assignmentSta
+[PASS] F1 demand 停机：任务保持 READY（无部分落库） | ready=3
+  >> restart demand pid=1728996 port=8103 liveness=200
+[PASS] F1 demand 恢复：网关路由恢复 200 | http=200
+[PASS] F1 demand 恢复：重新排程 SUCCESS | SUCCESS
+== F2 master-data 故障注入 ==
+  >> kill -9 master-data pid=1709951
+[PASS] F2 master-data 停机：订单行创建 fail-closed（主数据服务不可用） | body={"msg":"主数据服务不可用，无法校验产品引用，请稍后重试","code":500}
+  >> restart master-data pid=1730035 port=8102 liveness=200
+[PASS] F2 master-data 恢复：网关读路由恢复 200（Nacos 注册完成）
+[PASS] F2 master-data 恢复：订单行创建成功（产品校验契约恢复） | body={"msg":"操作成功","code":200}
+[PASS] F2 清理：临时订单行已删除 | line=2099629534338101250
+== F3 planning 故障注入 ==
+  >> kill -9 planning pid=1710760
+[PASS] F3 planning 停机：网关统一错误体（503 无实例 或 500 连接拒绝） | http=500 body={"msg":"系统繁忙，请稍后重试","code":500}
+[PASS] F3 planning 停机：execution 命令 fail-closed（操作失败） | body={"msg":"操作失败","code":500}
+[PASS] F3 planning 停机：不留事件行 | before=5 after=5
+  >> restart planning pid=1730826 port=8104 liveness=200
+[PASS] F3 planning 恢复：同一命令成功 | body={"msg":"操作成功","code":200}
+[PASS] F3 planning 恢复：事件链推进任务 RUNNING | status=RUNNING
+== F4 rabbitmq 故障注入 ==
+  >> docker stop product-rabbitmq
+[PASS] F4 rabbitmq 停机：execution 命令仍成功（本地事务+outbox） | body={"msg":"操作成功","code":200}
+[PASS] F4 rabbitmq 停机：outbox 积压（PENDING/HALTED>0）且 planning 未推进 | pending=1 halted=0 task=SCHEDULED
+  >> docker start product-rabbitmq
+[PASS] F4 rabbitmq 恢复：outbox 排空 + 消费收敛（任务 RUNNING） | pending=0 halted=0 task=RUNNING
+[PASS] 探针任务 815000101 complete | body={"msg":"操作成功","code":200}
+[PASS] 探针任务 815000102 complete | body={"msg":"操作成功","code":200}
+[PASS] 探针任务 815000103 complete | body={"msg":"操作成功","code":200}
+[PASS] 探针任务 815000201 complete | body={"msg":"操作成功","code":200}
+[PASS] 探针任务 815000202 complete | body={"msg":"操作成功","code":200}
+[PASS] 探针任务 815000203 complete | body={"msg":"操作成功","code":200}
+[PASS] 探针任务 815000301 complete | body={"msg":"操作成功","code":200}
+[PASS] 探针任务 815000302 complete | body={"msg":"操作成功","code":200}
+[PASS] 探针任务 815000303 complete | body={"msg":"操作成功","code":200}
+[PASS] 全部 9 个探针任务收敛 DONE | done=9
+== 清理探针行（三库） ==
+  probe rows cleaned (planning/execution/demand)
+== 终态对账（recon.py report） ==
+[PASS] 故障注入后终态对账 drifts=[] | []
+[PASS] 故障注入后 outbox 全部收敛（无 PENDING/HALTED） | {"execution_db": {"outbox_pending": "0", "outbox_halted": "0", "dlq_unreplayed": "0"}, "planning_db": {"outbox_pending": "0", "outbox_halted": "0", "dlq_unreplayed": "0"}, "demand_db": {"outbox_pending": "0", "outbox_halted": "0", "dlq_unreplayed": "0"}}

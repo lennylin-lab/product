@@ -1,0 +1,26 @@
+== [1] 生成两把生产样式 RSA 私钥（PKCS#8，openssl） ==
+  keys generated: jwt-key-1.pem / jwt-key-2.pem (+pub1)
+== [2] 注入 KEY1 启动 identity -> 登录得 tokenA（kid=kid1） ==
+  identity stopped (pid=1801310)
+  identity started pid=1811231 liveness=200
+  tokenA kid=42059bff531b6a2e  jwks: 42059bff531b (n=1)
+  tokenA -> /getInfo body code=200
+== [3] 轮换：注入 KEY2（当前）+ KEY1 公钥（轮换窗口）重启 -> 旧 tokenA 仍有效 ==
+  identity stopped (pid=1811231)
+  identity started pid=1812076 liveness=200
+  jwks: da05bcdb3662 42059bff531b (n=2)
+  tokenA(旧 kid) -> /getInfo body code=200  (200=轮换窗口内旧 token 可验签)
+  tokenB kid=da05bcdb3662f336 -> /getInfo body code=200  (新登录由当前密钥签发)
+  PASS 轮换后新 token 使用新 kid (42059bff531b6a2e -> da05bcdb3662f336)
+== [4] 关闭轮换窗口（只留 KEY2）重启 identity+gateway -> tokenA 失效(401)、tokenB 有效 ==
+  identity stopped (pid=1812076)
+  old gateway exited (pid=1802994), port 8080 released
+  identity started pid=1813372 liveness=200
+  gateway restarted liveness=200
+  jwks: da05bcdb3662 (n=1)
+  tokenA -> /getInfo body code=401  (401=窗口关闭后旧 token 失效)
+  tokenB -> /getInfo body code=200  (200=当前密钥签发的 token 正常)
+== [5] 恢复开发默认（临时密钥）重启 identity ==
+  identity stopped (pid=1813372)
+  identity started pid=1814821 liveness=200
+rotation drill done

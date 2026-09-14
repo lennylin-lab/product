@@ -1,0 +1,58 @@
+== [rollback] 整套回滚演练 ==
+-- [R1] 关闭微服务入口（全部 6 个 JVM）--
+  port 8080 free
+  port 8101 free
+  port 8102 free
+  port 8103 free
+  port 8104 free
+  port 8105 free
+-- [R2] 恢复旧库备份（6 库 drop -> create -> import）--
+== [restore] 从备份恢复 6 库 ==
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  OK product restored
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  OK identity_db restored
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  OK master_data_db restored
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  OK demand_db restored
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  OK planning_db restored
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  OK execution_db restored
+mysql: [Warning] Using a password on the command line interface can be insecure.
+-- 表清单比对（恢复前后）--
+  PASS 6 库表清单一致（77 张表）
+-- 精确计数复核（关键表）--
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  product: SELECT COUNT(*) FROM sys_user -> 1
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  identity_db: SELECT COUNT(*) FROM sys_user -> 2
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  identity_db: SELECT COUNT(*) FROM sys_menu -> 44
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  master_data_db: SELECT COUNT(*) FROM product -> 7
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  demand_db: SELECT COUNT(*) FROM customer_order -> 7
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  demand_db: SELECT COUNT(*) FROM order_line -> 7
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  planning_db: SELECT COUNT(*) FROM production_batch -> 7
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  planning_db: SELECT COUNT(*) FROM operation_task -> 21
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  execution_db: SELECT COUNT(*) FROM task_event -> 38
+-- [R3] 单体可用：构建 product-server 并冒烟 ==
+  单体构建 OK（mvn package，日志 rollback_mono_build.log）
+  单体启动 pid=1849282（8081）...
+  单体 /captchaImage -> 200 (ok=1)
+  单体登录接口可达（验证码空值 -> 预期校验失败响应）: {"msg":"验证码已失效","code":500}
+-- [R4] 单体冒烟完成，停止单体（演练不要求长期运行）--
+  单体已停止，8081 释放
+ROLLBACK DRILL PASS

@@ -1,0 +1,26 @@
+[PASS] 无 token 经网关 -> 401 单体逐字节错误体 + X-Trace-Id | http=200 body={"msg":"请求访问：/system/menu/list，认证失败，无法访问系统资源","code":401}
+[PASS] 无 token 直连 8101 -> 同一 401 错误体（服务本地验签链） | http=200
+[PASS] 伪造 token -> 401 错误体 | http=200
+[PASS] 篡改 payload 的 token -> 401（RS256 验签拒绝） | http=200
+[PASS] 伪造内部头（无 token）仍 401（内部头不作为鉴权依据） | http=200
+[PASS] 网关拒绝内部端点（含变形）: /internal/planning/ops/health | http=404 body={"msg":"请求路径不存在","code":404}
+[PASS] 网关拒绝内部端点（含变形）: /planning/internal/planning/ops/health | http=404 body={"msg":"请求路径不存在","code":404}
+[PASS] 网关拒绝内部端点（含变形）: /master-data/internal/master-data/products/exists | http=404 body={"msg":"请求路径不存在","code":404}
+[PASS] 网关拒绝内部端点（含变形）: /%69nternal/planning/ops/health | http=404 body={"msg":"请求路径不存在","code":404}
+[PASS] 网关拒绝内部端点（含变形）: /planning/%69nternal/ops/health | http=404 body={"msg":"请求路径不存在","code":404}
+[PASS] 网关拒绝内部端点（含变形）: /execute/internal/execution/ops/outbox | http=404 body={"msg":"请求路径不存在","code":404}
+[PASS] 非 admin 业务端点 200（业务域仅要求登录，冻结现状） | http=200 body={"total":"7","rows":[{"createTime":"2026-09-15 06:08:31","up
+[PASS] 非 admin /system/menu/list -> 403 没有权限 | http=200 body={"msg":"没有权限，请联系管理员授权","code":403}
+[PASS] Phase 6 新门禁：非 admin 调 ops 端点 -> 403 | http=200 body={"msg":"没有权限，请联系管理员授权","code":403}
+[PASS] Phase 6 新门禁：非 admin 调 execution ops 巡检 -> 403 | http=200 body={"msg":"没有权限，请联系管理员授权","code":403}
+[PASS] 服务身份令牌调 ops 端点 -> 403（permissions 空集） | http=200 body={"msg":"没有权限，请联系管理员授权","code":403}
+[PASS] admin 调 ops 端点 -> 200（门禁放行） | http=200 body={"msg":"操作成功","code":200,"data":{"outbox":{"PENDING":"0","PUBLISHED":"11","HALTE
+[PASS] Sentinel 规则发布到 Nacos（sentinel-datasource dataId） | resp=true
+[PASS] Nacos 规则热加载：QPS=2 -> 连发 8 次，后续 429 + 统一错误体 | codes=[200, 200, 429, 429, 429, 429, 429, 429]
+[PASS] 429 响应体为网关统一错误体 | body={"msg":"请求过于频繁，请稍后再试","code":429}
+[PASS] 恢复 Nacos 规则（QPS=200）后限流解除 | codes=[200, 200, 200, 200, 200, 200, 200, 200]
+[PASS] 网关 swagger 聚合：/{svc}/v3/api-docs 匿名 200（identity+planning） | identity=200 planning=200
+[PASS] 网关 swagger-ui.html 可达 | http=200
+
+SECURITY PROBES: 23 PASS / 0 FAIL
+SECURITY ALL PASS

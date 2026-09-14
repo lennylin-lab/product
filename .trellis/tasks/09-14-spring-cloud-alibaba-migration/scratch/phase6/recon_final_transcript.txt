@@ -1,0 +1,372 @@
+{
+ "health": {
+  "execution_db": {
+   "outbox_pending": "0",
+   "outbox_halted": "0",
+   "dlq_unreplayed": "0"
+  },
+  "planning_db": {
+   "outbox_pending": "0",
+   "outbox_halted": "0",
+   "dlq_unreplayed": "0"
+  },
+  "demand_db": {
+   "outbox_pending": "0",
+   "outbox_halted": "0",
+   "dlq_unreplayed": "0"
+  }
+ },
+ "checks": [
+  {
+   "check": "P1",
+   "desc": "batch 2099621771872579585 = aggregate(task)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "P1",
+   "desc": "batch 2099621901317189633 = aggregate(task)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "P1",
+   "desc": "batch 2099622645940367362 = aggregate(task)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "P1",
+   "desc": "batch 2099622766765682689 = aggregate(task)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "P1",
+   "desc": "batch 2099621344590442498 = aggregate(task)",
+   "expected": "IN_PROCESS",
+   "actual": "IN_PROCESS",
+   "drift": false
+  },
+  {
+   "check": "P1",
+   "desc": "batch 2099621504397619201 = aggregate(task)",
+   "expected": "IN_PROCESS",
+   "actual": "IN_PROCESS",
+   "drift": false
+  },
+  {
+   "check": "P1",
+   "desc": "batch 2099621668524929026 = aggregate(task)",
+   "expected": "IN_PROCESS",
+   "actual": "IN_PROCESS",
+   "drift": false
+  },
+  {
+   "check": "D1",
+   "desc": "line 2099621343067906050 = aggregate(projection)",
+   "expected": "IN_PRODUCTION",
+   "actual": "IN_PRODUCTION",
+   "drift": false
+  },
+  {
+   "check": "D1",
+   "desc": "line 2099621504011739137 = aggregate(projection)",
+   "expected": "IN_PRODUCTION",
+   "actual": "IN_PRODUCTION",
+   "drift": false
+  },
+  {
+   "check": "D1",
+   "desc": "line 2099621668193574913 = aggregate(projection)",
+   "expected": "IN_PRODUCTION",
+   "actual": "IN_PRODUCTION",
+   "drift": false
+  },
+  {
+   "check": "D1",
+   "desc": "line 2099621771591557121 = aggregate(projection)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "D1",
+   "desc": "line 2099621901002612737 = aggregate(projection)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "D1",
+   "desc": "line 2099622645684510722 = aggregate(projection)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "D1",
+   "desc": "line 2099622766543380481 = aggregate(projection)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "D2",
+   "desc": "order 2099621771318927361 = aggregate(line)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "D2",
+   "desc": "order 2099621900755148802 = aggregate(line)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "D2",
+   "desc": "order 2099622645432852482 = aggregate(line)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "D2",
+   "desc": "order 2099622766316888065 = aggregate(line)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "D2",
+   "desc": "order 2099621341528596482 = aggregate(line)",
+   "expected": "IN_PRODUCTION",
+   "actual": "IN_PRODUCTION",
+   "drift": false
+  },
+  {
+   "check": "D2",
+   "desc": "order 2099621503646834689 = aggregate(line)",
+   "expected": "IN_PRODUCTION",
+   "actual": "IN_PRODUCTION",
+   "drift": false
+  },
+  {
+   "check": "D2",
+   "desc": "order 2099621667862224897 = aggregate(line)",
+   "expected": "IN_PRODUCTION",
+   "actual": "IN_PRODUCTION",
+   "drift": false
+  },
+  {
+   "check": "X1",
+   "desc": "batch 2099621771872579585 planning=DONE vs demand projection",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X1",
+   "desc": "batch 2099621901317189633 planning=DONE vs demand projection",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X1",
+   "desc": "batch 2099622645940367362 planning=DONE vs demand projection",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X1",
+   "desc": "batch 2099622766765682689 planning=DONE vs demand projection",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X1",
+   "desc": "batch 2099621344590442498 planning=IN_PROCESS vs demand projection",
+   "expected": "IN_PROCESS",
+   "actual": "IN_PROCESS",
+   "drift": false
+  },
+  {
+   "check": "X1",
+   "desc": "batch 2099621504397619201 planning=IN_PROCESS vs demand projection",
+   "expected": "IN_PROCESS",
+   "actual": "IN_PROCESS",
+   "drift": false
+  },
+  {
+   "check": "X1",
+   "desc": "batch 2099621668524929026 planning=IN_PROCESS vs demand projection",
+   "expected": "IN_PROCESS",
+   "actual": "IN_PROCESS",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 2099621346037477378 (latest PAUSE)",
+   "expected": "PAUSED",
+   "actual": "PAUSED",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 2099621505056124929 (latest START)",
+   "expected": "RUNNING",
+   "actual": "RUNNING",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 2099621669086965762 (latest RESUME)",
+   "expected": "RUNNING",
+   "actual": "RUNNING",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 2099621772333953025 (latest FINISH)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 2099621772333953026 (latest FINISH)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 2099621772333953027 (latest FINISH)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 2099621901774368769 (latest FINISH)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 2099621901774368770 (latest FINISH)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 2099621901774368771 (latest FINISH)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 2099622646393352193 (latest FINISH)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 2099622646393352194 (latest FINISH)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 2099622646393352195 (latest FINISH)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 2099622767172530177 (latest FINISH)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 2099622767172530178 (latest FINISH)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 2099622767172530179 (latest FINISH)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X3",
+   "desc": "line 2099621343067906050 allocated_qty vs SUM(batch_qty)",
+   "expected": "30",
+   "actual": "30",
+   "drift": false
+  },
+  {
+   "check": "X3",
+   "desc": "line 2099621504011739137 allocated_qty vs SUM(batch_qty)",
+   "expected": "30",
+   "actual": "30",
+   "drift": false
+  },
+  {
+   "check": "X3",
+   "desc": "line 2099621668193574913 allocated_qty vs SUM(batch_qty)",
+   "expected": "30",
+   "actual": "30",
+   "drift": false
+  },
+  {
+   "check": "X3",
+   "desc": "line 2099621771591557121 allocated_qty vs SUM(batch_qty)",
+   "expected": "30",
+   "actual": "30",
+   "drift": false
+  },
+  {
+   "check": "X3",
+   "desc": "line 2099621901002612737 allocated_qty vs SUM(batch_qty)",
+   "expected": "30",
+   "actual": "30",
+   "drift": false
+  },
+  {
+   "check": "X3",
+   "desc": "line 2099622645684510722 allocated_qty vs SUM(batch_qty)",
+   "expected": "30",
+   "actual": "30",
+   "drift": false
+  },
+  {
+   "check": "X3",
+   "desc": "line 2099622766543380481 allocated_qty vs SUM(batch_qty)",
+   "expected": "30",
+   "actual": "30",
+   "drift": false
+  }
+ ],
+ "drifts": []
+}

@@ -23,6 +23,23 @@ spring:
         group: PRODUCT_GROUP
       config:
         namespace: ${NACOS_NAMESPACE:dev}
+    # Sentinel 规则持久化（Phase 6，design.md §3：规则由 Nacos 持久化）：
+    # 网关流控规则 dataId=product-gateway-flow-rules.json（group=PRODUCT_GATEWAY），
+    # JSON 数组元素形如 {"resource":"identity-auth","grade":1,"count":2}（grade 1=QPS）。
+    # Nacos 已发布配置时经 GatewayRuleManager 热加载并覆盖内存规则；
+    # 未发布时 application.yml 的 product.gateway.sentinel.routes 属性规则兜底。
+    # 注意：SCA NacosDataSourceFactoryBean 的属性名是 group-id（不是 group），
+    # 写错会静默回退 DEFAULT_GROUP（Phase 6 live 踩坑）。
+    sentinel:
+      datasource:
+        gateway-flow-rules:
+          nacos:
+            server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+            namespace: ${NACOS_NAMESPACE:dev}
+            group-id: PRODUCT_GATEWAY
+            data-id: ${SENTINEL_GATEWAY_FLOW_DATA_ID:product-gateway-flow-rules.json}
+            # SCA RuleType.GW_FLOW：网关流控规则（GatewayFlowRule）
+            rule-type: gw-flow
     gateway:
       server:
         webflux:
@@ -35,10 +52,13 @@ spring:
                 allowedHeaders: "*"
                 allowedMethods: "*"
                 maxAge: 1800
+          # ---- 正式路由总表（Phase 6 统一切换收敛版；Phase 1 冒烟前缀路由已全部移除）----
+          # 外部 API 路径与单体保持一致（baselines.md §1.2，不剥离前缀）；
+          # 鉴权由 JWT 前置校验全局过滤器按 permitPaths 处理（ADR-0003）。
+          # 各服务 OpenAPI 文档经 /{service-prefix}/v3/api-docs 聚合（springdoc.swagger-ui.urls，
+          # baselines.md §1.3 显式差异：聚合路径为网关文档路径，非单体单进程 /v3/api-docs）。
           routes:
-            # ---- Identity 正式路由（Phase 2）：外部 API 路径与单体保持一致（不剥离前缀）----
-            # 匿名端点 /login、/captchaImage、/jwks 与受保护端点共用同一组路由，
-            # 鉴权由 JWT 前置校验全局过滤器按 permitPaths 处理（ADR-0003）。
+            # ---- Identity：登录/验证码/JWKS 与 system 管理（Phase 2）----
             - id: identity-auth
               uri: lb://product-identity
               predicates:
@@ -47,9 +67,9 @@ spring:
               uri: lb://product-identity
               predicates:
                 - Path=/system/user/**,/system/menu/**,/system/dict/**
-            # ---- Master Data 正式路由（Phase 3）：产品与工艺路线归 master-data 所有，
-            # 对外路径与单体保持一致（baselines.md §1.2：/demand/product、/pps/product-route）。
-            # /demand/product 必须声明在下方 /demand/** 之前（SCG 按声明顺序匹配）。 ----
+            # ---- Master Data（Phase 3/6）：产品与工艺路线归 master-data 所有，
+            # /demand/product 必须声明在下方 /demand/** 之前（SCG 按声明顺序匹配）；
+            # 日历与机台扩展为 Phase 6 补齐的正式路由（baselines.md §1.2 原路径）。----
             - id: master-data-product
               uri: lb://product-master-data
               predicates:
@@ -58,9 +78,15 @@ spring:
               uri: lb://product-master-data
               predicates:
                 - Path=/pps/product-route,/pps/product-route/**
-            # ---- Planning 正式路由（Phase 4）：批次/工序任务/派工归 planning 所有，
-            # 对外路径与单体保持一致（baselines.md §1.2：/pps/batch、/pps/task、/pps/assignment）。
-            # 与 master-data 的 /pps/product-route 路径互不重叠。 ----
+            - id: master-data-calendar
+              uri: lb://product-master-data
+              predicates:
+                - Path=/master/calendar,/master/calendar/**
+            - id: master-data-machine
+              uri: lb://product-master-data
+              predicates:
+                - Path=/master/resource/machine,/master/resource/machine/**
+            # ---- Planning（Phase 4）：批次/工序任务/派工 ----
             - id: planning-batch
               uri: lb://product-planning
               predicates:
@@ -73,67 +99,50 @@ spring:
               uri: lb://product-planning
               predicates:
                 - Path=/pps/assignment,/pps/assignment/**
-            # ---- Demand 正式路由（Phase 3）：客户/订单/订单行及订单生命周期，路径不变 ----
+            # ---- Demand（Phase 3）：客户/订单/订单行及订单生命周期 ----
             - id: demand-business
               uri: lb://product-demand
               predicates:
                 - Path=/demand/**
-            # ---- Execution 正式路由（Phase 5）：任务事件归 execution 所有，
-            # 对外路径与单体保持一致（baselines.md §1.2：/execute/event）。----
+            # ---- Execution（Phase 5）：任务事件 ----
             - id: execution-event
               uri: lb://product-execution
               predicates:
                 - Path=/execute/event,/execute/event/**
-            # ---- Phase 1 骨架冒烟路由（StripPrefix=1，服务本地路径以 / 开头）----
-            # 未迁移服务（Phase 3-5）继续使用前缀占位路由；经网关访问同样需要有效 JWT。
-            - id: identity
+            # ---- OpenAPI 文档路由（Phase 6：仅保留各服务 api-docs 收敛路径，
+            # 服务侧路径为其本地 /v3/api-docs；StripPrefix=1）----
+            - id: identity-docs
               uri: lb://product-identity
               predicates:
-                - Path=/identity/**
+                - Path=/identity/v3/api-docs,/identity/v3/api-docs/**
               filters:
                 - StripPrefix=1
-            - id: master-data
+            - id: master-data-docs
               uri: lb://product-master-data
               predicates:
-                - Path=/master-data/**
+                - Path=/master-data/v3/api-docs,/master-data/v3/api-docs/**
               filters:
                 - StripPrefix=1
-            - id: demand
+            - id: demand-docs
               uri: lb://product-demand
               predicates:
-                - Path=/demand-svc/**
+                - Path=/demand-svc/v3/api-docs,/demand-svc/v3/api-docs/**
               filters:
                 - StripPrefix=1
-            - id: planning
+            - id: planning-docs
               uri: lb://product-planning
               predicates:
-                - Path=/planning/**
+                - Path=/planning/v3/api-docs,/planning/v3/api-docs/**
               filters:
                 - StripPrefix=1
-            - id: execution
+            - id: execution-docs
               uri: lb://product-execution
               predicates:
-                - Path=/execution/**
+                - Path=/execution/v3/api-docs,/execution/v3/api-docs/**
               filters:
                 - StripPrefix=1
 
-# ---- 可观测性基线（健康检查 liveness/readiness、Prometheus 指标） ----
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus,gateway
-  endpoint:
-    health:
-      probes:
-        enabled: true
-  # 追踪基线：W3C 传播由 micrometer-tracing-otel 桥接默认启用；开发期全量采样，
-  # 生产采样率与 OTLP 导出（collector）在统一切换前（Phase 6）接入。
-  tracing:
-    sampling:
-      probability: 1.0
-
-# ---- OpenAPI 聚合基线：各服务 /v3/api-docs 经路由聚合（baselines.md §1.3 显式差异） ----
+# ---- OpenAPI 聚合（baselines.md §1.3 显式差异）：各服务 /v3/api-docs 经上方文档路由聚合 ----
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
@@ -149,6 +158,28 @@ springdoc:
       - name: execution
         url: /execution/v3/api-docs
 
+# ---- 可观测性基线（健康检查 liveness/readiness、Prometheus 指标） ----
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,gateway
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  # 追踪基线：W3C 传播由 micrometer-tracing-otel 桥接默认启用；开发期全量采样。
+  # Phase 6：OTLP span 导出（compose jaeger all-in-one，:4318/v1/traces）；
+  # 默认关闭（OTLP_TRACES_ENABLED 未设时无 collector 也不报错），打开后导出至 OTLP_TRACES_ENDPOINT。
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTLP_TRACES_ENDPOINT:http://127.0.0.1:4318/v1/traces}
+      export:
+        enabled: ${OTLP_TRACES_ENABLED:false}
+
 # ---- JWT 前置校验与 Sentinel 网关流控（ADR-0003；Phase 2） ----
 product:
   skeleton:
@@ -158,9 +189,12 @@ product:
     header: Authorization
     jwks-uri: ${PRODUCT_SECURITY_JWKS_URI:http://127.0.0.1:8101/jwks}
     auth-enabled: true
-    # Sentinel 网关流控：routeId -> QPS（进程级规则；Nacos 持久化随 Phase 3+）
+    # Sentinel 网关流控兜底规则：routeId -> QPS（Nacos 未发布规则配置时的进程默认；
+    # Nacos product-gateway-flow-rules.json 已发布则被其覆盖——Phase 6 起以此为准）
     sentinel:
       routes:
         identity-auth: ${GATEWAY_IDENTITY_AUTH_QPS:200}
         identity-system: ${GATEWAY_IDENTITY_SYSTEM_QPS:200}
+        demand-business: ${GATEWAY_DEMAND_BUSINESS_QPS:200}
+        planning-assignment: ${GATEWAY_PLANNING_ASSIGNMENT_QPS:200}
 

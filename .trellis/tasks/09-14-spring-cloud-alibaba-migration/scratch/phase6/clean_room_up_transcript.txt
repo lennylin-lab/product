@@ -1,0 +1,39 @@
+== [1] 基础设施（nacos/rabbitmq/jaeger 经 compose.dev.yml；mysql/redis 为既有实例） ==
+ Container product-nacos Running 
+ Container product-jaeger Running 
+ Container product-rabbitmq Running 
+  product-nacos health=healthy
+  product-rabbitmq health=healthy
+  product-jaeger health=
+starting
+== [2] Nacos dev namespace（v3 admin API；无卷持久化，每次 clean-room 重建） ==
+{"code":22002,"message":"namespace already exist","data":"namespaceId [dev] already exist."}
+== [3] Sentinel 网关流控规则发布到 Nacos（Phase 6 遗留收口：sentinel-datasource） ==
+true
+== [4] 服务库 schema 初始化（5 个脚本，可重复执行=重置回种子空库） ==
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  OK product-identity/src/main/resources/db/init/identity_schema.sql
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  OK product-master-data/src/main/resources/db/init/master_data_schema.sql
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  OK product-demand-service/src/main/resources/db/init/demand_schema.sql
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  OK product-planning/src/main/resources/db/init/planning_schema.sql
+mysql: [Warning] Using a password on the command line interface can be insecure.
+  OK product-execution/src/main/resources/db/init/execution_schema.sql
+== [5] 启动 6 个微服务（OTLP_TRACES_ENABLED=true -> jaeger :4318） ==
+  started identity pid=1859547 port=8101
+  started master-data pid=1859548 port=8102
+  started demand pid=1859549 port=8103
+  started planning pid=1859550 port=8104
+  started execution pid=1859551 port=8105
+  started gateway pid=1859552 port=8080
+== [6] 就绪等待 + 冒烟断言 ==
+  gateway /captchaImage -> 200 (ok=1)
+  health 8101: {"status":"UP","groups":["liveness","readiness"]}
+  health 8102: {"status":"UP","groups":["liveness","readiness"]}
+  health 8103: {"status":"UP","groups":["liveness","readiness"]}
+  health 8104: {"status":"UP","groups":["liveness","readiness"]}
+  health 8105: {"status":"UP","groups":["liveness","readiness"]}
+  nacos services: {"count":6,"doms":["product-identity","product-master-data","product-execution","product-demand","product-gateway","product-planning"]}
+clean-room up done

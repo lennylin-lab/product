@@ -1,0 +1,6 @@
+identity 1859547 8101
+master-data 1859548 8102
+demand 1859549 8103
+planning 1859550 8104
+execution 1859551 8105
+gateway 1859552 8080

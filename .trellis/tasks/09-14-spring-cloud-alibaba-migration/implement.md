@@ -614,12 +614,130 @@ outbox/DLQ 双路人工重放（新 eventId + 原 correlationId/payload）、ops
 
 ## Phase 6: Unified Cutover
 
-- [ ] 从 Gateway 入口执行完整“登录 -> 订单 -> 批次 -> 排程 -> 执行 -> 完工”E2E。
-- [ ] 执行安全、故障注入、容量、日志指标追踪和告警验收。
-- [ ] 演练离线备份、schema 初始化/迁移、数据校验、启动顺序和整套回滚。
-- [ ] 更新开发运行、部署、故障处理和数据补偿文档。
+- [x] 从 Gateway 入口执行完整“登录 -> 订单 -> 批次 -> 排程 -> 执行 -> 完工”E2E。
+- [x] 执行安全、故障注入、容量、日志指标追踪和告警验收。
+- [x] 演练离线备份、schema 初始化/迁移、数据校验、启动顺序和整套回滚。
+- [x] 更新开发运行、部署、故障处理和数据补偿文档。
 - Validation: `mvn verify`、服务集成与契约测试、E2E、Compose clean-room 启动、迁移校验和回滚演练全部通过。
 - Rollback point: 关闭微服务入口，恢复旧库备份和原单体构建；问题修复后重新进行完整统一切换演练。
+
+### Phase 6 执行记录（2026-09-15，含中断续作与 live 调试）
+
+**范围**：统一收口 Phase 0–5 全部遗留清单 + 全链 E2E/验收/演练/文档；证据全部存
+`scratch/phase6/`（transcript 与脚本），数字均来自 clean run 与实测 transcript。
+**硬约束复核**：git status 显示单体/根 pom/根 schema.sql 零改动；compose.dev.yml 唯一变更
+为新增 jaeger 服务（OTLP 导出后端，13 行，记录于本节）；单体可构建（回滚演练中
+`mvn -pl product-server -am package` 通过并以 spring-boot:run 实机冒烟）。
+
+**遗留收口逐项（Phase 2/3/4/5 清单）**：
+1. **Sentinel 规则 Nacos 持久化**：网关新增 `sentinel-datasource-nacos`（SCA BOM 1.8.9），
+   dataId=`product-gateway-flow-rules.json`/group=PRODUCT_GATEWAY/rule-type=`gw-flow`；
+   Nacos 已发布规则热加载覆盖内存规则，未发布时 `product.gateway.sentinel.routes` 属性兜底。
+   live 踩坑两枚：`rule-type` 必须为 `gw-flow`（SCA RuleType 枚举无 gateway-flow）；
+   属性名是 **`group-id`** 而非 `group`（写错静默回退 DEFAULT_GROUP——首启日志
+   `[subscribe] ...+DEFAULT_GROUP+dev` 暴露后修复）。实测：发布 QPS=2 规则 → 网关热加载 →
+   连发 8 次前 2 次 200、其余 429 统一错误体；恢复 QPS=200 后解除（security_probes_transcript.txt）。
+2. **OpenAPI 网关聚合 + 路由收敛**：移除 Phase 1 全部 StripPrefix 冒烟前缀路由（/identity/** 等，
+   该移除同时消灭 Phase 3 发现的前缀路由穿透面）；新增 /master/calendar、/master/resource/machine
+   正式路由（baselines §1.2 原路径，此前漏配）；5 条文档路由 `/{service-prefix}/v3/api-docs**`
+   （StripPrefix=1）+ 网关 permitPaths 放行单段前缀形态，swagger-ui.urls 聚合可达（匿名）。
+   单测新增 removedPhase1PrefixRoutesShouldNoLongerRoute（业务前缀落统一 404 体）。
+3. **OTLP span 导出器**：6 个可部署模块新增 `opentelemetry-exporter-otlp`（Boot BOM 管理）+
+   `management.otlp.tracing` 配置（`OTLP_TRACES_ENABLED` 默认 false、`OTLP_TRACES_ENDPOINT`）；
+   compose.dev.yml 新增 jaeger all-in-one（:4318/:16686）。实测：一次 Gateway 入口请求的
+   traceId 同时出现在目标服务 JSON 日志与 Jaeger（trace 内同时含 product-gateway 与目标服务
+   span，5/5 服务）；Jaeger 服务清单 6/6（observability_transcript.txt）。
+4. **ops 端点 admin 门禁（决策 + 实现）**：决策为 ops 运维端点（可重放事件/人工改写状态）追加
+   管理员门禁 `@PreAuthorize("@ss.hasPermi('*:*:*')")`——planning/demand OpsController 类级 +
+   execution 两个 `/ops/*` 方法级（execution 资源事件契约端点保持 token 语义不变）。
+   理由：网关 /internal/** 拒绝 + 管理员门禁 + ops_audit 留痕三层约束；服务身份令牌
+   permissions 为空集不可调用；失败语义走单体权限契约（200 + code 403）。离线契约测试 4 条
+   （反射断言注解存在性/位置）；live 实证：admin 200、planning_svc 与服务身份令牌均 403。
+5. **OutboxRelay 裸 AMQP 线格式离线回归**（Phase 5 check 交接项）：新增
+   OutboxRelayWireFormatTest——Mockito 捕获 `rabbitTemplate.send(...)` 的 Message，断言
+   content-type=application/json、contentEncoding=UTF-8、PERSISTENT、eventId/eventType 头、
+   body 为裸 JSON 对象字节（'{' 开头、可解析、字段与信封一致、无 Base64 形态），2 条测试
+   固化 Phase 5 live 发现的 Base64 缺陷。
+6. **identity 生产 JWT 密钥注入 + 轮换演练**：openssl 生成 PKCS#8 密钥对，经
+   `IDENTITY_JWT_PRIVATE_KEY`/`IDENTITY_JWT_PREVIOUS_PUBLIC_KEY` 注入，四步轮换全部实测通过
+   （KEY1 签发 → KEY2+KEY1 公钥窗口（/jwks 双 kid，旧 token 200、新登录 kid2）→ 窗口关闭
+   （旧 token body code=401）→ 恢复开发默认）。注意点已文档化：认证失败为 HTTP 200 + body
+   code 401（探测须看 body code）；网关/服务 JWKS 按 kid 缓存，撤销已缓存 kid 需刷新缓存
+   （演练中重启网关）。transcript：scratch/phase6/jwt_rotation_transcript.txt。
+7. **单体 live 库 VARCHAR-ID 缺陷处置结论**：写入 `docs/微服务运维手册.md` §6.2——属单体存量
+   数据形态缺陷（VARCHAR ID + 非数字存量触发隐式 cast 500），微服务侧 BIGINT 无此问题，
+   **统一切换以服务侧行为为准**，不在单体内修复（如修复属新功能需单独评审）。
+
+**验证结果（全部实测）**：
+1. **构建/测试（最终代码态 clean run）**：根 `mvn clean verify` **28/28 模块 BUILD SUCCESS**，
+   用例 **243 全绿**（单体 55 + product-services 188；product-services 较 Phase 5 +7：线格式 2、
+   ops 门禁 4、网关路由收敛 1）；日志 phase6_root_verify_final.log（另有
+   phase6_services_verify.log 单独 13/13 模块 188 条）。
+2. **全链 E2E（全程 Gateway 8080）**：`scripts/e2e_full_chain.py`，**42 项断言全 PASS**
+   （transcript e2e_full_chain_transcript.txt）：验证码登录（读服务端真实验证码值）→ 建客户/
+   产品（模具参数+3 工序启用路线）/日历/机台 → 第二启用路线被单活跃约束拦截 → 建订单/
+   订单行（不存在产品跨域校验拒绝）→ 确认/释放 → 拆批（数量预占）→ 批次释放 → generateTask
+   → 异步排程轮询 SUCCESS → 批次/任务/派工查询（跨域字段填充）→ start→pause→resume→complete
+   事件链（三域状态逐级收敛断言）→ 幽灵任务失败语义（操作失败 + 不留事件行）→ 完工闭环
+   （批次/行/订单 DONE）→ **快照漂移守卫**（排程期间并发 bump 主数据版本 → job FAILED
+   「版本漂移」，120 探针任务全部保持 READY 无部分落库）→ **recon report 50 项检查 drifts=[]**
+   （recon_final_transcript.txt）。探针数据（漂移批次/派工）已清理。
+3. **安全验收**：`scripts/security_probes.py` **23 项全 PASS**（security_probes_transcript.txt）：
+   无 token/伪造 token/篡改 payload（RS256 拒绝）/伪造内部头（X-User-*）均 401 单体逐字节体；
+   /internal/** 经网关字面+变形（%69nternal、前缀、跨服务路径）6 形态全 404；
+   非 admin（planning_svc）业务端点 200（冻结现状）、system 端点 403、**ops 端点 403**；
+   admin ops 200；Sentinel Nacos 规则热加载 429（见遗留 1）；swagger 文档聚合匿名可达。
+4. **故障注入**：`scripts/fault_injection.py` **30 项检查全 PASS**
+   （fault_injection_transcript.txt）——demand 停机：503 统一体 + 排程 job FAILED（需求服务
+   不可用）任务保持 READY，恢复后路由/排程收敛；master-data 停机：订单行 fail-closed
+   （主数据服务不可用），恢复后创建/删除正常；planning 停机：网关 503（无实例）或 500
+   （LB 缓存期连接拒绝，两种统一错误体形态均记录），execution 命令 fail-closed 不留事件，
+   恢复后同一命令成功且事件链推进；RabbitMQ 停机：命令成功（本地事务）outbox 积压、planning
+   不推进，恢复后 relay 排空 + 消费收敛；9 个探针任务全部完工后清理三库探针行，
+   终态 **recon drifts=[] 且 outbox 全收敛**。
+5. **可观测性**：`scripts/observability_check.py` 全 PASS（observability_transcript.txt）——
+   同步链 5 服务各一条网关入口请求：X-Trace-Id = 服务 JSON 日志 traceId = Jaeger trace
+   （gateway+服务双 span）；异步链：同一命令 traceId 作为 correlationId 贯穿
+   execution→planning→demand 三域 outbox；/actuator/prometheus 6 端点输出
+   http_server_requests + JVM 指标；Jaeger 服务清单 6/6。告警基线规则
+   `deploy/alerts/product-microservices-alerts.yml`（引用指标族逐一实测存在，
+   含抓取配置示例与 outbox/对账类告警的巡检通道说明）。
+6. **容量基准（轻量，不设门槛）**：`scripts/capacity_bench.py`
+   （capacity_bench_transcript.txt）——200 产品（路线+模具参数+6000 能力行）/50 订单/100 行/
+   100 批次 → generateTask 经网关 1 次调用 2.1s 生成 300 任务 → scheduleAllAsync 提交至
+   SUCCESS **总耗时 1.0s**（服务端 totalCostMs=426：计算 84ms + 落库 124ms，EARLIEST_START，
+   批大小 200），派工 300 行落库；planning 进程 RSS 779MB→797MB（**+18MB**）。
+7. **演练**：
+   - **Clean-room 启动**：`scripts/clean_room_up.sh`（compose 起 nacos/rabbitmq/jaeger →
+     v3 admin API 建 dev namespace → 发布 Sentinel 规则 → 5 个 schema 脚本重置 → 起 6 服务
+     （OTLP 打开）→ 冒烟断言），6/6 注册、健康全 UP；执行两轮验证可重复性。
+   - **备份/恢复**：`scripts/cutover_drills.sh backup|restore`——6 库 mysqldump
+     （--single-transaction）→ drop/create/import → 表清单比对 77 张一致 + 关键表精确计数
+     （backup_transcript.txt）。
+   - **数据校验**：`scripts/validate_data.py`（validate_data_transcript.txt）——三域行数快照、
+     X1 投影一致性/无孤儿投影、X2 事件流水 vs 终态、X3 预占数量、outbox/死信健康、
+     recon.py 终局 drifts=[]，全 PASS。
+   - **整套回滚**：`scripts/cutover_drills.sh rollback`（rollback_transcript.txt）——R1 关闭
+     微服务入口（6 JVM 停、端口释放）→ R2 恢复 6 库备份（表清单一致 + 精确计数核对）→
+     R3 单体可用冒烟（构建 + spring-boot:run，/captchaImage 200，登录接口可达）→
+     R4 停止单体。**ROLLBACK DRILL PASS**。
+8. **进程安全**：全部演练 JVM 经 pids.txt 记录、只清理自有进程；演练结束执行 stop_all.sh
+   停服务与 compose 演练容器；既有 product-mysql/product-redis 容器与用户数据未受影响
+   （product 库 dump→restore 为同内容往返，恢复后 sys_user=1/32 表核对一致）。
+
+**文档产出**：`docs/微服务运维手册.md`（拓扑/启动顺序/备份恢复回滚/故障处理表/密钥管理/
+已知单体缺陷处置/告警基线/部署注意）、`docs/数据补偿手册.md`（一致性模型/巡检/补偿动作/
+人工重放/处置决策树）、`product-services/README.md` 更新（收敛后路由表、Sentinel Nacos 持久化、
+OTLP、ops 门禁、轮换演练指针）、`.env.example` 补 OTLP 变量、`deploy/alerts/` 告警规则。
+**新增 live 踩坑记录**（写入 README/手册）：Sentinel datasource `group-id` 属性名、
+`rule-type=gw-flow`、单体普通 jar 不能 java -jar（回滚用 spring-boot:run）。
+
+**任务完成度评估**：Phase 0–6 全部验证标准满足——ADR/基线评审、版本兼容最小验证（P0）、
+骨架/认证/主数据需求/排程/执行事件各阶段验证（P1–P5，见各阶段记录）、统一切换验收
+（P6：构建全绿 + E2E + 安全/故障/容量/可观测性/告警 + clean-room/备份恢复/数据校验/回滚
+演练）全部通过。非阻塞遗留（均已记录）：order_line.progress.changed 为预留出站事件（无
+消费方，需跨域消费先评审）；execution HALTED 1 行 / planning 死信 1 行为 Phase 5 场景
+证据性保留；CI 尚未在远端 GitHub 实际触发验证（本地无法验证 runner 行为）。
 
 ## Review Gates
 

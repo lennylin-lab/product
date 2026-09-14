@@ -1,0 +1,86 @@
+# product 微服务体系 Prometheus 告警基线（Phase 6）
+#
+# 依据 design.md §6 告警基线：错误率、P95 延迟、线程/连接池、MQ 堆积、Outbox 滞留、
+# 消费失败和数据对账差异。指标族核实状态（Phase 6）：
+#   http_server_requests_seconds_*、jvm_memory_* —— 验收 transcript 实测存在；
+#   hikaricp_connections_*、executor_*、rabbitmq_* —— Spring Boot/Micrometer 标准自动配置，
+#   依集成测试与文档采信，未在 transcript 中逐项断言；上线后首次巡检应 curl
+#   /actuator/prometheus 逐族核对，未导出的规则视为静默失效需删除或改写。
+#
+# 说明：
+# - P95 延迟告警需要直方图桶（当前未开启 distribution percentiles-histogram，
+#   暂以 5xx 错误率 + 慢请求 max 兜底；开启方法见 docs/微服务运维手册.md §告警）。
+# - Outbox 滞留 / 死信未重放 / 对账差异为业务库事实，不走 Prometheus 指标：
+#   用 scratch/phase6/scripts/validate_data.py（recon.py report）在巡检通道（cron）
+#   执行，drifts 非空即告警（见运维手册 §对账与补偿）。
+# - MQ 堆积：rabbitmq_* 为客户端侧指标；队列深度用 RabbitMQ 管理接口
+#   （GET /api/queues/%2F/<queue> 的 messages 字段）在巡检通道告警。
+#
+# 抓取配置示例（prometheus.yml）：
+#   scrape_configs:
+#     - job_name: product-microservices
+#       metrics_path: /actuator/prometheus
+#       authorization:
+#         credentials_file: /etc/prometheus/metrics.token   # 指标端点受 JWT 保护
+#       static_configs:
+#         - targets: ['gw:8080','identity:8101','master-data:8102','demand:8103','planning:8104','execution:8105']
+#           labels: { env: 'prod' }
+#
+# 各服务 job 标签建议以 instance/静态 label 区分（identity/master-data/demand/planning/execution/gateway）。
+
+groups:
+  - name: product-microservices-availability
+    rules:
+      - alert: ProductServiceDown
+        expr: absent_over_time(http_server_requests_seconds_count[3m])
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "服务 5 分钟内无请求指标（实例可能宕机）：{{ $labels.job }}/{{ $labels.instance }}"
+
+      - alert: ProductHigh5xxErrorRate
+        expr: |
+          sum by (job) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+            / sum by (job) (rate(http_server_requests_seconds_count[5m])) > 0.05
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "服务 5xx 错误率超过 5%（持续 5 分钟）：{{ $labels.job }}"
+
+      - alert: ProductErrorBurst
+        expr: increase(http_server_requests_seconds_count{status=~"5.."}[2m]) > 20
+        labels: { severity: warning }
+        annotations:
+          summary: "服务 2 分钟内 5xx 突增超过 20 次：{{ $labels.job }}"
+
+  - name: product-microservices-resources
+    rules:
+      - alert: ProductDbPoolSaturation
+        expr: hikaricp_connections_pending > 0
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: "数据库连接池出现等待（pending>0）：{{ $labels.job }}/{{ $labels.instance }}"
+
+      - alert: ProductScheduleQueueBacklog
+        expr: executor_queued_tasks{name=~"schedule.*|task.*"} > 500
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "排程/任务线程池队列积压超过 500：{{ $labels.job }}/{{ $labels.name }}"
+
+      - alert: ProductHeapPressure
+        expr: |
+          jvm_memory_used_bytes{area="heap"}
+            / jvm_memory_max_bytes{area="heap"} > 0.9
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "堆内存使用超过上限 90%（持续 10 分钟）：{{ $labels.job }}/{{ $labels.id }}"
+
+      - alert: ProductEventChainStalled
+        expr: increase(rabbitmq_consumed_total[10m]) == 0 and rabbitmq_connections > 0
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "RabbitMQ 连接在但 10 分钟无消费推进（事件链停摆；仅对消费方 planning/demand 生效）：{{ $labels.job }}"

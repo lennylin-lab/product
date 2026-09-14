@@ -64,6 +64,13 @@ management:
   tracing:
     sampling:
       probability: 1.0
+  # Phase 6：OTLP span 导出（compose jaeger all-in-one，:4318/v1/traces）；
+  # 默认关闭（OTLP_TRACES_ENABLED 未设时无 collector 也不报错），打开后导出至 OTLP_TRACES_ENDPOINT。
+  otlp:
+    tracing:
+      endpoint: ${OTLP_TRACES_ENDPOINT:http://127.0.0.1:4318/v1/traces}
+      export:
+        enabled: ${OTLP_TRACES_ENABLED:false}
 
 # ---- OpenAPI 基线 ----
 springdoc:

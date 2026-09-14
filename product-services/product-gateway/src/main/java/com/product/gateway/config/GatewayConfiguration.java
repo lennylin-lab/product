@@ -78,8 +78,10 @@ public class GatewayConfiguration {
     }
 
     /**
-     * Sentinel 网关流控：规则在网关启动时从属性装载（routeId + QPS 阈值 + 限流响应统一错误体）。
-     * 规则持久化到 Nacos（sentinel-datasource）随 Phase 3+ 引入；当前为应用内存规则（进程级）。
+     * Sentinel 网关流控兜底规则：规则在网关启动时从属性装载（routeId + QPS 阈值 + 限流响应统一错误体）。
+     * Phase 6：规则持久化到 Nacos（sentinel-datasource-nacos，dataId=product-gateway-flow-rules.json，
+     * group=PRODUCT_GATEWAY）——Nacos 已发布配置时经 GatewayRuleManager 热加载覆盖本内存默认；
+     * 未发布时本属性规则兜底，保证网关限流在裸环境同样生效。
      */
     @PostConstruct
     public void initSentinelGatewayRules() {
