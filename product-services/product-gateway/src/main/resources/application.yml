@@ -58,6 +58,21 @@ spring:
               uri: lb://product-master-data
               predicates:
                 - Path=/pps/product-route,/pps/product-route/**
+            # ---- Planning 正式路由（Phase 4）：批次/工序任务/派工归 planning 所有，
+            # 对外路径与单体保持一致（baselines.md §1.2：/pps/batch、/pps/task、/pps/assignment）。
+            # 与 master-data 的 /pps/product-route 路径互不重叠。 ----
+            - id: planning-batch
+              uri: lb://product-planning
+              predicates:
+                - Path=/pps/batch,/pps/batch/**
+            - id: planning-task
+              uri: lb://product-planning
+              predicates:
+                - Path=/pps/task,/pps/task/**
+            - id: planning-assignment
+              uri: lb://product-planning
+              predicates:
+                - Path=/pps/assignment,/pps/assignment/**
             # ---- Demand 正式路由（Phase 3）：客户/订单/订单行及订单生命周期，路径不变 ----
             - id: demand-business
               uri: lb://product-demand

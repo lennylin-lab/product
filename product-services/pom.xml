@@ -20,6 +20,8 @@
         <module>product-cloud-common</module>
         <module>product-cloud-security</module>
         <module>product-master-data-api</module>
+        <module>product-demand-api</module>
+        <module>product-planning-api</module>
         <module>product-gateway</module>
         <module>product-identity</module>
         <module>product-master-data</module>
@@ -49,6 +51,16 @@
             <dependency>
                 <groupId>com.product</groupId>
                 <artifactId>product-master-data-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.product</groupId>
+                <artifactId>product-demand-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.product</groupId>
+                <artifactId>product-planning-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

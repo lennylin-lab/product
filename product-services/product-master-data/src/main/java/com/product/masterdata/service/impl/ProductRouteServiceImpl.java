@@ -26,13 +26,10 @@ import java.util.Objects;
  * <p>与单体的差异（均为跨域数据所有权重排，非行为变更，ADR-0005）：</p>
  * <ul>
  *   <li>产品存在性校验改为本库 product 表查询（原单体同库查询，语义不变）；</li>
- *   <li>{@link #hasBlockingTasksForProduct(Long)}：单体查询 demand 域 order_line 与
- *       planning 域 production_batch/operation_task 判断"存在进行中工序任务则禁止删除
- *       启用中的路线"。该数据在目标态归 demand/planning 所有；Phase 3 planning 服务尚未
- *       迁移（planning_db 为空、无契约），且 order_line 只是中间步骤不单独构成删除阻断，
- *       故 Phase 3 实现返回 false（等价于"无进行中任务"，与 planning 空库时的单体行为一致）。
- *       <b>Phase 4 必须接线</b>：demand 契约 listOrderLineIdsByProduct + planning 契约
- *       hasBlockingTasks(orderLineIds)，否则统一切换后删除保护语义缺失（implement.md Phase 4）。</li>
+ *   <li>{@link #hasBlockingTasksForProduct(Long)}（Phase 4 已接线）：经
+ *       {@link RouteDeleteGuard} 还原单体语义——demand 契约 listOrderLineIdsByProduct +
+ *       planning 契约 hasBlockingTasks(orderLineIds)；远程依赖不可用时 fail-closed
+ *       （拒绝删除启用中路线，显式错误文案，见 RouteDeleteGuard javadoc）。</li>
  *   <li>所有写路径同事务递增主数据版本计数（MasterDataVersionService），契约快照版本来源。</li>
  * </ul>
  */
@@ -47,6 +44,9 @@ public class ProductRouteServiceImpl implements IProductRouteService {
 
     @Autowired
     private MasterDataVersionService versionService;
+
+    @Autowired
+    private RouteDeleteGuard routeDeleteGuard;
 
     @Override
     public ProductRoute getByRouteId(Long routeId) {
@@ -300,11 +300,10 @@ public class ProductRouteServiceImpl implements IProductRouteService {
     }
 
     /**
-     * Phase 3 桥接说明（见类 javadoc"与单体的差异"）：跨域任务校验在 planning 迁移前
-     * 返回 false（planning_db 为空 ⇒ 不存在进行中任务，行为等价）。Phase 4 必须接线
-     * demand/planning 契约。
+     * Phase 4 接线：跨服务还原单体"启用中路线存在进行中工序任务则禁止删除"语义
+     * （demand 契约按产品取订单行 + planning 契约阻塞任务判断，见 RouteDeleteGuard）。
      */
     private boolean hasBlockingTasksForProduct(Long productId) {
-        return false;
+        return routeDeleteGuard.hasBlockingTasksForProduct(productId);
     }
 }

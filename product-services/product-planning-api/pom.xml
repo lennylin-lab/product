@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.product</groupId>
+        <artifactId>product-services</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>product-planning-api</artifactId>
+
+    <name>product-planning-api</name>
+    <description>product-planning-api: 计划排程域对外服务契约（生产批次只读视图/级联删除/阻塞任务判断 Feign 接口 + DTO；ADR-0002 决策 1：每个服务独立 API contract 模块，禁止共享持久化 Entity）</description>
+
+    <dependencies>
+        <!-- 契约模块仅依赖 OpenFeign 注解（与 product-master-data-api 同一模式）。
+             消费方（product-demand-service / product-master-data）自行引入
+             spring-cloud-starter-openfeign 与负载均衡；提供方（product-planning）
+             实现同一路径的 HTTP 端点并依赖本模块共享接口定义。 -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+    </dependencies>
+</project>

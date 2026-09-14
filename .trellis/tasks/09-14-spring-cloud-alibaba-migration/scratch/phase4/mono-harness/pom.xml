@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <!-- Phase 4 对拍 harness（独立 POM，不属于根构建；直接调用单体 product-pps 的
+         真实排程算法类，在进程内对固定数据集计算排程结果，供与微服务实测结果比对）。
+         不修改单体任何源码 —— 仅消费 ~/.m2 中已安装的单体构件。 -->
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>scratch</groupId>
+    <artifactId>phase4-mono-harness</artifactId>
+    <version>1.0</version>
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+    <dependencies>
+        <dependency>
+            <groupId>com.product</groupId>
+            <artifactId>product-pps</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+    </dependencies>
+</project>

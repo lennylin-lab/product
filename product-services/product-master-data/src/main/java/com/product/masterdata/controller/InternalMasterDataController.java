@@ -1,6 +1,13 @@
 package com.product.masterdata.controller;
 
 import com.baomidou.mybatisplus.extension.toolkit.Db;
+import com.product.masterdata.api.dto.CalendarBatchQueryRequest;
+import com.product.masterdata.api.dto.CalendarBatchResponse;
+import com.product.masterdata.api.dto.CalendarDTO;
+import com.product.masterdata.api.dto.ChangeoverRuleDTO;
+import com.product.masterdata.api.dto.ChangeoverRuleResponse;
+import com.product.masterdata.api.dto.DataVersionResponse;
+import com.product.masterdata.api.dto.MachineMoldCompatibilityDTO;
 import com.product.masterdata.api.dto.ProductBatchQueryRequest;
 import com.product.masterdata.api.dto.ProductBatchResponse;
 import com.product.masterdata.api.dto.ProductDTO;
@@ -10,7 +17,10 @@ import com.product.masterdata.api.dto.ResourceBatchQueryRequest;
 import com.product.masterdata.api.dto.ResourceBatchResponse;
 import com.product.masterdata.api.dto.ResourceDTO;
 import com.product.masterdata.common.exception.ServiceException;
+import com.product.masterdata.domain.entity.Calendar;
+import com.product.masterdata.domain.entity.ChangeoverRule;
 import com.product.masterdata.domain.entity.Machine;
+import com.product.masterdata.domain.entity.MachineMoldCompatibility;
 import com.product.masterdata.domain.entity.Mold;
 import com.product.masterdata.domain.entity.Product;
 import com.product.masterdata.domain.entity.ProductMoldParam;
@@ -129,6 +139,13 @@ public class InternalMasterDataController implements com.product.masterdata.api.
                         .list()
                         .stream()
                         .collect(Collectors.groupingBy(ResourceCapability::getResourceId));
+        Map<Long, List<MachineMoldCompatibility>> compatibilityByMachine = resourceIds.isEmpty() ? Map.of()
+                : Db.lambdaQuery(MachineMoldCompatibility.class)
+                        .in(MachineMoldCompatibility::getMachineId, resourceIds)
+                        .list()
+                        .stream()
+                        .filter(item -> item != null && item.getMachineId() != null)
+                        .collect(Collectors.groupingBy(MachineMoldCompatibility::getMachineId));
 
         ResourceBatchResponse response = new ResourceBatchResponse();
         response.setSnapshotVersion(versionService.currentVersion());
@@ -136,9 +153,70 @@ public class InternalMasterDataController implements com.product.masterdata.api.
                 .map(resource -> toResourceDTO(resource,
                         machineById.get(resource.getResourceId()),
                         moldById.get(resource.getResourceId()),
+                        compatibilityByMachine.getOrDefault(resource.getResourceId(), List.of()),
                         capabilityByResource.get(resource.getResourceId())))
                 .collect(Collectors.toList()));
         return response;
+    }
+
+    /**
+     * 批量加载班次日历（Phase 4 契约端点；{@code calendarIds} 为 null/空时全量）。
+     */
+    @Override
+    public CalendarBatchResponse getCalendars(@org.springframework.web.bind.annotation.RequestBody CalendarBatchQueryRequest request) {
+        List<Long> ids = request == null ? null : request.getCalendarIds();
+        if (ids != null && !ids.isEmpty()) {
+            requireIds(ids, "日历ID集合不能为空");
+        }
+        List<Calendar> calendars = Db.lambdaQuery(Calendar.class)
+                .in(ids != null && !ids.isEmpty(), Calendar::getCalendarId, ids == null ? null : ids)
+                .list();
+        CalendarBatchResponse response = new CalendarBatchResponse();
+        response.setSnapshotVersion(versionService.currentVersion());
+        response.setCalendars(calendars.stream()
+                .filter(Objects::nonNull)
+                .map(calendar -> {
+                    CalendarDTO dto = new CalendarDTO();
+                    dto.setCalendarId(calendar.getCalendarId());
+                    dto.setCalendarName(calendar.getCalendarName());
+                    dto.setWorkdayPattern(calendar.getWorkdayPattern());
+                    dto.setShiftStart(calendar.getShiftStart());
+                    dto.setShiftEnd(calendar.getShiftEnd());
+                    dto.setVersion(epochMillis(calendar.getUpdateTime()));
+                    return dto;
+                })
+                .collect(Collectors.toList()));
+        return response;
+    }
+
+    /**
+     * 当前默认换型规则（Phase 4 契约端点；单体 changeover_rule limit 1 语义）。
+     */
+    @Override
+    public ChangeoverRuleResponse getCurrentChangeoverRule() {
+        ChangeoverRule rule = Db.lambdaQuery(ChangeoverRule.class)
+                .last("limit 1")
+                .one();
+        ChangeoverRuleResponse response = new ChangeoverRuleResponse();
+        response.setSnapshotVersion(versionService.currentVersion());
+        if (rule != null) {
+            ChangeoverRuleDTO dto = new ChangeoverRuleDTO();
+            dto.setRuleId(rule.getRuleId());
+            dto.setSameMoldTimeMin(rule.getSameMoldTimeMin());
+            dto.setDifferentMoldTimeMin(rule.getDifferentMoldTimeMin());
+            dto.setMaterialChangeExtraMin(rule.getMaterialChangeExtraMin());
+            dto.setColorChangeExtraMin(rule.getColorChangeExtraMin());
+            response.setRule(dto);
+        }
+        return response;
+    }
+
+    /**
+     * 当前数据版本计数（Phase 4 轻量端点；排程快照漂移检测）。
+     */
+    @Override
+    public DataVersionResponse getDataVersion() {
+        return new DataVersionResponse(versionService.currentVersion());
     }
 
     private Map<Long, ProductRoute> loadActiveRoutes(List<Long> productIds) {
@@ -207,7 +285,9 @@ public class InternalMasterDataController implements com.product.masterdata.api.
         return dto;
     }
 
-    private ResourceDTO toResourceDTO(Resource resource, Machine machine, Mold mold, List<ResourceCapability> capabilities) {
+    private ResourceDTO toResourceDTO(Resource resource, Machine machine, Mold mold,
+                                      List<MachineMoldCompatibility> compatibilities,
+                                      List<ResourceCapability> capabilities) {
         ResourceDTO dto = new ResourceDTO();
         dto.setResourceId(resource.getResourceId());
         dto.setResourceType(resource.getResourceType());
@@ -222,6 +302,15 @@ public class InternalMasterDataController implements com.product.masterdata.api.
             machineDTO.setTonnage(machine.getTonnage());
             machineDTO.setDefaultSetupTimeMin(machine.getDefaultSetupTimeMin());
             dto.setMachine(machineDTO);
+        }
+        if (CollectionUtils.isNotEmpty(compatibilities)) {
+            dto.setMoldCompatibilities(compatibilities.stream().map(compatibility -> {
+                MachineMoldCompatibilityDTO compatibilityDTO = new MachineMoldCompatibilityDTO();
+                compatibilityDTO.setMachineId(compatibility.getMachineId());
+                compatibilityDTO.setMoldId(compatibility.getMoldId());
+                compatibilityDTO.setIsCompatible(compatibility.getIsCompatible());
+                return compatibilityDTO;
+            }).collect(Collectors.toList()));
         }
         if (mold != null) {
             ResourceDTO.MoldDTO moldDTO = new ResourceDTO.MoldDTO();

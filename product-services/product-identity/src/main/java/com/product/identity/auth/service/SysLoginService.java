@@ -79,6 +79,36 @@ public class SysLoginService {
     }
 
     /**
+     * 服务身份登录（Phase 4，ADR-0003 服务身份最小实现）：与 {@link #login} 同一
+     * 前置校验/AuthenticationManager/登录信息记录/签发链路，仅免去人机验证码——
+     * 供内部服务（如 product-planning 异步排程）以自身凭据换取 RS256 token。
+     * 异常语义与 login 完全一致（凭据错误 → UserPasswordNotMatchException 等）。
+     */
+    public String loginWithoutCaptcha(String username, String password) {
+        // 登录前置校验
+        loginPreCheck(username, password);
+        // 用户验证（与 login 同一认证链）
+        Authentication authentication;
+        try {
+            UsernamePasswordAuthenticationToken authenticationToken =
+                    new UsernamePasswordAuthenticationToken(username, password);
+            com.product.identity.auth.context.AuthenticationContextHolder.setContext(authenticationToken);
+            authentication = authenticationManager.authenticate(authenticationToken);
+        } catch (Exception e) {
+            if (e instanceof BadCredentialsException) {
+                throw new UserPasswordNotMatchException();
+            } else {
+                throw new ServiceException(e.getMessage());
+            }
+        } finally {
+            com.product.identity.auth.context.AuthenticationContextHolder.clearContext();
+        }
+        LoginPrincipal loginPrincipal = (LoginPrincipal) authentication.getPrincipal();
+        recordLoginInfo(loginPrincipal.getUserId());
+        return tokenService.createToken(loginPrincipal.getUser(), loginPrincipal.getPermissions());
+    }
+
+    /**
      * 校验验证码
      */
     public void validateCaptcha(String username, String code, String uuid) {

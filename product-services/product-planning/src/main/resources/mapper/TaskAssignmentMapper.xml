@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.product.planning.mapper.TaskAssignmentMapper">
+
+    <!-- ResultMap: 派工记录结果映射 -->
+    <resultMap id="TaskAssignmentMap" type="com.product.planning.domain.vo.TaskAssignmentVO">
+        <id property="assignmentId" column="assignment_id"></id>
+        <result property="taskId" column="task_id"></result>
+        <result property="machineId" column="machine_id"></result>
+        <result property="plannedStart" column="planned_start"></result>
+        <result property="plannedEnd" column="planned_end"></result>
+        <result property="sequenceOnResource" column="sequence_on_resource"></result>
+        <result property="batchId" column="batch_id"></result>
+        <result property="opCode" column="op_code"></result>
+    </resultMap>
+
+    <!-- 查询单台机的下一个可用时间（废弃） -->
+    <!-- 已被 selectMachineLatestEndTime 替代 -->
+    <select id="selectMachineNextTime" resultType="java.time.LocalDateTime">
+        SELECT MAX(a.planned_end)
+        FROM task_assignment a
+        INNER JOIN operation_task t ON t.task_id = a.task_id
+        WHERE a.machine_id = #{machineId}
+          AND t.status IN
+        <foreach collection="statusList" item="status" open="(" separator="," close=")">
+            #{status}
+        </foreach>
+    </select>
+
+    <!-- 批量查询多台机的最近任务结束时间 -->
+    <!-- 用途：构建机台运行时上下文，预加载每台机的最早可用时间 -->
+    <!-- 注意：已被 selectMachineRuntimeStats 替代 -->
+    <select id="selectMachineLatestEndTime" resultType="com.product.planning.dto.MachineRuntimeStatsDTO">
+        SELECT a.machine_id AS machineId,
+               MAX(a.planned_end) AS latestEndTime
+        FROM task_assignment a
+        INNER JOIN operation_task t ON t.task_id = a.task_id
+        WHERE a.machine_id IN
+        <foreach collection="machineIds" item="machineId" open="(" separator="," close=")">
+            #{machineId}
+        </foreach>
+          AND t.status IN
+        <foreach collection="statusList" item="status" open="(" separator="," close=")">
+            #{status}
+        </foreach>
+        GROUP BY a.machine_id
+    </select>
+
+    <!-- 批量查询多台机的当前最大序号 -->
+    <!-- 用途：构建机台运行时上下文，预加载每台机的当前最大序号 -->
+    <!-- 注意：已被 selectMachineRuntimeStats 替代 -->
+    <select id="selectMachineMaxSequence" resultType="com.product.planning.dto.MachineRuntimeStatsDTO">
+        SELECT machine_id AS machineId,
+               MAX(sequence_on_resource) AS maxSequence
+        FROM task_assignment
+        WHERE machine_id IN
+        <foreach collection="machineIds" item="machineId" open="(" separator="," close=")">
+            #{machineId}
+        </foreach>
+        GROUP BY machine_id
+    </select>
+
+    <!-- 批量查询多台机的运行时统计信息（合并查询） -->
+    <!-- 用途：一次性查询每台机的最近任务结束时间和最大序号 -->
+    <!-- 优化：将两次查询合并为一次，减少数据库往返 -->
+    <select id="selectMachineRuntimeStats" resultType="com.product.planning.dto.MachineRuntimeStatsDTO">
+        SELECT a.machine_id AS machineId,
+               MAX(a.planned_end) AS latestEndTime,
+               MAX(a.sequence_on_resource) AS maxSequence
+        FROM task_assignment a
+        INNER JOIN operation_task t ON t.task_id = a.task_id
+        WHERE a.machine_id IN
+        <foreach collection="machineIds" item="machineId" open="(" separator="," close=")">
+            #{machineId}
+        </foreach>
+          AND t.status IN
+        <foreach collection="statusList" item="status" open="(" separator="," close=")">
+            #{status}
+        </foreach>
+        GROUP BY a.machine_id
+    </select>
+
+    <!-- 查询已存在的任务ID（防重检查） -->
+    <!-- 用途：代码侧防重校验，与数据库唯一索引配合 -->
+    <select id="selectExistingTaskIds" resultType="java.lang.Long">
+        SELECT task_id
+        FROM task_assignment
+        WHERE task_id IN
+        <foreach collection="taskIds" item="taskId" open="(" separator="," close=")">
+            #{taskId}
+        </foreach>
+    </select>
+
+    <!-- 分页查询派工记录（关联工序任务信息） -->
+    <select id="selectTaskAssignmentPage" resultMap="TaskAssignmentMap">
+        SELECT a.assignment_id,
+               a.task_id,
+               a.machine_id,
+               a.planned_start,
+               a.planned_end,
+               a.sequence_on_resource,
+               t.batch_id,
+               t.op_code
+        FROM task_assignment a
+        LEFT JOIN operation_task t ON a.task_id = t.task_id
+        <where>
+            <if test="taskAssignment != null and taskAssignment.taskId != null and taskAssignment.taskId != ''">
+                AND a.task_id = #{taskAssignment.taskId}
+            </if>
+            <if test="taskAssignment != null and taskAssignment.machineId != null and taskAssignment.machineId != ''">
+                AND a.machine_id = #{taskAssignment.machineId}
+            </if>
+            <if test="taskAssignment != null and taskAssignment.plannedStart != null">
+                AND a.planned_start = #{taskAssignment.plannedStart}
+            </if>
+            <if test="taskAssignment != null and taskAssignment.plannedEnd != null">
+                AND a.planned_end = #{taskAssignment.plannedEnd}
+            </if>
+            <if test="taskAssignment != null and taskAssignment.sequenceOnResource != null">
+                AND a.sequence_on_resource = #{taskAssignment.sequenceOnResource}
+            </if>
+        </where>
+    </select>
+
+</mapper>

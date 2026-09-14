@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -12,16 +13,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * product-planning 骨架冒烟测试（离线，禁用 Nacos 注册/配置）。
+ * product-planning 冒烟测试（离线，禁用 Nacos 注册/配置、数据源/Redis 与本地验签安全链——
+ * 数据访问、锁通道与 JWKS 拉取不参与离线单测，见 spec/backend/microservices-platform.md）。
  */
 @SpringBootTest(properties = {
         "spring.cloud.nacos.discovery.enabled=false",
         "spring.cloud.nacos.config.enabled=false",
         "spring.cloud.service-registry.auto-registration.enabled=false",
-        // 离线单测关闭本地验签安全链（无 JWKS 可拉取）；live 环境默认开启（ADR-0003）。
-        // cloud-security 引入 spring-security-web/config 后，还需排除 Boot 默认 servlet 安全链，
-        // 否则 @ConditionalOnDefaultWebSecurity 的兜底链会对 /skeleton/info 返回 401。
-        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration,org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration",
+        // 离线：无 MySQL/Redis/JWKS。排除 DataSource/MyBatis-Plus/Redis 自动装配（否则
+        // /actuator/health 的 DB/Redis health indicator 连不上即 DOWN → 503），关闭本地
+        // 验签安全链与 Boot 默认安全链。
+        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration,org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration,org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration,org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration",
         "product.security.enabled=false"
 })
 @AutoConfigureMockMvc
@@ -29,6 +31,37 @@ class PlanningApplicationTest {
 
     @Autowired
     MockMvc mockMvc;
+
+    /** 数据访问离线替换（MyBatis-Plus 自动装配已排除，Mapper 用 mock 占位）。 */
+    @MockitoBean com.product.planning.mapper.OperationTaskMapper operationTaskMapper;
+    @MockitoBean com.product.planning.mapper.ProductionBatchMapper productionBatchMapper;
+    @MockitoBean com.product.planning.mapper.ScheduleJobMapper scheduleJobMapper;
+    @MockitoBean com.product.planning.mapper.TaskAssignmentMapper taskAssignmentMapper;
+    @MockitoBean com.product.planning.mapper.TaskAssignmentResourceMapper taskAssignmentResourceMapper;
+    @MockitoBean com.product.planning.mapper.TaskDependencyMapper taskDependencyMapper;
+
+    /** 排程并发互斥锁的 Redis 通道离线替换（Redis 自动装配已排除；tryLock 恒失败=不可获锁）。 */
+    @MockitoBean
+    org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
+
+    @org.junit.jupiter.api.BeforeEach
+    void stubLockChannelOffline() {
+        try {
+            // 超时兜底扫描在离线测试中也运行：让 tryLock 平稳返回 false（锁不可得），不抛异常噪音
+            org.mockito.Mockito.when(stringRedisTemplate.opsForValue()).thenReturn(
+                    org.mockito.Mockito.mock(org.springframework.data.redis.core.ValueOperations.class));
+            org.mockito.Mockito.when(stringRedisTemplate.opsForValue()
+                    .setIfAbsent(org.mockito.ArgumentMatchers.anyString(),
+                            org.mockito.ArgumentMatchers.anyString(),
+                            org.mockito.ArgumentMatchers.any(java.time.Duration.class)))
+                    .thenReturn(false);
+        } catch (Exception ignored) {
+            // 深桩不可用时保持默认行为
+        }
+    }
+
+    /** 事务模板离线替换（随 DataSource 自动装配排除；生产由 Boot 自动装配提供）。 */
+    @MockitoBean org.springframework.transaction.support.TransactionTemplate transactionTemplate;
 
     @Test
     void skeletonInfoShouldExposeServiceIdentity() throws Exception {

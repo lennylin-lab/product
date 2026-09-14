@@ -13,12 +13,13 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
  * <p>所在 Maven 模块为 product-demand-service（坐标与旧业务模块 product-demand 冲突，
  * 故加 -service 后缀）；Nacos 注册名仍是 product-demand。</p>
  *
- * <p>Feign 契约扫描范围仅限 {@code com.product.masterdata.api}（主数据批量查询契约）：
- * 订单行 product_id 跨域引用校验的调用通道，超时/重试语义见 application.yml
- * （fail-closed：master-data 不可用时拒绝写入，不做本地降级放行）。</p>
+ * <p>Feign 契约扫描范围：{@code com.product.masterdata.api}（主数据批量查询契约，
+ * 订单行 product_id 跨域引用校验）与 {@code com.product.planning.api}（Phase 4 接线：
+ * 订单行详情批次视图填充 + 删除订单行级联清理 planning 批次，PlanningBatchClient）。
+ * 超时/重试语义见 application.yml（提供方不可用时按契约拒绝/降级，不做本地静默放行）。</p>
  */
 @SpringBootApplication
-@EnableFeignClients(basePackages = "com.product.masterdata.api")
+@EnableFeignClients(basePackages = {"com.product.masterdata.api", "com.product.planning.api"})
 public class DemandApplication {
 
     public static void main(String[] args) {

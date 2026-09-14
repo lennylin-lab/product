@@ -33,6 +33,9 @@ public class ResourceDTO implements Serializable {
     /** 注塑机扩展（resourceType=MACHINE 时存在）。 */
     private MachineDTO machine;
 
+    /** 机台-模具兼容性行（Phase 4 增量：排程级联选模消费；机台资源才携带）。 */
+    private List<MachineMoldCompatibilityDTO> moldCompatibilities;
+
     /** 模具扩展（resourceType=MOLD 时存在）。 */
     private MoldDTO mold;
 
@@ -101,6 +104,14 @@ public class ResourceDTO implements Serializable {
 
     public void setMachine(MachineDTO machine) {
         this.machine = machine;
+    }
+
+    public List<MachineMoldCompatibilityDTO> getMoldCompatibilities() {
+        return moldCompatibilities;
+    }
+
+    public void setMoldCompatibilities(List<MachineMoldCompatibilityDTO> moldCompatibilities) {
+        this.moldCompatibilities = moldCompatibilities;
     }
 
     public MoldDTO getMold() {

@@ -309,11 +309,166 @@ schema 脚本）；api 契约模块完整。审计发现并修复的部分工作
 
 ## Phase 4: Planning
 
-- [ ] 迁移批次、工序任务、资源需求、派工、异步排程任务与算法。
-- [ ] 使用批量契约和版本化输入快照加载 Demand/Master Data，避免 N+1 RPC。
-- [ ] 建立排程幂等、超时、并发互斥和结果一致性规则。
+- [x] 迁移批次、工序任务、资源需求、派工、异步排程任务与算法。
+- [x] 使用批量契约和版本化输入快照加载 Demand/Master Data，避免 N+1 RPC。
+- [x] 建立排程幂等、超时、并发互斥和结果一致性规则。
 - Validation: 现有排程单测全部迁移；补充服务集成、跨班次、并发、超时、远程依赖失败和基准性能测试。
 - Rollback point: 对同一固定数据集比较单体与微服务排程结果；关键差异未解释前不得进入下一阶段。
+
+### Phase 4 执行记录（2026-09-15，含中断续作审计）
+
+**续作说明**：前次中断遗留的部分工作（product-demand-api / product-planning-api 契约模块、demand
+内部契约端点与 PlanningBatchClient、master-data RouteDeleteGuard 与契约扩展）经审计后补齐接线，
+其余（product-planning 服务本体）为本次实现。
+
+**续作审计发现并修复**：① `MasterDataApplication` 缺 `@EnableFeignClients`（RouteDeleteGuard 注入
+demand/planning 两个 Feign 客户端，启动即失败）；② `DemandApplication` Feign 扫描范围未含
+`com.product.planning.api`（PlanningBatchClient 注入失败）；③ `InternalMasterDataController` 缺
+`Calendar` 实体 import（编译失败）；④ demand `OrderLineMapper` 缺 `@Param` import。
+
+**产出**：
+- `product-services/product-planning`（8104，planning_db + planning_svc）：批次/工序任务/派工/
+  排程任务/算法全量移植 —— 实体 7、Mapper 7(+XML 4，新增 TaskResourceRequirementMapper，见下)、
+  路由规则与标准工时模型（RouteRuleRegistry/Setup/Inject/Post + TM_*）、TaskSchedulingCalculator
+  （算法冻结，与单体仅包名/DI 差异）、TaskSchedulingQueryService（本地表查询保留，跨域改契约）、
+  SchedulingSnapshotLoader（新，契约快照）、TaskSchedulingCoordinator（新增加载基线+落库前漂移复核）、
+  TaskAssignmentPersistenceService、ScheduleJobServiceImpl/ScheduleJobTimeoutService、
+  ProductionBatch/OperationTask/TaskAssignment 三控制器（/pps/batch、/pps/task、/pps/assignment 路径冻结）、
+  InternalPlanningController（batches/by-order-lines、by-order-lines/delete、has-blocking-tasks）。
+  排程并发互斥 PlanningRedisLock（SET NX PX + 持有者令牌 + Lua 释放 + lock() 看门狗续期；Redisson
+  不在任一 BOM 内故按同语义自实现；key 前缀 `planning:`，三把锁与单体一一对应）；线程池参数与单体
+  ThreadPoolConfig 一致（core50/max200/queue1000/CallerRuns）。
+- **版本化输入快照（显式规则）**：demand/master-data 批量响应信封携带各自 `snapshotVersion`
+  （demand_data_version / master_data_data_version 单调计数）；排程启动 `captureVersions()` 采基线，
+  计算完成后、事务落库前 `verifyUnchanged()` 重读两域计数，任一漂移即显式失败（任务保持 READY，
+  重新发起即重试），绝不部分落库。每次排程远程调用有界（≤10 次，与任务数无关），无跨库访问。
+- **服务身份令牌（ADR-0003 最小实现）**：identity 新增 `POST /internal/identity/service-token`
+  （免验证码服务凭据登录，同一 AuthenticationManager/BCrypt/RS256 签发链；identity_schema.sql
+  新增种子账号 planning_svc，非基线种子）+ SysLoginService.loginWithoutCaptcha；planning 侧
+  ServiceIdentityTokenProvider（缓存至过期前 60s）+ PlanningFeignAuthInterceptor（请求线程透传
+  用户 JWT，无上下文的异步线程改携服务身份 token —— 与 demand/master-data 的 FeignForwardAuthConfig
+  共存）。
+- **网关 /internal/** 显式拒绝（Phase 3 check 必修项）**：InternalPathDenyFilter（GlobalFilter，
+  HIGHEST_PRECEDENCE）—— 请求路径任一段等于 `internal` 即 404 统一错误体 + X-Trace-Id，封堵
+  冒烟前缀路由（/master-data/**、/demand-svc/**、/planning/**、/execution/**）对服务内部契约端点的
+  穿透；baselines §1.2 外部路径无 internal 段，外部语义不变；服务间 Feign 经 Nacos 直连不受影响。
+  另新增 planning 正式路由（/pps/batch、/pps/task、/pps/assignment → lb://product-planning）。
+- demand/master-data 接线（部分工作补齐后生效）：订单行详情批次视图经 planning 契约填充
+  （planning 不可用降级空列表并告警）；删订单行先经 planning 契约级联删批次（fail-closed，与单体
+  "先删批次后删行"次序一致）；拆批/改批数量预占用经 demand 契约（SQL 与单体
+  OrderLineAllocationMapper 逐字一致，本地失败负 delta 补偿）；启用路线删除保护经
+  demand+planning 两段契约（任一不可用 fail-closed 拒绝删除）；订单/订单行/排程相关写路径同事务
+  bump demand_data_version。
+- SQL：`planning_schema.sql`（排程 7 表逐字节自根 schema.sql + AUTO_INCREMENT=100 保留 +
+  planning_svc 账号 DML-only）；.env.example 补 PLANNING_DB_*/PLANNING_SERVICE_IDENTITY_*。
+
+**验证结果（本机实测，temurin 17.0.20+8 / Maven 3.9.16）**：
+1. 根构建（回滚点）：`mvn -DskipTests compile` **27/27 模块** BUILD SUCCESS；git status 除
+   product-services/**、scratch/**、.env.example、.trellis/** 外零改动（单体未动）。
+2. 离线测试（复核修正后最终 clean run）：`product-services` 下 `mvn clean test` **12/12 模块
+   BUILD SUCCESS，147 用例全绿**（初版 139；check 修正新增 gateway 3、identity 3、planning 2 条）
+   （cloud-common 19、cloud-security 11、gateway 16、identity 28、master-data 6、demand 15、
+   planning 48、execution 4；日志 scratch/phase4/phase4_clean_test_v2.log；初版 139 条记录见
+   phase4_clean_test.log）。
+   **单体排程单测迁移**：product-pps 现有 9 个测试类全部迁移 —— 8 个迁入 planning
+   （RouteOperationValidatorTest 4、RouteRuleRegistryTest 5、ChangeoverCalculatorTest 3、
+   InjectDurationCalculatorTest 2、OperationResourceRequirementBuilderTest 1、
+   TaskAssignmentPersistenceServiceTest 2、TaskSchedulingCalculatorTest 14、
+   TaskSchedulingQueryServiceTest 4 = 35）+ ProductRouteServiceValidationTest 2 迁入 master-data
+   （路线写路径校验归 master-data）= **37 个单体测试全部迁移且全绿**；planning 另新增
+   SchedulingSnapshotLoaderTest 4（AVAILABLE 过滤/产品映射含路线工序排序/漂移拒绝/版本一致）、
+   PlanningRedisLockTest 3。
+3. 实机（nacos v3.0.3 + rabbitmq 3.13 compose；既有 mysql 33066/redis 6380；identity 8101 /
+   master-data 8102 / demand 8103 / planning 8104 / gateway 8080 全注册 PRODUCT_GROUP、健康 UP；
+   临时单体 8082 自当前源码拉起）。
+4. **对拍（回滚点核心）**：同一固定数据集（SQL 种子：日历/2 机台/2 模具/兼容矩阵/人员+能力/
+   工位/换型规则/2 产品含模具参数与启用路线/2 订单 4 订单行；两轮排程 EARLIEST_START +
+   DUE_DATE_PRIORITY，相同 assignmentStart=2026-09-15 09:00:00）。
+   **单体侧 live 调度不可用（冻结缺陷，非本次引入）**：单体 ProductRoute/ProductMoldParam/
+   MachineMoldCompatibility/ResourceCapability/ChangeoverRule 无注册 Mapper，Db 工具链抛
+   `Not Found TableInfoCache`（8082 实测 /pps/product-route/list 500、scheduleAllAsync FAILED），
+   与 Phase 3 已记录的 TableInfoCache 冻结缺陷同类。故对拍基线改由**单体现有源码构件的进程内
+   真实算法 harness**（scratch/phase4/mono-harness，独立 POM 仅消费 ~/.m2 单体构件，零单体改动）
+   计算，与微服务全栈实测（经网关、含异步/契约/漂移复核全链路）**逐字段比对：12 任务 ×
+   [状态 SCHEDULED + 派工主行（机台/模具/人员/工位、计划起止到秒、资源序号）+ 派工资源明细]
+   全部一致**（PARITY OK），覆盖跨班次顺延（1800min 任务整体顺延至下一班次）、级联选模
+   （机台兼容模具最早可用）、人员能力匹配、换型时间（不同模具 40+换料 10=40~50min 顺延）、
+   依赖链约束、DUE_DATE_PRIORITY 交期排序。
+   **差异分类**：a) 冻结缺陷修复（服务可用/单体同路径不可用）：generateTask 路线加载、
+   排程输入快照加载、数量预占用跨服务化；b) 刻意新增：输入快照漂移复核（单体同库读一致性的
+   替代）、服务身份令牌；c) 无未解释差异。
+   generateTask 语义对拍：服务侧实生成任务 std_duration_min=1500/8/3000（qty=25 产品PP，
+   SETUP=60×25、INJECT=A2 公式、POST=120×25）与单体模型一致；资源需求（SETUP=人员+机台、
+   INJECT=人员+机台+模具、POST=人员+工位）一致。
+5. **排程规则实测**：① 并发互斥 —— 4 并发 scheduleAllAsync，1 受理 3 拒绝
+   （"当前已有排程任务在执行，请稍后再试"，提交互斥 + DB 状态双闸）；② 超时兜底 —— 插入过期
+   PENDING/RUNNING 假任务行后手动 sweep，2 条均标 FAILED（"排程任务创建后长时间未执行"/
+   "排程任务执行超时"）；③ 远程依赖失败 —— demand 停机 + READY 任务存在时 scheduleAllAsync →
+   job FAILED（"需求服务不可用，无法加载排程输入快照"），6 任务保持 READY、派工行 0（无部分
+   落库），重发即重试；④ 快照漂移 —— 排程期间并发写主数据（版本 56→59）→ job FAILED
+   （"排程输入数据已变化(主数据域版本漂移 56->59)，本次排程已中止"）；⑤ master-data 侧
+   RouteDeleteGuard fail-closed —— demand 停机时删除启用路线被拒（"需求服务不可用，无法确认
+   工艺路线删除保护"）。
+6. **网关 /internal/** 拒绝实测**：/internal/**、/master-data/internal/**、/planning/internal/**、
+   /demand-svc/internal/** 四种形态均 404 统一错误体 + X-Trace-Id；业务路径 /pps/batch/list 正常
+   200。单测 InternalPathDenyFilterTest 4 条覆盖。
+7. **服务身份令牌实测**：identity /internal/identity/service-token 以 planning_svc 凭据换取 RS256
+   token → demand/master-data 内部契约 200；全部异步排程成功轮次即经此通道认证。
+8. 清理：本次全部 JVM（5 服务 + 临时单体 + 重启迭代）与 nacos/rabbitmq 容器停止移除，8080-8105/
+   8848 端口全部释放；既有 product-mysql/product-redis 未动；对拍/探针测试行已从 product 库与
+   服务库双向清理（服务库重置为种子空库，product 库逐表删除本会话创建行并核实 0 残留）。
+
+**过程中发现并修正**（本次实现引入、已修复）：
+① 移植的三控制器 package 声明未重写（com.product.pps.controller）导致不被扫描——/pps/assignment
+   404；修正后重建。② TaskResourceRequirement 无注册 Mapper 使排程装配抛 Not Found TableInfoCache
+   （单体 Db 工具链脆弱模式的等价暴露）——新增服务自有 Mapper。③ PlanningFeignAuthInterceptor
+   以 RequestTemplate.path() 前缀判定内部契约漏判（不含 @FeignClient(path) 前缀）——改为无条件
+   服务身份兜底。④ identity 重启换钥后缓存 token 失效（401-in-200 信封）——loader 增加
+   evict+重试一次。⑤ generateTask 移植自单体的 .select 漏查 order_line_id（单体冻结缺陷）导致
+   订单行恒空——修复并注释。⑥ ServiceIdentityProperties 双重注册导致启动失败——改为 @Component。
+
+**trellis-check 复核修正（2026-09-15，HIGH 缺陷 + 记账修正）**：
+1. **HIGH /pps/batch/list 跨库 join 缺陷（已修复）**：移植的 ProductionBatchMapper.xml
+   selectProductionBatchVO LEFT JOIN order_line/customer_order/product（planning_db 无这些表，
+   planning_svc 仅 planning_db 授权 → 任意分页查询运行时 1146/1142）。此前记录"业务路径
+   /pps/batch/list 正常 200"为**误记**（该路径当时未被实际请求验证，日志无此请求），已更正。
+   修复：XML 改为本库分页查询（orderId 过滤经 demand 契约解析订单行 ID 后 IN 过滤），跨域聚合
+   字段（orderId/dueDate/productName，与单体 join 字段逐字段一致）由 ProductionBatchServiceImpl
+   经 demand/master-data 批量契约填充（每页 demand 2 次 + master-data 1 次，无 N+1；契约不可用
+   时跨域字段置空并告警，本库分页主行恒可读）。单体 planned 区间过滤的 date_format 单参非法 SQL
+   与 endPlannedEnd 误配 beginPlannedEnd 两处冻结缺陷按字面意图修正实现（差异已记录）。
+2. **网关拒绝形态 live 留痕**：本次 live 运行将字面 + 四种冒烟前缀形态的探测输出存档至
+   scratch/phase4/gateway_deny_transcript.txt（含 X-Trace-Id 与统一 404 体）。
+3. **InternalPathDenyFilter 加固**：逐段先剥矩阵参数（internal;x → internal）再 URL 解码
+   （%69nternal → internal），畸形转义保留原文继续匹配；新增单测 3 条（变形拒绝/畸形转义/原始
+   未解码路径断言）。MockServerHttpRequest 字符串重载会把 '%' 再编码（%25），测试用 URI 重载。
+4. **新增离线测试**：identity InternalServiceTokenControllerTest 3 条（错误凭据 → 与单体登录
+   同源错误体 HTTP 200 + code 500 "用户不存在/密码错误"；种子 planning_svc 正确凭据 → RS256
+   token、sub=planning_svc、permissions 空集）；planning SchedulingSnapshotLoaderTest 增 2 条
+   （401 信封形态 → evict + 重试一次恢复；重试仍失败 → 单次重试后按响应异常处理）。
+6. **/pps/batch/list live 复验（修复后，经网关 + 有效 token）**：无过滤 total=2 且
+   orderId/dueDate（demand 契约）与 productName（master-data 契约）正确填充——字段集与单体
+   ProductionBatchVO 一致（batchId/orderLineId/batchQty/status/plannedStart/plannedEnd/
+   orderId/dueDate/productName）；orderId=9001 过滤仅返回该订单下批次（契约解析 IN 过滤）；
+   orderId=9999 返回 total=0 空集；均为 HTTP 200 + TableDataInfo 信封。语义基线说明：单体
+   /pps/batch/list live 链路受 TableInfoCache 冻结缺陷影响不可用，字段/语义比对以单体源码
+   （join 字段集 + VO 定义）与本任务 in-process harness 为基线，如实记录。transcript 存档
+   scratch/phase4/batch_list_transcript.txt 与 gateway_deny_transcript.txt（字面 + 4 前缀形态 +
+   %69nternal / internal;x 变形 + 业务路径对照，含 X-Trace-Id）。对拍在最终 jar 上重跑确认
+   PARITY OK（修复不触及调度路径）。
+5. **记账修正**：单体测试类数为 9（8 迁 planning + 1 迁 master-data），非"10 中取 9"；
+   identity_schema.sql planning_svc 注释改为精确表述（挂 common 角色，权限串解析为空集，非
+   "无任何菜单"）。另注：服务端 ServiceException/RuntimeException → HTTP 200 + code 500 错误体
+   为单体冻结的全局兜底契约（error-handling.md），各阶段沿用，非 Phase 4 回归。
+
+**遗留问题（不阻塞 Phase 5）**：
+- 单体 generateTask/调度链路在当前源码 live 不可用（TableInfoCache 冻结缺陷族），统一切换评审时
+  按"冻结缺陷修复"归类，不属行为回归。
+- planning 的 Excel 导入导出为控制器忠实移植，未做对拍（单体同路径受冻结缺陷影响）。
+- ProductionBatchServiceImpl 拆批"先预占后落批"的补偿窗口（落批失败补偿释放失败时需人工对账）
+  已记录告警日志；Phase 5 对账任务可收敛。
+- identity_schema.sql 种子用户数 1→2（planning_svc，Phase 4 新增，非基线种子）。
+- Sentinel 规则 Nacos 持久化、OpenAPI 网关聚合收敛、span 导出器仍沿 Phase 2/3 遗留清单。
 
 ## Phase 5: Execution And Event Consistency
 

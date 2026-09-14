@@ -31,6 +31,11 @@ import java.util.Set;
  */
 @Service
 public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, CustomerOrder> implements ICustomerOrderService {
+
+    /** Phase 4：需求域数据版本计数（排程输入快照漂移检测；订单为排程输入）。 */
+    @Autowired
+    private com.product.demand.service.DemandDataVersionService demandDataVersionService;
+
     /** 允许人工流转的订单状态集合：新建和已确认之间可以互相切换 */
     private static final Set<String> ALLOWED_MANUAL_ORDER_STATUSES = Set.of(
             StatusConstants.NEW_CUSTOMER_ORDER,
@@ -96,6 +101,9 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
             customerOrder.setStatus(StatusConstants.NEW_CUSTOMER_ORDER);
         }
         boolean saved = save(customerOrder);
+        if (saved) {
+            demandDataVersionService.bump();
+        }
         return saved;
     }
 
@@ -116,6 +124,9 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
             }
         });
         boolean success = saveBatch(customerOrders);
+        if (success) {
+            demandDataVersionService.bump();
+        }
         return success ? customerOrders.size() : 0;
     }
 
@@ -134,6 +145,9 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
         validateOrderStatusTransition(currentOrder.getStatus(), targetStatus);
         customerOrder.setStatus(targetStatus);
         boolean updated = persistCustomerOrder(customerOrder);
+        if (updated) {
+            demandDataVersionService.bump();
+        }
         return updated;
     }
 
@@ -148,8 +162,14 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
         if (orderIds == null || orderIds.length == 0) {
             return false;
         }
+        // 与单体一致：删除订单行（不触碰 planning 批次——单体删单也不清批次，冻结行为）。
+        // 订单行/订单均为排程输入，删除后 bump 版本计数。
         baseMapper.deleteOrderLineByOrderIds(orderIds);
-        return removeByIds(Arrays.asList(orderIds));
+        boolean removed = removeByIds(Arrays.asList(orderIds));
+        if (removed) {
+            demandDataVersionService.bump();
+        }
+        return removed;
     }
 
     /**
@@ -161,7 +181,11 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
     @Override
     public boolean deleteCustomerOrderByOrderId(Long orderId) {
         baseMapper.deleteOrderLineByOrderId(orderId);
-        return removeById(orderId);
+        boolean removed = removeById(orderId);
+        if (removed) {
+            demandDataVersionService.bump();
+        }
+        return removed;
     }
 
     /** 确认订单：将订单状态从 NEW 变更为 CONFIRMED，确认后可进入排程流程 */
@@ -169,7 +193,11 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
     public boolean check(Long orderId) {
         CustomerOrder customerOrder = requireCustomerOrder(orderId);
         validateOrderStatusTransition(customerOrder.getStatus(), StatusConstants.CONFIRMED_CUSTOMER_ORDER);
-        return persistCustomerOrderStatus(orderId, StatusConstants.CONFIRMED_CUSTOMER_ORDER);
+        boolean checked = persistCustomerOrderStatus(orderId, StatusConstants.CONFIRMED_CUSTOMER_ORDER);
+        if (checked) {
+            demandDataVersionService.bump();
+        }
+        return checked;
     }
 
     /** 反确认订单：将订单状态从 CONFIRMED 回退为 NEW */
@@ -177,7 +205,11 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
     public boolean cancelCheck(Long orderId) {
         CustomerOrder customerOrder = requireCustomerOrder(orderId);
         validateOrderStatusTransition(customerOrder.getStatus(), StatusConstants.NEW_CUSTOMER_ORDER);
-        return persistCustomerOrderStatus(orderId, StatusConstants.NEW_CUSTOMER_ORDER);
+        boolean cancelled = persistCustomerOrderStatus(orderId, StatusConstants.NEW_CUSTOMER_ORDER);
+        if (cancelled) {
+            demandDataVersionService.bump();
+        }
+        return cancelled;
     }
 
     /** 获取订单实体，不存在时抛出异常 */

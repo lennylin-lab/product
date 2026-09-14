@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.product.planning.mapper.OperationTaskMapper">
+
+    <!-- ============================================================
+         自定义 SQL 更新
+         ============================================================ -->
+    <!-- ============================================================
+         批量标记任务为已排程状态
+
+         用途：排程完成后批量更新任务状态（READY -> SCHEDULED）
+
+         并发安全机制：
+         - WHERE status = #{fromStatus} 作为乐观锁条件
+         - 仅更新指定状态的任务，避免覆盖已变更的任务
+         - 如果任务状态已被修改，该行不会被更新
+
+         示例：
+         - 任务1状态为 READY -> 被更新为 SCHEDULED ✓
+         - 任务2状态为 RUNNING -> 不被更新（状态不匹配）✓
+    ============================================================ -->
+    <update id="batchMarkScheduled">
+        UPDATE operation_task
+        SET status = #{toStatus}
+        WHERE status = #{fromStatus}
+          AND task_id IN
+        <foreach collection="taskIds" item="taskId" open="(" separator="," close=")">
+            #{taskId}
+        </foreach>
+    </update>
+
+</mapper>

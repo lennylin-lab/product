@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.product.planning.mapper.ProductionBatchMapper">
+    <resultMap id="ProductionBatchMap" type="com.product.planning.domain.vo.ProductionBatchVO">
+        <id property="batchId" column="batch_id"></id>
+        <result property="orderLineId" column="order_line_id"></result>
+        <result property="batchQty" column="batch_qty"></result>
+        <result property="status" column="status"></result>
+        <result property="plannedStart" column="planned_start"></result>
+        <result property="plannedEnd" column="planned_end"></result>
+    </resultMap>
+
+    <!-- MyBatis-Plus 已提供通用 CRUD，这里按需补充自定义 SQL -->
+
+    <!-- 分页查询（Phase 4 修复）：planning_db 仅含本权属表，跨域聚合字段
+         （orderId/dueDate/productName）由 ProductionBatchServiceImpl 经
+         demand/master-data 批量契约在本方法返回后填充（无 N+1：每页各 1 次契约调用）。
+         单体版本 LEFT JOIN order_line/customer_order/product（跨库表在 planning_db
+         不存在，运行时报 1146）——属拆库后的必然重写，非行为变更。
+         单体 planned 区间过滤使用 date_format(单参)（非法 SQL）且 endPlannedEnd 误配
+         beginPlannedEnd（单体冻结缺陷）：此处按字面意图实现为列值区间比较。 -->
+    <select id="selectProductionBatchPage" resultMap="ProductionBatchMap">
+        select pb.batch_id, pb.order_line_id, pb.batch_qty, pb.status, pb.planned_start, pb.planned_end
+            from production_batch pb
+        <where>
+            <if test="orderLineIds != null">
+                and pb.order_line_id in
+                <foreach collection="orderLineIds" item="olid" open="(" separator="," close=")">
+                    #{olid}
+                </foreach>
+            </if>
+            <if test="batchSearchDTO.orderLineId != null">
+                and pb.order_line_id = #{batchSearchDTO.orderLineId}
+            </if>
+            <if test="batchSearchDTO.status != null">
+                and pb.status = #{batchSearchDTO.status}
+            </if>
+            <if test="batchSearchDTO.params.beginPlannedStart != null">
+                and pb.planned_start &gt; #{batchSearchDTO.params.beginPlannedStart}
+            </if>
+            <if test="batchSearchDTO.params.endPlannedStart != null">
+                and pb.planned_start &lt; #{batchSearchDTO.params.endPlannedStart}
+            </if>
+            <if test="batchSearchDTO.params.beginPlannedEnd != null">
+                and pb.planned_end &gt; #{batchSearchDTO.params.beginPlannedEnd}
+            </if>
+            <if test="batchSearchDTO.params.endPlannedEnd != null">
+                and pb.planned_end &lt; #{batchSearchDTO.params.endPlannedEnd}
+            </if>
+        </where>
+    </select>
+
+    <select id="selectBatchForUpdate" resultType="com.product.planning.domain.entity.ProductionBatch">
+        select batch_id, order_line_id, batch_qty, status
+        from production_batch
+        where batch_id = #{batchId}
+        for update
+    </select>
+</mapper>

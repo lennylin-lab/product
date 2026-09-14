@@ -63,6 +63,15 @@ public class GatewayConfiguration {
         return new InternalHeaderSanitizerFilter(properties);
     }
 
+    /**
+     * 内部契约端点显式拒绝（Phase 4 必修项）：路径含 internal 段一律 404 统一错误体 +
+     * X-Trace-Id，封堵冒烟前缀路由对服务 /internal/** 契约端点的穿透（见 InternalPathDenyFilter）。
+     */
+    @Bean
+    public com.product.gateway.web.InternalPathDenyFilter internalPathDenyFilter() {
+        return new com.product.gateway.web.InternalPathDenyFilter(tracer);
+    }
+
     @Bean
     public GatewayErrorWebExceptionHandler gatewayErrorWebExceptionHandler() {
         return new GatewayErrorWebExceptionHandler(tracer);

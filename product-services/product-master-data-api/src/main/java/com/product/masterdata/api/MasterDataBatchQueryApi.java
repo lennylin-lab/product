@@ -1,5 +1,9 @@
 package com.product.masterdata.api;
 
+import com.product.masterdata.api.dto.CalendarBatchQueryRequest;
+import com.product.masterdata.api.dto.CalendarBatchResponse;
+import com.product.masterdata.api.dto.ChangeoverRuleResponse;
+import com.product.masterdata.api.dto.DataVersionResponse;
 import com.product.masterdata.api.dto.ProductBatchQueryRequest;
 import com.product.masterdata.api.dto.ProductBatchResponse;
 import com.product.masterdata.api.dto.ProductExistenceResponse;
@@ -44,9 +48,31 @@ public interface MasterDataBatchQueryApi {
     ProductBatchResponse getProducts(@RequestBody ProductBatchQueryRequest request);
 
     /**
-     * 批量加载资源聚合（resource 行 + 机台/模具扩展 + 能力矩阵）。
-     * {@code resourceIds} 为 null/空时返回全部资源。
+     * 批量加载资源聚合（resource 行 + 机台/模具扩展 + 兼容矩阵 + 能力矩阵）。
+     * {@code resourceIds} 为 null/空时返回全部资源。机台条目含模具兼容性行
+     * （{@code moldCompatibilities}，Phase 4 增量）。
      */
     @PostMapping("/resources/batch")
     ResourceBatchResponse getResources(@RequestBody ResourceBatchQueryRequest request);
+
+    /**
+     * 批量加载班次日历（Phase 4，排程输入快照）。
+     * {@code calendarIds} 为 null/空时返回全部日历。
+     */
+    @PostMapping("/calendars/batch")
+    CalendarBatchResponse getCalendars(@RequestBody CalendarBatchQueryRequest request);
+
+    /**
+     * 当前默认换型规则（Phase 4，排程输入快照；单体 changeover_rule limit 1 语义）。
+     * 规则表为空时 {@code rule} 为 null。
+     */
+    @PostMapping("/changeover-rule/current")
+    ChangeoverRuleResponse getCurrentChangeoverRule();
+
+    /**
+     * 当前数据版本计数（Phase 4，轻量端点）：排程快照加载前后各调用一次，
+     * 不一致即判定输入漂移（漂移规则见 product-planning SnapshotVersionGuard）。
+     */
+    @PostMapping("/data-version")
+    DataVersionResponse getDataVersion();
 }

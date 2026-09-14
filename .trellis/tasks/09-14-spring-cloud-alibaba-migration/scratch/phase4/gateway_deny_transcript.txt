@@ -1,0 +1,26 @@
+=== gateway /internal/** deny live probe (2026-09-15 02:26:10) ===
+--- literal form (with valid token, X-Trace-Id echo) ---
+HTTP/1.1 404 Not Found
+X-Trace-Id: deny-transcript-1
+{"msg":"请求路径不存在","code":404}
+--- prefix form 1: /master-data/internal/** ---
+HTTP/1.1 404 Not Found
+X-Trace-Id: e161e8adf77d41a5b4aaee5dfdbcad46
+{"msg":"请求路径不存在","code":404}
+--- prefix form 2: /demand-svc/internal/** ---
+HTTP/1.1 404 Not Found
+X-Trace-Id: 3ebf34f7664f4f75963c13bf77086663
+{"msg":"请求路径不存在","code":404}
+--- prefix form 3: /planning/internal/** ---
+HTTP/1.1 404 Not Found
+X-Trace-Id: 9abffbeaa2234fafa381be5a34d4ea81
+{"msg":"请求路径不存在","code":404}
+--- prefix form 4: /execution/internal/** ---
+HTTP/1.1 404 Not Found
+X-Trace-Id: 7a2b1f831b724c139a0babee5e633bcf
+{"msg":"请求路径不存在","code":404}
+--- bypass variants: %69nternal and internal;x ---
+GET /planning/%69nternal/planning/batches/has-blocking-tasks [HTTP 404] {"msg":"请求路径不存在","code":404}
+GET /planning/internal;x/planning/batches/has-blocking-tasks [HTTP 404] {"msg":"请求路径不存在","code":404}
+--- business path control (should be 200) ---
+GET /pps/batch/list [HTTP 200] {"total":"2","rows":[{"createTime":null,"updateTime":null,"batchId":"7000001","o

@@ -1,0 +1,27 @@
+{
+  "assignmentStart": "2026-09-15 09:00:00",
+  "round1": {
+    "strategy": "EARLIEST_START",
+    "orderedTaskIds": [79000011, 79000021, 79000022, 79000023, 79000012, 79000013],
+    "assignments": [
+      {"taskId": 79000011, "machineId": 200, "moldId": null, "personId": 300, "workstationId": null, "plannedStart": "2026-09-16 08:00:00", "plannedEnd": "2026-09-17 14:00:00", "sequenceOnResource": 1, "changeoverTimeMin": null, "personSequence": 1, "moldSequence": null, "workstationSequence": null},
+      {"taskId": 79000021, "machineId": 201, "moldId": null, "personId": 300, "workstationId": null, "plannedStart": "2026-09-18 08:00:00", "plannedEnd": "2026-09-19 04:00:00", "sequenceOnResource": 1, "changeoverTimeMin": null, "personSequence": 2, "moldSequence": null, "workstationSequence": null},
+      {"taskId": 79000022, "machineId": 200, "moldId": 211, "personId": 300, "workstationId": null, "plannedStart": "2026-09-19 08:00:00", "plannedEnd": "2026-09-19 08:03:00", "sequenceOnResource": 2, "changeoverTimeMin": null, "personSequence": 3, "moldSequence": 1, "workstationSequence": null},
+      {"taskId": 79000023, "machineId": null, "moldId": null, "personId": 300, "workstationId": 400, "plannedStart": "2026-09-21 08:00:00", "plannedEnd": "2026-09-23 00:00:00", "sequenceOnResource": 1, "changeoverTimeMin": null, "personSequence": 4, "moldSequence": null, "workstationSequence": 1},
+      {"taskId": 79000012, "machineId": 201, "moldId": 211, "personId": 300, "workstationId": null, "plannedStart": "2026-09-23 08:00:00", "plannedEnd": "2026-09-23 08:09:00", "sequenceOnResource": 2, "changeoverTimeMin": null, "personSequence": 5, "moldSequence": 2, "workstationSequence": null},
+      {"taskId": 79000013, "machineId": null, "moldId": null, "personId": 300, "workstationId": 400, "plannedStart": "2026-09-25 08:00:00", "plannedEnd": "2026-09-27 20:00:00", "sequenceOnResource": 2, "changeoverTimeMin": null, "personSequence": 6, "moldSequence": null, "workstationSequence": 2}
+    ]
+  },
+  "round2": {
+    "strategy": "DUE_DATE_PRIORITY",
+    "orderedTaskIds": [79000041, 79000042, 79000043, 79000031, 79000032, 79000033],
+    "assignments": [
+      {"taskId": 79000041, "machineId": 200, "moldId": null, "personId": 300, "workstationId": null, "plannedStart": "2026-09-28 08:00:00", "plannedEnd": "2026-09-28 18:00:00", "sequenceOnResource": 3, "changeoverTimeMin": 40, "personSequence": 7, "moldSequence": null, "workstationSequence": null},
+      {"taskId": 79000042, "machineId": 200, "moldId": 211, "personId": 300, "workstationId": null, "plannedStart": "2026-09-28 18:00:00", "plannedEnd": "2026-09-28 18:02:00", "sequenceOnResource": 4, "changeoverTimeMin": null, "personSequence": 8, "moldSequence": 3, "workstationSequence": null},
+      {"taskId": 79000043, "machineId": null, "moldId": null, "personId": 300, "workstationId": 400, "plannedStart": "2026-09-30 08:00:00", "plannedEnd": "2026-10-01 04:00:00", "sequenceOnResource": 3, "changeoverTimeMin": null, "personSequence": 9, "moldSequence": null, "workstationSequence": 3},
+      {"taskId": 79000031, "machineId": 201, "moldId": null, "personId": 300, "workstationId": null, "plannedStart": "2026-10-02 08:00:00", "plannedEnd": "2026-10-04 00:00:00", "sequenceOnResource": 3, "changeoverTimeMin": 40, "personSequence": 10, "moldSequence": null, "workstationSequence": null},
+      {"taskId": 79000032, "machineId": 200, "moldId": 211, "personId": 300, "workstationId": null, "plannedStart": "2026-10-04 08:00:00", "plannedEnd": "2026-10-04 08:12:00", "sequenceOnResource": 5, "changeoverTimeMin": null, "personSequence": 11, "moldSequence": 4, "workstationSequence": null},
+      {"taskId": 79000033, "machineId": null, "moldId": null, "personId": 300, "workstationId": 400, "plannedStart": "2026-10-06 08:00:00", "plannedEnd": "2026-10-09 16:00:00", "sequenceOnResource": 4, "changeoverTimeMin": null, "personSequence": 12, "moldSequence": null, "workstationSequence": 4}
+    ]
+  }
+}

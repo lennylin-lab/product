@@ -11,8 +11,11 @@ import com.product.demand.domain.entity.CustomerOrder;
 import com.product.demand.domain.entity.OrderLine;
 import com.product.demand.domain.vo.ProductionBatchView;
 import com.product.demand.mapper.OrderLineMapper;
+import com.product.demand.service.DemandDataVersionService;
 import com.product.demand.service.IOrderLineService;
 import com.product.demand.service.MasterDataReferenceValidator;
+import com.product.demand.service.PlanningBatchClient;
+import com.product.planning.api.dto.PlanningContracts;
 import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -29,10 +32,14 @@ import java.util.List;
  *       {@link MasterDataReferenceValidator}（product-master-data-api 批量契约）校验，
  *       引用不存在或 master-data 不可用时拒绝写入（fail-closed）。单体同库时代由外键
  *       隐式保证的语义，在 database-per-service 下改为应用层显式校验；</li>
- *   <li>{@code selectOrderLineByOrderLineId} 的拆批批次列表恒为空列表
- *       （production_batch 归 planning 所有，Phase 4 经契约填充）；</li>
- *   <li>删除订单行不再级联删除 production_batch（跨服务表不可写；Phase 3 中
- *       planning_db 为空，行为与单体等价，Phase 4 接线 planning 契约）。</li>
+ *   <li>{@code selectOrderLineByOrderLineId} 的拆批批次列表（Phase 4 已接线）：经
+ *       {@link PlanningBatchClient} 从 planning 契约填充（production_batch 归 planning
+ *       所有）；planning 不可用时降级为空列表并告警（详情恒可读，显式差异）；</li>
+ *   <li>删除订单行级联（Phase 4 已接线）：与单体"删批次再删行"次序一致——先经
+ *       planning 契约删除该行批次（fail-closed：planning 不可用则拒绝删除本地行），
+ *       再删除本地行。单体在无 @Transactional 下为两条独立语句，服务化后无法跨服务
+ *       共享事务；失败窗口收敛为"批次已删、行仍在"（可重试），方向与单体一致；</li>
+ *   <li>所有订单行写路径同事务 bump demand_data_version（Phase 4 排程输入漂移检测）。</li>
  * </ul>
  */
 @Service
@@ -40,6 +47,12 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
 
     @Autowired
     private MasterDataReferenceValidator masterDataReferenceValidator;
+
+    @Autowired
+    private PlanningBatchClient planningBatchClient;
+
+    @Autowired
+    private DemandDataVersionService demandDataVersionService;
 
     /**
      * 查询订单明细
@@ -53,10 +66,10 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
         if (orderLine == null) {
             return null;
         }
-        // production_batch 归 planning 所有（ADR-0005）：Phase 3 响应形状保持（空列表，
-        // 与单体"订单行未拆批"场景一致）；Phase 4 经 product-planning 契约填充。
-        List<ProductionBatchView> productionBatchList = Collections.emptyList();
-        orderLine.setProductionBatchList(productionBatchList);
+        // production_batch 归 planning 所有（ADR-0005）：经 product-planning 契约填充
+        // （Phase 4 接线）；planning 不可用时降级为空列表（PlanningBatchClient，详情恒可读）。
+        orderLine.setProductionBatchList(toBatchViews(
+                planningBatchClient.listBatchesByOrderLines(orderLineId)));
         return orderLine;
     }
 
@@ -99,6 +112,9 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
             orderLine.setStatus(StatusConstants.NEW_ORDER_LINE);
         }
         boolean saved = save(orderLine);
+        if (saved) {
+            demandDataVersionService.bump();
+        }
         return saved;
     }
 
@@ -117,6 +133,9 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
         masterDataReferenceValidator.requireProductsExist(
                 orderLines.stream().map(OrderLine::getProductId).toList());
         boolean success = saveBatch(orderLines);
+        if (success) {
+            demandDataVersionService.bump();
+        }
         return success ? orderLines.size() : 0;
     }
 
@@ -132,6 +151,9 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
             masterDataReferenceValidator.requireProductsExist(Collections.singletonList(orderLine.getProductId()));
         }
         boolean updated = updateById(orderLine);
+        if (updated) {
+            demandDataVersionService.bump();
+        }
         return updated;
     }
 
@@ -146,9 +168,17 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
         if (orderLineIds == null || orderLineIds.length == 0) {
             return false;
         }
-        // 单体此处级联删除 production_batch；该表归 planning 所有（ADR-0005），
-        // Phase 3 不做跨服务清理（planning_db 为空 ⇒ 行为等价），Phase 4 经契约接线。
-        return removeByIds(Arrays.asList(orderLineIds));
+        List<Long> ids = Arrays.stream(orderLineIds)
+                .map(Long::valueOf)
+                .toList();
+        // Phase 4 接线：与单体"先删批次、后删行"次序一致；批次删除经 planning 契约
+        // （fail-closed：planning 不可用则本地行不删，见 PlanningBatchClient javadoc）。
+        planningBatchClient.deleteBatchesByOrderLines(ids);
+        boolean removed = removeByIds(Arrays.asList(orderLineIds));
+        if (removed) {
+            demandDataVersionService.bump();
+        }
+        return removed;
     }
 
     /**
@@ -159,8 +189,13 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
      */
     @Override
     public boolean deleteOrderLineByOrderLineId(Long orderLineId) {
-        // 同 deleteOrderLineByOrderLineIds：批次级联清理由 Phase 4 planning 契约承接。
-        return removeById(orderLineId);
+        // 同 deleteOrderLineByOrderLineIds：先经 planning 契约删除该行批次（fail-closed）。
+        planningBatchClient.deleteBatchesByOrderLines(List.of(orderLineId));
+        boolean removed = removeById(orderLineId);
+        if (removed) {
+            demandDataVersionService.bump();
+        }
+        return removed;
     }
 
     @Override
@@ -183,9 +218,13 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
         if (status.equals(StatusConstants.DONE_ORDER_LINE)) {
             throw new ServiceException(("该订单行已完成"));
         }
-        return lambdaUpdate().set(OrderLine::getStatus, StatusConstants.RELEASED_ORDER_LINE)
+        boolean released = lambdaUpdate().set(OrderLine::getStatus, StatusConstants.RELEASED_ORDER_LINE)
                 .eq(OrderLine::getOrderLineId, orderLineId)
                 .update();
+        if (released) {
+            demandDataVersionService.bump();
+        }
+        return released;
     }
 
     @Override
@@ -200,9 +239,34 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
         if (status.equals(StatusConstants.DONE_ORDER_LINE)) {
             throw new ServiceException(("该订单行已完成"));
         }
-        return lambdaUpdate().set(OrderLine::getStatus, StatusConstants.NEW_ORDER_LINE)
+        boolean cancelled = lambdaUpdate().set(OrderLine::getStatus, StatusConstants.NEW_ORDER_LINE)
                 .eq(OrderLine::getOrderLineId, orderLineId)
                 .update();
+        if (cancelled) {
+            demandDataVersionService.bump();
+        }
+        return cancelled;
+    }
+
+    /**
+     * planning 契约批次视图 → demand 侧 ProductionBatchView（字段一一对应）。
+     */
+    private List<ProductionBatchView> toBatchViews(List<PlanningContracts.ProductionBatchViewDTO> batches) {
+        if (CollectionUtils.isEmpty(batches)) {
+            return Collections.emptyList();
+        }
+        return batches.stream().map(batch -> {
+            ProductionBatchView view = new ProductionBatchView();
+            view.setBatchId(batch.getBatchId());
+            view.setOrderLineId(batch.getOrderLineId());
+            view.setBatchQty(batch.getBatchQty());
+            view.setStatus(batch.getStatus());
+            view.setPlannedStart(batch.getPlannedStart());
+            view.setPlannedEnd(batch.getPlannedEnd());
+            view.setCreateTime(batch.getCreateTime());
+            view.setUpdateTime(batch.getUpdateTime());
+            return view;
+        }).toList();
     }
 
     /**

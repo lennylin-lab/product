@@ -167,7 +167,20 @@ Every monolith domain migrated into `product-services/<service>` must include:
 5. **Redis namespace**: key prefix `<service>:` (identity: `identity:captcha_codes:` etc.),
    shared Redis instance (ADR-0005 §4).
 
+## Cross-domain reads: local query + contract enrichment (never JOINs)
+
+Every service's MyBatis XML must reference ONLY tables in its own schema. When a monolith query
+joined another domain's tables for display fields (e.g. planning's `/pps/batch/list` joining
+`order_line`/`customer_order`/`product`), port it as: local paged query on the service's own
+tables + batch-contract enrichment for the foreign fields (one demand-api + one master-data-api
+call per page — never per-row). On contract failure, degrade the FOREIGN fields only
+(null + warn log), never fail the whole local page. Record any intentional field-set deviation
+from the monolith in the task's execution record. (Phase 4 lesson: a copied join compiled fine
+and passed unit tests with mocked mappers, but 1146'd at runtime — and was once falsely
+recorded as "200 OK"; live-probe transcripts go in scratch/<phase>/.)
+
 Warning learned twice now: record numbers in the task's implement.md execution record
 (test counts, wiring claims, diff bookkeeping) MUST come from a clean `mvn clean test` run
 and committed scripts — stale target/ reports and edit scripts that print success without
-verifying have produced false records in Phases 1–2.
+verifying have produced false records in Phases 1–2; a live-record with no matching log entry
+surfaced in Phase 4. If a claim isn't in a saved probe/log transcript, don't write it.

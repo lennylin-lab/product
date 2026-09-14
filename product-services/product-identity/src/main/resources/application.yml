@@ -76,6 +76,10 @@ product:
     jwks-uri: ${PRODUCT_SECURITY_JWKS_URI:http://127.0.0.1:8101/jwks}
     # 基线匿名端点（/login、/register、/captchaImage、/jwks、swagger、健康检查）已在
     # product-cloud-security 内建，无需额外配置；/register 冻结为不存在（无 handler）。
+    # Phase 4：内部服务身份令牌端点 permitAll（凭据即认证）；对外暴露面由网关
+    # InternalPathDenyFilter 对 /internal/** 显式 404 封堵，仅内网直连可达。
+    permit-urls:
+      - /internal/identity/service-token
 
 # ---- 可观测性基线（健康检查 liveness/readiness、Prometheus 指标） ----
 management:

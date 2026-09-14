@@ -67,6 +67,18 @@
             <groupId>com.product</groupId>
             <artifactId>product-master-data-api</artifactId>
         </dependency>
+        <!-- 本服务对外契约（Phase 4：InternalDemandController 实现 DemandBatchQueryApi，
+             排程版本化输入快照与拆批数量预占的提供端） -->
+        <dependency>
+            <groupId>com.product</groupId>
+            <artifactId>product-demand-api</artifactId>
+        </dependency>
+        <!-- 计划服务契约（Phase 4，ADR-0005）：订单行详情 ProductionBatchView 填充、
+             删除订单行时级联清理 planning 批次（单体同事务级联的跨服务等价实现） -->
+        <dependency>
+            <groupId>com.product</groupId>
+            <artifactId>product-planning-api</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-openfeign</artifactId>

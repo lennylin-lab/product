@@ -16,6 +16,43 @@ spring:
         group: PRODUCT_GROUP
       config:
         namespace: ${NACOS_NAMESPACE:dev}
+    # Feign 契约超时（design.md §4：明确超时、禁止无界重试；key 为 @FeignClient contextId）。
+    # 重试维持 OpenFeign 默认 Retryer.NEVER_RETRY；排程快照为只读批量查询（单次调用），
+    # 超时/不可达按失败处理：排程任务标记 FAILED（输入快照不完整绝不落部分结果）。
+    openfeign:
+      client:
+        config:
+          demandBatchQueryClient:
+            connect-timeout: 2000
+            read-timeout: 5000
+          masterDataBatchQueryClient:
+            connect-timeout: 2000
+            read-timeout: 5000
+  # 数据源：planning_db（ADR-0005 database per service；独立最小权限账号 planning_svc，
+  # 仅 planning_db 的 DML 权限，见 db/init/planning_schema.sql）
+  datasource:
+    url: jdbc:mysql://${PLANNING_DB_HOST:127.0.0.1}:${PLANNING_DB_PORT:33066}/planning_db?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Taipei&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${PLANNING_DB_USERNAME:planning_svc}
+    password: ${PLANNING_DB_PASSWORD:planning-dev-pwd}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  # 缓存：与单体同一 Redis 实例，key 前缀 planning:（ADR-0005 §4 命名空间隔离）；
+  # 仅用于排程并发互斥锁（submit/execute/timeout-sweep），缓存不作为跨服务事实源
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:127.0.0.1}
+      port: ${SPRING_DATA_REDIS_PORT:6380}
+      password: ${SPRING_DATA_REDIS_PASSWORD:123456}
+      database: ${SPRING_DATA_REDIS_DATABASE:0}
+      timeout: ${SPRING_DATA_REDIS_TIMEOUT:10000ms}
+
+# MyBatis-Plus（与单体 mybatis 配置项一致；分页 maxLimit=100/overflow=true 见 MybatisPlusConfig）
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.product.planning.domain.entity
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
 
 # ---- 可观测性基线（健康检查 liveness/readiness、Prometheus 指标） ----
 management:
@@ -27,13 +64,43 @@ management:
     health:
       probes:
         enabled: true
-  # 追踪基线：W3C 传播由 micrometer-tracing-otel 桥接默认启用；开发期全量采样，
-  # 生产采样率与 OTLP 导出（collector）在统一切换前（Phase 6）接入。
   tracing:
     sampling:
       probability: 1.0
 
+# ---- OpenAPI 基线 ----
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+
+# ---- 排程基线（单体 product.pps.schedule.* 配置项原样迁移，语义冻结） ----
 product:
-  skeleton:
-    config-marker: local-default
-    shared-marker: local-default
+  security:
+    enabled: true
+    header: Authorization
+    jwks-uri: ${PRODUCT_SECURITY_JWKS_URI:http://127.0.0.1:8101/jwks}
+  pps:
+    schedule:
+      # 排程分批大小（贪心计算分批 + 批量落库批大小）
+      batch-size: ${PRODUCT_PPS_SCHEDULE_BATCH_SIZE:200}
+      # 进度推送阈值（任务数）
+      progress-push-task-step: ${PRODUCT_PPS_SCHEDULE_PROGRESS_STEP:50}
+      # 排程任务超时兜底（分钟）与扫描间隔（毫秒）
+      timeout-minutes: ${PRODUCT_PPS_SCHEDULE_TIMEOUT_MINUTES:60}
+      timeout-scan-delay-ms: ${PRODUCT_PPS_SCHEDULE_TIMEOUT_SCAN_DELAY_MS:300000}
+  # 服务身份令牌（ADR-0003 服务身份最小实现）：异步排程线程无用户请求上下文时，
+  # Feign 调用 demand/master-data 内部契约改携带 Identity 签发的服务身份 token。
+  # 凭据经环境注入（identity_db 种子账号 planning_svc）；缓存至 token 过期前 60s 自动重签。
+  service-identity:
+    enabled: ${PLANNING_SERVICE_IDENTITY_ENABLED:true}
+    token-url: ${PLANNING_SERVICE_IDENTITY_TOKEN_URL:http://127.0.0.1:8101/internal/identity/service-token}
+    username: ${PLANNING_SERVICE_IDENTITY_USERNAME:planning_svc}
+    password: ${PLANNING_SERVICE_IDENTITY_PASSWORD:planning-svc-dev-pwd}
+
+logging:
+  level:
+    com.product: info

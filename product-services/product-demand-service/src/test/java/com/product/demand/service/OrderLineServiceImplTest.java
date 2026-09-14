@@ -37,6 +37,12 @@ class OrderLineServiceImplTest {
     @Mock
     private MasterDataReferenceValidator masterDataReferenceValidator;
 
+    @Mock
+    private com.product.demand.service.PlanningBatchClient planningBatchClient;
+
+    @Mock
+    private com.product.demand.service.DemandDataVersionService demandDataVersionService;
+
     @Test
     void insertOrderLineShouldRequireOrderId() {
         OrderLineServiceImpl service = newService();
@@ -126,6 +132,9 @@ class OrderLineServiceImplTest {
         };
         ReflectionTestUtils.setField(service, "baseMapper", orderLineMapper);
         ReflectionTestUtils.setField(service, "masterDataReferenceValidator", masterDataReferenceValidator);
+        // Phase 4 新增依赖：删行级联批次契约与需求域版本计数（写路径成功后 bump）
+        ReflectionTestUtils.setField(service, "planningBatchClient", planningBatchClient);
+        ReflectionTestUtils.setField(service, "demandDataVersionService", demandDataVersionService);
         return service;
     }
 }

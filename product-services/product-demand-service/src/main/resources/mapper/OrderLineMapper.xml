@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.product.demand.mapper.OrderLineMapper">
+
+    <!-- 数量预占用（Phase 4：单体 product-pps OrderLineAllocationMapper.xml SQL 逐字迁移；
+         该 SQL 操作 order_line 表，属 demand 权属。排程拆批经 demand 内部契约调用） -->
+    <update id="allocateQty">
+        update order_line
+        set allocated_qty = allocated_qty + #{batchQty}
+        where order_line_id = #{orderLineId}
+          and allocated_qty + #{batchQty} &lt;= qty
+    </update>
+
+    <!-- 释放预占用（batchQty 为负数；单体 SQL 逐字迁移） -->
+    <update id="releaseQty">
+        update order_line
+        set allocated_qty = allocated_qty + #{batchQty}
+        where order_line_id = #{orderLineId}
+    </update>
+
+</mapper>

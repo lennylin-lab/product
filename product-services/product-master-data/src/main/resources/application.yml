@@ -9,6 +9,18 @@ spring:
       - optional:nacos:product-common.yml?group=PRODUCT_COMMON
       - optional:nacos:product-master-data.yml?group=PRODUCT_MASTER_DATA
   cloud:
+    # Feign 契约超时（Phase 4：启用工艺路线删除保护的跨域确认链，demand+planning）。
+    # 重试维持 OpenFeign 默认 Retryer.NEVER_RETRY；不可达时 RouteDeleteGuard fail-closed
+    # （拒绝删除启用中路线，见 RouteDeleteGuard javadoc）。
+    openfeign:
+      client:
+        config:
+          demandBatchQueryClient:
+            connect-timeout: 2000
+            read-timeout: 3000
+          planningBatchClient:
+            connect-timeout: 2000
+            read-timeout: 3000
     nacos:
       server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
       discovery:

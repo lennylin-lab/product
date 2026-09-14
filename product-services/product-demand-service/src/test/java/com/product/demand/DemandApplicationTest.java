@@ -35,6 +35,8 @@ class DemandApplicationTest {
     @MockitoBean com.product.demand.mapper.CustomerMapper customerMapper;
     @MockitoBean com.product.demand.mapper.CustomerOrderMapper customerOrderMapper;
     @MockitoBean com.product.demand.mapper.OrderLineMapper orderLineMapper;
+    /** Phase 4：需求域版本计数 Mapper（数据访问离线替换）。 */
+    @MockitoBean com.product.demand.mapper.DemandDataVersionMapper demandDataVersionMapper;
 
     @Test
     void skeletonInfoShouldExposeServiceIdentity() throws Exception {

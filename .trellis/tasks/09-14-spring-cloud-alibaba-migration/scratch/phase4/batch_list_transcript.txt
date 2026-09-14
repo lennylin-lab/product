@@ -1,0 +1,9 @@
+=== /pps/batch/list (fixed) through gateway ===
+{"total":"2","rows":[{"createTime":null,"updateTime":null,"batchId":"7000001","orderLineId":"1001","batchQty":"30","status":"RELEASED","plannedStart":null,"plannedEnd":null,"orderId":"9001","dueDate":"2026-09-30 00:00:00","productName":"产品PP"},{"createTime":null,"updateTime":null,"batchId":"7000002","orderLineId":"1003","batchQty":"20","status":"RELEASED","plannedStart":null,"plannedEnd":null,"orderId":"9002","dueDate":"2026-09-20 00:00:00","productName":"产品ABS"}],"code":200,"msg":"查询成功"}
+[HTTP 200]
+=== /pps/batch/list?orderId=9001 filter ===
+{"total":"1","rows":[{"createTime":null,"updateTime":null,"batchId":"7000001","orderLineId":"1001","batchQty":"30","status":"RELEASED","plannedStart":null,"plannedEnd":null,"orderId":"9001","dueDate":"2026-09-30 00:00:00","productName":"产品PP"}],"code":200,"msg":"查询成功"}
+[HTTP 200]
+=== /pps/batch/list?orderId=9999 (no match) ===
+{"total":"0","rows":[],"code":200,"msg":"查询成功"}
+[HTTP 200]

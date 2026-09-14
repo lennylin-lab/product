@@ -53,6 +53,69 @@
             <groupId>com.product</groupId>
             <artifactId>product-cloud-security</artifactId>
         </dependency>
+
+        <!-- 跨域批量契约（Phase 4，ADR-0002 决策 5 / ADR-0005 §2）：排程版本化输入快照经
+             DemandBatchQueryApi（订单/订单行/数量预占用）与 MasterDataBatchQueryApi
+             （产品/工艺路线/资源/日历/换型规则）批量加载，禁止跨服务读写他方表 -->
+        <dependency>
+            <groupId>com.product</groupId>
+            <artifactId>product-demand-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.product</groupId>
+            <artifactId>product-master-data-api</artifactId>
+        </dependency>
+        <!-- 本服务对外契约（InternalPlanningController 实现 PlanningBatchApi） -->
+        <dependency>
+            <groupId>com.product</groupId>
+            <artifactId>product-planning-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+        <!-- 负载均衡：nacos-discovery 传递引入，显式声明以表达 Feign 服务名解析依赖 -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+        </dependency>
+
+        <!-- 数据访问：MyBatis-Plus（版本由根 POM 管理，与单体一致）；planning_db 独立数据源（ADR-0005） -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-jsqlparser</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+        </dependency>
+
+        <!-- 缓存/分布式锁：排程并发互斥（submit/execute/timeout-sweep 三把锁，
+             key 前缀 planning:，ADR-0005 §4 命名空间隔离；锁实现 PlanningRedisLock） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- Excel 导入导出（批次/任务/派工 /export /importTemplate /importData；版本由根 POM 管理） -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+        </dependency>
+        <!-- 集合/字符串工具（org.apache.commons:commons-collections4/commons-lang3）由
+             MyBatis-Plus/POI 传递引入（与 demand 同款解析，单体使用 4.4/3.17.0） -->
+
+        <!-- Lombok（实体 @Data/@EqualsAndHashCode，与单体 domain 实体同款） -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

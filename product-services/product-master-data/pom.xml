@@ -58,6 +58,25 @@
             <groupId>com.product</groupId>
             <artifactId>product-master-data-api</artifactId>
         </dependency>
+        <!-- Phase 4：启用工艺路线删除保护需要跨域确认——demand 契约（按产品取订单行）
+             + planning 契约（订单行下是否存在阻塞工序任务）。只读查询经 OpenFeign，
+             禁止跨服务读写他方表（ADR-0005 §2） -->
+        <dependency>
+            <groupId>com.product</groupId>
+            <artifactId>product-demand-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.product</groupId>
+            <artifactId>product-planning-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+        </dependency>
 
         <!-- 数据访问：MyBatis-Plus（版本由根 POM 管理，与单体一致）；master_data_db 独立数据源（ADR-0005） -->
         <dependency>
