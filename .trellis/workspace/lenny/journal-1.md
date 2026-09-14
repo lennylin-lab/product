@@ -113,8 +113,8 @@
 | `4ea022d` | feat(master-data,demand): phase 3 master data and order domain services |
 | `1ea8ca5` | feat(planning): phase 4 planning domain and scheduling parity |
 | `c4cea14` | feat(execution,messaging): phase 5 event consistency backbone |
-| `bc0fa88` | feat(cutover): phase 6 unified cutover and acceptance |
-| `a054770` | chore(security): remove drill JWT private keys from repo, ignore jwt-keys/ |
+| `3544a1b` | feat(cutover): phase 6 unified cutover and acceptance |
+| `0ecd860` | chore(security): remove drill JWT private keys from repo, ignore jwt-keys/ |
 
 ### Status
 
