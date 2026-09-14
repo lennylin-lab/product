@@ -1,0 +1,21 @@
+{
+ "health": {
+  "execution_db": {
+   "outbox_pending": "0",
+   "outbox_halted": "0",
+   "dlq_unreplayed": "0"
+  },
+  "planning_db": {
+   "outbox_pending": "0",
+   "outbox_halted": "0",
+   "dlq_unreplayed": "0"
+  },
+  "demand_db": {
+   "outbox_pending": "0",
+   "outbox_halted": "0",
+   "dlq_unreplayed": "0"
+  }
+ },
+ "checks": [],
+ "drifts": []
+}

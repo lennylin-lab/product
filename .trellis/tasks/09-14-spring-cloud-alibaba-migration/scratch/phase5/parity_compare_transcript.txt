@@ -1,0 +1,12 @@
+PASS  start 9731
+PASS  pause 9731
+PASS  resume 9731
+PASS  start 9732
+PASS  complete 9732
+PASS  complete 9731
+PASS  start 999999
+PASS  pause 9731
+PASS  resume 9731
+PASS  complete 9731
+
+PARITY OK (10 steps)

@@ -1,0 +1,19 @@
+
+=== 场景C: 消费者失败 -> 有界重试(3) -> DLX -> 死信审计 -> 人工重放（Tue Sep 15 04:47:56 AM CST 2026） ===
+1) 发布毒消息（task.status.changed 缺 targetStatus）:
+{'routed': True}
+2) planning 日志重试痕迹（Retries exhausted 前应有 3 次尝试）:
+2
+3) 死信审计行:
+id	consumer_group	source_queue	event_id	reason	replayed
+2	product-planning	product-planning.execution	bbbb2222-0000-0000-0000-000000000001	x-death reason=rejected at=Tue Sep 15 04:47:58 CST 2026	0
+4) DLQ 队列深度（审计落库后应为 0）:
+messages= 0
+5) 人工重放死信（auditId 取未重放行）:
+{"msg":"死信已重放","code":200,"data":"3787030f-191c-43be-8469-961357d68876"}
+6) 重放后（毒消息按设计再次死信，形成新审计行；原行标记 replayed）:
+id	event_id	replayed	replay_event_id
+2	bbbb2222-0000-0000-0000-000000000001	1	3787030f-191c-43be-8469-961357d68876
+7) ops_audit 留痕:
+id	action	operator	result
+1	REPLAY_DLQ	admin	OK

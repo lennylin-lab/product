@@ -20,10 +20,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.cloud.nacos.discovery.enabled=false",
         "spring.cloud.nacos.config.enabled=false",
         "spring.cloud.service-registry.auto-registration.enabled=false",
-        // 离线：无 MySQL/Redis/JWKS。排除 DataSource/MyBatis-Plus/Redis 自动装配（否则
-        // /actuator/health 的 DB/Redis health indicator 连不上即 DOWN → 503），关闭本地
-        // 验签安全链与 Boot 默认安全链。
-        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration,org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration,org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration,org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration",
+        // Phase 5：离线单测关闭事件基础设施（无 Rabbit/JDBC；服务 yml 默认 enabled=true）。
+        // 同时排除 Rabbit 自动装配——amqp starter 会注册 RabbitHealthIndicator，
+        // 离线无 Rabbit 时 /actuator/health 会 DOWN → 503。
+        "product.messaging.enabled=false",
+        // 离线：无 MySQL/Redis/JWKS。排除 DataSource/MyBatis-Plus/Redis/Rabbit 自动装配，
+        // 关闭本地验签安全链与 Boot 默认安全链。
+        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration,org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration,org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration,org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration,org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration",
         "product.security.enabled=false"
 })
 @AutoConfigureMockMvc

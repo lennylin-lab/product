@@ -1,0 +1,22 @@
+=== 场景B(重跑): 重复投递幂等 / 过期事件丢弃 / 乱序(延迟到达)丢弃（Tue Sep 15 04:47:17 AM CST 2026） ===
+1) 重复投递: 重发 outbox 行 11（同 eventId）
+{"routed": true}
+republished eventId=30a8dd7e-61f2-4eaf-b7f0-62443ce7078c
+   task9731: DONE (不变); consumed_event: 10 -> 10 (不增=幂等跳过)
+   planning 日志'重复事件跳过(幂等)'出现次数: 1
+
+2) 过期事件(延迟到达, occurredAt=00:00:00 早于最后应用 04:40): aggregate=9731, target=PAUSED
+{"routed": true}
+   task9731 状态: DONE (应保持 DONE)
+   planning 日志'过期事件丢弃'出现次数: 1
+event_id	outcome
+aaaa1111-0000-0000-0000-000000000001	STALE
+
+3) 乱序对: 全新聚合 9733 —— 先 FINISH(occurredAt=10:00) 后 START(occurredAt=09:00 迟到)
+{"routed": true}
+   FINISH 后 task9733: DONE (应 DONE)
+{"routed": true}
+   迟到 START 后 task9733: DONE (应保持 DONE，守卫丢弃)
+event_id	outcome
+aaaa1111-0000-0000-0000-000000000002	APPLIED
+aaaa1111-0000-0000-0000-000000000003	STALE

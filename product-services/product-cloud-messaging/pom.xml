@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.product</groupId>
+        <artifactId>product-services</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>product-cloud-messaging</artifactId>
+
+    <name>product-cloud-messaging</name>
+    <description>product-cloud-messaging: 跨服务事件一致性基础设施（ADR-0004）：版本化 envelope、事务内 Outbox +
+        publisher confirm 中继、eventId 幂等去重、有界重试 + DLX 死信审计、对账审计（ops_audit）。
+        库内数据访问走 JdbcTemplate（服务自有库中的同名权属表 event_outbox/consumed_event/
+        dead_letter_audit/ops_audit，ADR-0005），不依赖 MyBatis，不影响服务自身的 Mapper 扫描。</description>
+
+    <dependencies>
+        <!-- AMQP：RabbitTemplate（publisher confirm 经 spring.rabbitmq.publisher-confirm-type=correlated
+             由使用方 application.yml 打开）+ 监听容器工厂（有界重试 + DLX） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+        <!-- JDBC：outbox/去重/死信/审计表访问走 JdbcTemplate（与服务的 MyBatis 共享同一
+             DataSourceTransactionManager，保证"业务写 + 去重/发件箱写同事务"） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <!-- Jackson：envelope 序列化（converter 内私有 ObjectMapper，不注册为公共 Bean，
+             避免覆盖 identity 等服务的全局 Jackson 定制） -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

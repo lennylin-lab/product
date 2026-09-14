@@ -1,0 +1,356 @@
+[
+ {
+  "task1": "RUNNING",
+  "task2": "SCHEDULED",
+  "batch": "IN_PROCESS",
+  "line": "IN_PRODUCTION",
+  "order": "IN_PRODUCTION",
+  "events": [
+   [
+    "START",
+    "9741"
+   ]
+  ],
+  "cmd": "start 9731",
+  "http_status": 200,
+  "resp": {
+   "msg": "操作成功",
+   "code": 200
+  }
+ },
+ {
+  "task1": "PAUSED",
+  "task2": "SCHEDULED",
+  "batch": "IN_PROCESS",
+  "line": "IN_PRODUCTION",
+  "order": "IN_PRODUCTION",
+  "events": [
+   [
+    "START",
+    "9741"
+   ],
+   [
+    "PAUSE",
+    "9741"
+   ]
+  ],
+  "cmd": "pause 9731",
+  "http_status": 200,
+  "resp": {
+   "msg": "操作成功",
+   "code": 200
+  }
+ },
+ {
+  "task1": "RUNNING",
+  "task2": "SCHEDULED",
+  "batch": "IN_PROCESS",
+  "line": "IN_PRODUCTION",
+  "order": "IN_PRODUCTION",
+  "events": [
+   [
+    "START",
+    "9741"
+   ],
+   [
+    "PAUSE",
+    "9741"
+   ],
+   [
+    "RESUME",
+    "9741"
+   ]
+  ],
+  "cmd": "resume 9731",
+  "http_status": 200,
+  "resp": {
+   "msg": "操作成功",
+   "code": 200
+  }
+ },
+ {
+  "task1": "RUNNING",
+  "task2": "RUNNING",
+  "batch": "IN_PROCESS",
+  "line": "IN_PRODUCTION",
+  "order": "IN_PRODUCTION",
+  "events": [
+   [
+    "START",
+    "9741"
+   ],
+   [
+    "PAUSE",
+    "9741"
+   ],
+   [
+    "RESUME",
+    "9741"
+   ],
+   [
+    "START",
+    "9741"
+   ]
+  ],
+  "cmd": "start 9732",
+  "http_status": 200,
+  "resp": {
+   "msg": "操作成功",
+   "code": 200
+  }
+ },
+ {
+  "task1": "RUNNING",
+  "task2": "DONE",
+  "batch": "IN_PROCESS",
+  "line": "IN_PRODUCTION",
+  "order": "IN_PRODUCTION",
+  "events": [
+   [
+    "START",
+    "9741"
+   ],
+   [
+    "PAUSE",
+    "9741"
+   ],
+   [
+    "RESUME",
+    "9741"
+   ],
+   [
+    "START",
+    "9741"
+   ],
+   [
+    "FINISH",
+    "9741"
+   ]
+  ],
+  "cmd": "complete 9732",
+  "http_status": 200,
+  "resp": {
+   "msg": "操作成功",
+   "code": 200
+  }
+ },
+ {
+  "task1": "DONE",
+  "task2": "DONE",
+  "batch": "DONE",
+  "line": "DONE",
+  "order": "DONE",
+  "events": [
+   [
+    "START",
+    "9741"
+   ],
+   [
+    "PAUSE",
+    "9741"
+   ],
+   [
+    "RESUME",
+    "9741"
+   ],
+   [
+    "START",
+    "9741"
+   ],
+   [
+    "FINISH",
+    "9741"
+   ],
+   [
+    "FINISH",
+    "9741"
+   ]
+  ],
+  "cmd": "complete 9731",
+  "http_status": 200,
+  "resp": {
+   "msg": "操作成功",
+   "code": 200
+  }
+ },
+ {
+  "task1": "DONE",
+  "task2": "DONE",
+  "batch": "DONE",
+  "line": "DONE",
+  "order": "DONE",
+  "events": [
+   [
+    "START",
+    "9741"
+   ],
+   [
+    "PAUSE",
+    "9741"
+   ],
+   [
+    "RESUME",
+    "9741"
+   ],
+   [
+    "START",
+    "9741"
+   ],
+   [
+    "FINISH",
+    "9741"
+   ],
+   [
+    "FINISH",
+    "9741"
+   ]
+  ],
+  "cmd": "start 999999",
+  "http_status": 200,
+  "resp": {
+   "msg": "操作失败",
+   "code": 500
+  }
+ },
+ {
+  "task1": "PAUSED",
+  "task2": "DONE",
+  "batch": "IN_PROCESS",
+  "line": "IN_PRODUCTION",
+  "order": "IN_PRODUCTION",
+  "events": [
+   [
+    "START",
+    "9741"
+   ],
+   [
+    "PAUSE",
+    "9741"
+   ],
+   [
+    "RESUME",
+    "9741"
+   ],
+   [
+    "START",
+    "9741"
+   ],
+   [
+    "FINISH",
+    "9741"
+   ],
+   [
+    "FINISH",
+    "9741"
+   ],
+   [
+    "PAUSE",
+    "9741"
+   ]
+  ],
+  "cmd": "pause 9731",
+  "http_status": 200,
+  "resp": {
+   "msg": "操作成功",
+   "code": 200
+  }
+ },
+ {
+  "task1": "RUNNING",
+  "task2": "DONE",
+  "batch": "IN_PROCESS",
+  "line": "IN_PRODUCTION",
+  "order": "IN_PRODUCTION",
+  "events": [
+   [
+    "START",
+    "9741"
+   ],
+   [
+    "PAUSE",
+    "9741"
+   ],
+   [
+    "RESUME",
+    "9741"
+   ],
+   [
+    "START",
+    "9741"
+   ],
+   [
+    "FINISH",
+    "9741"
+   ],
+   [
+    "FINISH",
+    "9741"
+   ],
+   [
+    "PAUSE",
+    "9741"
+   ],
+   [
+    "RESUME",
+    "9741"
+   ]
+  ],
+  "cmd": "resume 9731",
+  "http_status": 200,
+  "resp": {
+   "msg": "操作成功",
+   "code": 200
+  }
+ },
+ {
+  "task1": "DONE",
+  "task2": "DONE",
+  "batch": "DONE",
+  "line": "DONE",
+  "order": "DONE",
+  "events": [
+   [
+    "START",
+    "9741"
+   ],
+   [
+    "PAUSE",
+    "9741"
+   ],
+   [
+    "RESUME",
+    "9741"
+   ],
+   [
+    "START",
+    "9741"
+   ],
+   [
+    "FINISH",
+    "9741"
+   ],
+   [
+    "FINISH",
+    "9741"
+   ],
+   [
+    "PAUSE",
+    "9741"
+   ],
+   [
+    "RESUME",
+    "9741"
+   ],
+   [
+    "FINISH",
+    "9741"
+   ]
+  ],
+  "cmd": "complete 9731",
+  "http_status": 200,
+  "resp": {
+   "msg": "操作成功",
+   "code": 200
+  }
+ }
+]

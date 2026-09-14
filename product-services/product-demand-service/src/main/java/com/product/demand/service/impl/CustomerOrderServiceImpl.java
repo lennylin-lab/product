@@ -36,6 +36,10 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
     @Autowired
     private com.product.demand.service.DemandDataVersionService demandDataVersionService;
 
+    /** Phase 5：批次状态投影清理（订单删除时随行清理事件链聚合输入）。 */
+    @Autowired
+    private com.product.demand.service.PlanningBatchStateService planningBatchStateService;
+
     /** 允许人工流转的订单状态集合：新建和已确认之间可以互相切换 */
     private static final Set<String> ALLOWED_MANUAL_ORDER_STATUSES = Set.of(
             StatusConstants.NEW_CUSTOMER_ORDER,
@@ -164,6 +168,17 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
         }
         // 与单体一致：删除订单行（不触碰 planning 批次——单体删单也不清批次，冻结行为）。
         // 订单行/订单均为排程输入，删除后 bump 版本计数。
+        List<Long> orderIdList = Arrays.stream(orderIds).map(Long::valueOf).toList();
+        // Phase 5：删除前收集订单行ID，随行清理批次状态投影（事件链聚合输入）
+        List<Long> lineIds = com.baomidou.mybatisplus.extension.toolkit.Db.lambdaQuery(OrderLine.class)
+                .select(OrderLine::getOrderLineId)
+                .in(OrderLine::getOrderId, orderIdList)
+                .list()
+                .stream()
+                .map(OrderLine::getOrderLineId)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        planningBatchStateService.deleteByOrderLineIds(lineIds);
         baseMapper.deleteOrderLineByOrderIds(orderIds);
         boolean removed = removeByIds(Arrays.asList(orderIds));
         if (removed) {
@@ -180,6 +195,16 @@ public class CustomerOrderServiceImpl extends ServiceImpl<CustomerOrderMapper, C
      */
     @Override
     public boolean deleteCustomerOrderByOrderId(Long orderId) {
+        // Phase 5：删除前收集订单行ID，随行清理批次状态投影
+        List<Long> lineIds = com.baomidou.mybatisplus.extension.toolkit.Db.lambdaQuery(OrderLine.class)
+                .select(OrderLine::getOrderLineId)
+                .eq(OrderLine::getOrderId, orderId)
+                .list()
+                .stream()
+                .map(OrderLine::getOrderLineId)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        planningBatchStateService.deleteByOrderLineIds(lineIds);
         baseMapper.deleteOrderLineByOrderId(orderId);
         boolean removed = removeById(orderId);
         if (removed) {

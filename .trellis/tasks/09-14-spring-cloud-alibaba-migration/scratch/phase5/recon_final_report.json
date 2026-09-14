@@ -1,0 +1,113 @@
+{
+ "health": {
+  "execution_db": {
+   "outbox_pending": "0",
+   "outbox_halted": "1",
+   "dlq_unreplayed": "0"
+  },
+  "planning_db": {
+   "outbox_pending": "0",
+   "outbox_halted": "0",
+   "dlq_unreplayed": "1"
+  },
+  "demand_db": {
+   "outbox_pending": "0",
+   "outbox_halted": "0",
+   "dlq_unreplayed": "0"
+  }
+ },
+ "checks": [
+  {
+   "check": "P1",
+   "desc": "batch 9721 = aggregate(task)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "P1",
+   "desc": "batch 9722 = aggregate(task)",
+   "expected": "IN_PROCESS",
+   "actual": "IN_PROCESS",
+   "drift": false
+  },
+  {
+   "check": "D1",
+   "desc": "line 9711 = aggregate(projection)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "D1",
+   "desc": "line 9712 = aggregate(projection)",
+   "expected": "IN_PRODUCTION",
+   "actual": "IN_PRODUCTION",
+   "drift": false
+  },
+  {
+   "check": "D2",
+   "desc": "order 9701 = aggregate(line)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "D2",
+   "desc": "order 9702 = aggregate(line)",
+   "expected": "IN_PRODUCTION",
+   "actual": "IN_PRODUCTION",
+   "drift": false
+  },
+  {
+   "check": "X1",
+   "desc": "batch 9721 planning=DONE vs demand projection",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X1",
+   "desc": "batch 9722 planning=IN_PROCESS vs demand projection",
+   "expected": "IN_PROCESS",
+   "actual": "IN_PROCESS",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 9731 (latest FINISH, in-flight)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 9732 (latest FINISH, in-flight)",
+   "expected": "DONE",
+   "actual": "DONE",
+   "drift": false
+  },
+  {
+   "check": "X2",
+   "desc": "task 9734 (latest START, in-flight)",
+   "expected": "RUNNING",
+   "actual": "RUNNING",
+   "drift": false
+  },
+  {
+   "check": "X3",
+   "desc": "line 9711 allocated_qty vs SUM(batch_qty)",
+   "expected": "5",
+   "actual": "5",
+   "drift": false
+  },
+  {
+   "check": "X3",
+   "desc": "line 9712 allocated_qty vs SUM(batch_qty)",
+   "expected": "3",
+   "actual": "3",
+   "drift": false
+  }
+ ],
+ "drifts": []
+}

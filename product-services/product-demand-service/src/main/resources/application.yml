@@ -32,6 +32,15 @@ spring:
     username: ${DEMAND_DB_USERNAME:demand_svc}
     password: ${DEMAND_DB_PASSWORD:demand-dev-pwd}
     driver-class-name: com.mysql.cj.jdbc.Driver
+  # RabbitMQ（compose.dev.yml 既有实例，ADR-0004）：本服务消费 planning.events
+  # （batch.progress.changed），生产 order_line.progress.changed（Outbox 出站，预留）
+  rabbitmq:
+    host: ${RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_AMQP_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    publisher-confirm-type: correlated
 
 # MyBatis-Plus（与单体 mybatis 配置项一致；分页 maxLimit=100/overflow=true 见 MybatisPlusConfig）
 mybatis-plus:
@@ -75,6 +84,33 @@ product:
     enabled: true
     header: Authorization
     jwks-uri: ${PRODUCT_SECURITY_JWKS_URI:http://127.0.0.1:8101/jwks}
+  # 事件一致性基础设施（Phase 5，ADR-0004）：消费队列 product-demand.planning
+  # （{consumer-service}.{event-domain}，ADR-0004 §5 命名规范）；死信审计队列同款后缀 .dlq。
+  # 离线单测不设置 enabled（骨架/单测无 Rabbit 依赖）
+  messaging:
+    enabled: ${DEMAND_MESSAGING_ENABLED:true}
+    producer: product-demand
+    exchange: demand.events
+    dead-letter-queue: product-demand.planning.dlq
+    dead-letter-replay-exchange: planning.events
+    relay:
+      enabled: true
+    consumer:
+      max-attempts: 3
+      initial-interval-ms: 500
+      multiplier: 2.0
+      max-interval-ms: 5000
+    queues:
+      - queue: product-demand.planning
+        exchange: planning.events
+        routing-keys:
+          - batch.progress.changed
+  # 需求域状态对账（line.status = aggregate(batch projection)、order.status = aggregate(line.status)，
+  # 漂移自动修复 + ops_audit 留痕）
+  demand:
+    recon:
+      interval-ms: ${DEMAND_RECON_INTERVAL_MS:60000}
+      initial-delay-ms: ${DEMAND_RECON_INITIAL_DELAY_MS:20000}
 
 logging:
   level:

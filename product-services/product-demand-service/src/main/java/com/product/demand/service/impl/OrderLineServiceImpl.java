@@ -15,6 +15,7 @@ import com.product.demand.service.DemandDataVersionService;
 import com.product.demand.service.IOrderLineService;
 import com.product.demand.service.MasterDataReferenceValidator;
 import com.product.demand.service.PlanningBatchClient;
+import com.product.demand.service.PlanningBatchStateService;
 import com.product.planning.api.dto.PlanningContracts;
 import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,7 +39,9 @@ import java.util.List;
  *   <li>删除订单行级联（Phase 4 已接线）：与单体"删批次再删行"次序一致——先经
  *       planning 契约删除该行批次（fail-closed：planning 不可用则拒绝删除本地行），
  *       再删除本地行。单体在无 @Transactional 下为两条独立语句，服务化后无法跨服务
- *       共享事务；失败窗口收敛为"批次已删、行仍在"（可重试），方向与单体一致；</li>
+ *       共享事务；失败窗口收敛为"批次已删、行仍在"（可重试），方向与单体一致；
+ *       Phase 5 起同时清理本域批次状态投影 planning_batch_state（事件链聚合输入
+ *       随行清理，与单体删除批次后聚合范围一致的语义）；</li>
  *   <li>所有订单行写路径同事务 bump demand_data_version（Phase 4 排程输入漂移检测）。</li>
  * </ul>
  */
@@ -53,6 +56,9 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
 
     @Autowired
     private DemandDataVersionService demandDataVersionService;
+
+    @Autowired
+    private PlanningBatchStateService planningBatchStateService;
 
     /**
      * 查询订单明细
@@ -174,6 +180,8 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
         // Phase 4 接线：与单体"先删批次、后删行"次序一致；批次删除经 planning 契约
         // （fail-closed：planning 不可用则本地行不删，见 PlanningBatchClient javadoc）。
         planningBatchClient.deleteBatchesByOrderLines(ids);
+        // Phase 5：清理本域批次状态投影（事件链聚合输入随行清理）
+        planningBatchStateService.deleteByOrderLineIds(ids);
         boolean removed = removeByIds(Arrays.asList(orderLineIds));
         if (removed) {
             demandDataVersionService.bump();
@@ -191,6 +199,8 @@ public class OrderLineServiceImpl extends ServiceImpl<OrderLineMapper, OrderLine
     public boolean deleteOrderLineByOrderLineId(Long orderLineId) {
         // 同 deleteOrderLineByOrderLineIds：先经 planning 契约删除该行批次（fail-closed）。
         planningBatchClient.deleteBatchesByOrderLines(List.of(orderLineId));
+        // Phase 5：清理本域批次状态投影
+        planningBatchStateService.deleteByOrderLineIds(List.of(orderLineId));
         boolean removed = removeById(orderLineId);
         if (removed) {
             demandDataVersionService.bump();

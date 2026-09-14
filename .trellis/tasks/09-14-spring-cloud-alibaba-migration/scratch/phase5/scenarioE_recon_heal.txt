@@ -1,0 +1,55 @@
+
+=== 场景E: 对账差异报告 -> 自动补偿 -> 人工修正（Tue Sep 15 04:52:47 AM CST 2026） ===
+1) 人工注入需求域漂移: line9711 DONE -> CONFIRMED（投影聚合=DONE，漂移）
+   注入后 line9711=CONFIRMED
+2) 等待需求域对账（interval=5s）自动修复...
+   修复后 line9711=CONFIRMED (应回 DONE)
+3) demand_db ops_audit 对账留痕:
+
+4) 注入跨域投影漂移: demand 投影 batch9722 DONE -> PLANNED（planning 事实=IN_PROCESS）
+   注意: 需求域本域对账以投影为输入（投影自身被外部篡改时本域无判据），跨域 X1 由 recon.py 报告:
+   drifts: [{"check": "X1", "desc": "batch 9722 planning=IN_PROCESS vs demand projection", "expected": "IN_PROCESS", "actual": "PLANNED"}]
+   health: {"execution_db": {"outbox_pending": "0", "outbox_halted": "1", "dlq_unreplayed": "0"}, "planning_db": {"outbox_pending": "0", "outbox_halted": "0", "dlq_unreplayed": "1"}, "demand_db": {"outbox_pending": "0", "outbox_halted": "0", "dlq_unreplayed": "0"}}
+   (对账于 04:53:00 触发——重启进程默认 60s 间隔)
+   line9711=DONE (已回 DONE)
+3) demand_db ops_audit 对账留痕:
+id	action	result	detail
+3	RECON_HEAL	OK	???????: orderLineId=9712
+2	RECON_HEAL	OK	???????: orderLineId=9711
+1	RECON_DRIFT	DRIFT	???/??????????: lines=[9711, 9712] orders=[]
+
+5) X1 投影漂移修复 = 重放 planning 侧最新 batch 事件（replay-outbox）:
+{"msg":"重放已入队","code":200,"data":"35940058-b8af-42e1-8ed1-d62631319293"}
+   重放后投影: 
+   line9712=IN_PRODUCTION
+
+6) Phase 4 遗留补偿窗口: allocated_qty 漂移巡检与人工修正（line 9712: 30->20 注入漂移）
+   drifts: [{"check": "X3", "desc": "line 9712 allocated_qty vs SUM(batch_qty)", "expected": "3", "actual": "2"}]
+   人工修正 adjust-allocation -> 30:
+{"msg":"已修正","code":200,"data":{"previous":"20","orderLineId":"9712","allocatedQty":"30"}}
+   修正后 X3 巡检:
+   drifts: []
+
+7) demand ops_audit 汇总（RECON/REPLAY/ADJUST 全留痕）:
+id	action	operator	result
+1	RECON_DRIFT	system	DRIFT
+2	RECON_HEAL	system	OK
+3	RECON_HEAL	system	OK
+4	ADJUST_ALLOCATION	admin	OK
+
+=== 场景E收尾: 三域终态一致性 + 最终对账报告（Tue Sep 15 04:57:18 AM CST 2026） ===
+planning 事实:
+  batch9721=DONE batch9722=IN_PROCESS task9734=RUNNING
+demand 投影/订单:
+  proj9721=DONE proj9722=IN_PROCESS line9711=DONE line9712=IN_PRODUCTION order9701=DONE order9702=IN_PRODUCTION
+
+最终 recon.py 差异报告（保留证据性遗留: execution HALTED 1 行(场景A), planning 未重放死信 1 行(场景C 重放后再死信)）:
+  drifts: []
+  checks: 13 项; health: {"execution_db": {"outbox_pending": "0", "outbox_halted": "1", "dlq_unreplayed": "0"}, "planning_db": {"outbox_pending": "0", "outbox_halted": "0", "dlq_unreplayed": "1"}, "demand_db": {"outbox_pending": "0", "outbox_halted": "0", "dlq_unreplayed": "0"}}
+
+planning/execution ops_audit 汇总:
+id	action	operator	result
+1	REPLAY_DLQ	admin	OK
+2	REPLAY_OUTBOX	admin	OK
+id	action	operator	result
+1	REPLAY_OUTBOX	admin	OK

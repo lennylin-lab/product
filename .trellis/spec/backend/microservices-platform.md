@@ -179,6 +179,21 @@ from the monolith in the task's execution record. (Phase 4 lesson: a copied join
 and passed unit tests with mocked mappers, but 1146'd at runtime — and was once falsely
 recorded as "200 OK"; live-probe transcripts go in scratch/<phase>/.)
 
+## Event baseline (Phase 5, ADR-0004)
+
+Event infrastructure lives in `product-cloud-messaging` (envelope v1, outbox relay, idempotent
+consumer support, DLX audit); frozen topology + semantics table is in `product-services/README.md`,
+design contract in the task's ADR-0004. Key pitfalls:
+- NEVER publish envelopes via `rabbitTemplate.convertAndSend(byte[])` — the Jackson converter
+  Base64-encodes byte[] bodies and consumers fail conversion (Phase 5 live-found defect; raw
+  `Message` with JSON bytes + `application/json` + eventId/eventType headers is the only
+  supported publish path; see OutboxRelay).
+- ADR §4's "手动 ack" is implemented as `AcknowledgeMode.AUTO` + per-message ack-after-success
+  interceptor (documented equivalent) — do not "simplify" to plain AUTO without the interceptor.
+- Service-owned infra tables (`event_outbox`, `consumed_event`, `dead_letter_audit`, `ops_audit`,
+  domain version counters) are documented non-baseline additions in each service's schema script;
+  business tables stay byte-verbatim from root schema.sql.
+
 Warning learned twice now: record numbers in the task's implement.md execution record
 (test counts, wiring claims, diff bookkeeping) MUST come from a clean `mvn clean test` run
 and committed scripts — stale target/ reports and edit scripts that print success without

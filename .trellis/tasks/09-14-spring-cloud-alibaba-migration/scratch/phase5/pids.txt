@@ -1,0 +1,11 @@
+identity 1288657 8101
+demand-service 1288658 8103
+planning 1288659 8104
+execution 1288660 8105
+gateway 1288661 8080
+monolith mvn pid=1292033
+monolith(clean-room) mvn pid=1312080
+product-demand-service-restarted 1325189 8103
+product-planning-restarted 1325190 8104
+product-execution-restarted 1325191 8105
+demand-service-resumed 1385287 8103

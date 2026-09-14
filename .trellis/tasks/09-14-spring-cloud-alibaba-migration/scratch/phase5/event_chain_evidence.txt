@@ -1,0 +1,54 @@
+=== Phase5 状态对拍事件链证据（Tue Sep 15 04:40:36 AM CST 2026） ===
+
+--- execution_db.event_outbox（发布流）---
+id	event_type	aggregate_id	status	retry_count
+3	task.status.changed	9731	PUBLISHED	0
+4	task.status.changed	9731	PUBLISHED	0
+5	task.status.changed	9731	PUBLISHED	0
+6	task.status.changed	9732	PUBLISHED	0
+7	task.status.changed	9732	PUBLISHED	0
+8	task.status.changed	9731	PUBLISHED	0
+9	task.status.changed	9731	PUBLISHED	0
+10	task.status.changed	9731	PUBLISHED	0
+11	task.status.changed	9731	PUBLISHED	0
+
+--- planning_db.consumed_event（task.status.changed 消费流水）---
+id	event_type	aggregate_id	outcome	occurred_at
+2	task.status.changed	9731	APPLIED	2026-09-15 04:39:43.480
+3	task.status.changed	9731	APPLIED	2026-09-15 04:39:46.249
+4	task.status.changed	9731	APPLIED	2026-09-15 04:39:48.158
+5	task.status.changed	9732	APPLIED	2026-09-15 04:39:50.396
+6	task.status.changed	9732	APPLIED	2026-09-15 04:39:52.320
+7	task.status.changed	9731	APPLIED	2026-09-15 04:39:54.247
+8	task.status.changed	9731	APPLIED	2026-09-15 04:39:58.525
+9	task.status.changed	9731	APPLIED	2026-09-15 04:40:01.281
+10	task.status.changed	9731	APPLIED	2026-09-15 04:40:03.201
+
+--- planning_db.event_outbox（batch.progress.changed 发布流）---
+id	event_type	aggregate_id	status	retry_count
+2	batch.progress.changed	9721	PUBLISHED	0
+3	batch.progress.changed	9721	PUBLISHED	0
+4	batch.progress.changed	9721	PUBLISHED	0
+5	batch.progress.changed	9721	PUBLISHED	0
+
+--- demand_db.consumed_event（batch 消费流水）---
+id	event_type	aggregate_id	outcome	occurred_at
+2	batch.progress.changed	9721	APPLIED	2026-09-15 04:39:43.553
+3	batch.progress.changed	9721	APPLIED	2026-09-15 04:39:54.602
+4	batch.progress.changed	9721	APPLIED	2026-09-15 04:39:58.621
+5	batch.progress.changed	9721	APPLIED	2026-09-15 04:40:03.636
+
+--- demand_db.planning_batch_state（投影）---
+batch_id	order_line_id	status
+9721	9711	DONE
+
+--- demand_db.event_outbox（order_line.progress.changed 出站）---
+id	event_type	aggregate_id	status
+2	order_line.progress.changed	9711	PUBLISHED
+3	order_line.progress.changed	9711	PUBLISHED
+4	order_line.progress.changed	9711	PUBLISHED
+5	order_line.progress.changed	9711	PUBLISHED
+
+--- correlationId 贯穿（execution 首发 -> planning 消费 -> planning 出站 -> demand 消费）---
+exec outbox correlationId: 0e241a86f63e45f4895b9f1cf8b4dc23
+planning consumed payload correlation(trace): {"taskId":9731,"eventType":"START","targetStatus":"RUNNING",

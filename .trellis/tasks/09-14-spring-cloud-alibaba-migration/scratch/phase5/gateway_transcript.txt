@@ -1,0 +1,11 @@
+=== 网关外部契约: /execute/event 经 8080（Tue Sep 15 04:57:45 AM CST 2026） ===
+1) GET /execute/event/list?taskId=9731 经网关:
+{"total":"7","rows":[{"createTime":"2026-09-15 04:39:43","updateTime":"2026-09-15 04:39:43","eventId":"2099598993949839361","taskId":"9731","eventType":"START","eventTime":"2026-09-15 04:39:43","operatorId":null,"resourceId":"9741","qtyGood":null,"qtyBad":null,"reasonCode":null,"remark":""},{"create
+2) POST /execute/event/start/9734 经网关（任务已 RUNNING，事件链幂等——重发 START 状态不变）:
+{"msg":"操作成功","code":200}
+   task9734: RUNNING (RUNNING 不变)
+3) 内部端点经网关显式拒绝(Phase 3 check 项回归):
+  /execution/internal/execution/ops/outbox -> 404
+  /internal/execution/ops/outbox -> 404
+4) 无 token 直连 8105 -> 401:
+  200 {"msg":"请求访问：/execute/event/list，认证失败，无法访问系统资源","code":401}

@@ -1,0 +1,11 @@
+[svc ] start 9731 -> {"msg": "操作成功", "code": 200} | task1=RUNNING task2=SCHEDULED batch=IN_PROCESS line=IN_PRODUCTION order=IN_PRODUCTION
+[svc ] pause 9731 -> {"msg": "操作成功", "code": 200} | task1=PAUSED task2=SCHEDULED batch=IN_PROCESS line=IN_PRODUCTION order=IN_PRODUCTION
+[svc ] resume 9731 -> {"msg": "操作成功", "code": 200} | task1=RUNNING task2=SCHEDULED batch=IN_PROCESS line=IN_PRODUCTION order=IN_PRODUCTION
+[svc ] start 9732 -> {"msg": "操作成功", "code": 200} | task1=RUNNING task2=RUNNING batch=IN_PROCESS line=IN_PRODUCTION order=IN_PRODUCTION
+[svc ] complete 9732 -> {"msg": "操作成功", "code": 200} | task1=RUNNING task2=DONE batch=IN_PROCESS line=IN_PRODUCTION order=IN_PRODUCTION
+[svc ] complete 9731 -> {"msg": "操作成功", "code": 200} | task1=DONE task2=DONE batch=DONE line=DONE order=DONE
+[svc ] start 999999 -> {"msg": "操作失败", "code": 500} | task1=DONE task2=DONE batch=DONE line=DONE order=DONE
+[svc ] pause 9731 -> {"msg": "操作成功", "code": 200} | task1=PAUSED task2=DONE batch=IN_PROCESS line=IN_PRODUCTION order=IN_PRODUCTION
+[svc ] resume 9731 -> {"msg": "操作成功", "code": 200} | task1=RUNNING task2=DONE batch=IN_PROCESS line=IN_PRODUCTION order=IN_PRODUCTION
+[svc ] complete 9731 -> {"msg": "操作成功", "code": 200} | task1=DONE task2=DONE batch=DONE line=DONE order=DONE
+saved parity_svc.json

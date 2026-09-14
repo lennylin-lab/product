@@ -472,11 +472,145 @@ demand/planning 两个 Feign 客户端，启动即失败）；② `DemandApplica
 
 ## Phase 5: Execution And Event Consistency
 
-- [ ] 迁移任务/资源事件，建立 RabbitMQ exchange/queue/binding、版本化 envelope、publisher confirm、Outbox、幂等消费、重试和死信。
-- [ ] 将进程内状态刷新链改为 Planning/Demand 各自消费事件并更新本域状态。
-- [ ] 建立对账、补偿和人工重放工具及审计记录。
+- [x] 迁移任务/资源事件，建立 RabbitMQ exchange/queue/binding、版本化 envelope、publisher confirm、Outbox、幂等消费、重试和死信。
+- [x] 将进程内状态刷新链改为 Planning/Demand 各自消费事件并更新本域状态。
+- [x] 建立对账、补偿和人工重放工具及审计记录。
 - Validation: 开始/暂停/恢复/完成/异常全链路测试；重复、乱序、延迟、MQ 暂停恢复、消费者失败和补偿测试通过。
 - Rollback point: 可清理测试消息并从备份重建服务库；状态对账不为零不得统一切换。
+
+### Phase 5 执行记录（2026-09-15，含中断续作审计）
+
+**续作说明**：前次中断遗留的部分工作（product-cloud-messaging 基础设施、execution 服务本体、
+planning/demand 事件消费与对账、ops 端点、schema 基础设施表、gateway 路由、全部单测）经审计后
+基本完整，本次补齐缺陷并完成全部验证。**本次会话代码改动**：仅 3 处——①
+`InternalExecutionController` 重复 import 清理；② **OutboxRelay 投递缺陷修复（live 实测发现，
+HIGH）**：原实现经 RabbitTemplate 的 Jackson2JsonMessageConverter 发 `byte[]`，被序列化成
+Base64 字符串，消费端 `EventEnvelope` 反序列化必败（首个 task 事件即重试耗尽进 DLX）——改为
+直接构造 AMQP Message（原始 JSON 字节 + application/json + eventId/eventType header +
+CorrelationData），`EventReplayService.replayDeadLetter` 同款修复；③ `product-services/README.md`
+补事件基线文档。审计确认无缺件：envelope v1（eventId/eventType/version/occurredAt/producer/
+aggregateId/correlationId/payload，只加不改演进策略）、事务内 Outbox（业务行+outbox 行同一
+本地事务，JdbcTemplate 与 MyBatis 共享 DataSourceTransactionManager）、OutboxRelay 轮询 +
+publisher confirm（成功才 PUBLISHED，失败退避 1s×2^n 封顶 5min 共 8 次后 HALTED）、eventId
+消费去重（consumed_event，UNIQUE(consumer_group,event_id)）+ 同聚合 occurredAt 单调性守卫
+（过期事件记 STALE 丢弃）、有界消费重试（3 次）→ DLX → 死信审计落库（审计未落库不 ack）、
+outbox/DLQ 双路人工重放（新 eventId + 原 correlationId/payload）、ops_audit 全动作留痕。
+
+**产出（Phase 5 全量）**：
+- `product-services/product-cloud-messaging`（新库模块，ADR-0004）：envelope 编解码（私有
+  ObjectMapper）、Outbox（Dao/Publisher/Relay）、ConsumedEventRecorder、MessagingTopology
+  （exchange/queue/binding/DLX 声明，消费方配置驱动、双侧幂等）、DeadLetterAuditor、
+  EventReplayService、OpsAuditService、MessagingAutoConfiguration（`product.messaging.enabled=true`
+  才装配；事件容器工厂逐条成功后确认 + 重试拦截器；DLQ 容器失败重回队列）。
+- `product-execution`（8105，execution_db + execution_svc）：task_event/resource_status_event
+  2 表移植（`/execute/event` 路径冻结，CRUD/导出导入/start/pause/resume/complete 与单体
+  逐字段同形）；命令改造——任务存在性/派工机台经 planning 只读契约
+  `PlanningTaskApi.taskRuntimes`（fail-closed，任务不存在/契约不可达 → 命令 false 不留事件，
+  与单体 update 0 行同语义）；命令内写 task_event + outbox（同事务），resource_status_event
+  登记端点 + resource.status.changed 出站（仅记录/告警用途）。
+- 状态刷新链事件化（无跨域同步调用）：execution → `task.status.changed` → planning 消费
+  （任务状态无条件映射 + BatchStatusResolver 批次聚合【单体 ProductionBatchStatusRefresher
+  逐字移植】+ 变更才发布）→ `batch.progress.changed` → demand 消费（planning_batch_state
+  投影 upsert + DemandStatusResolvers 订单行/订单聚合【单体两 Refresher 逐字移植】+
+  order_line.progress.changed 出站预留）。demand 删订单行/订单随行清理投影。
+- 对账/补偿/重放：planning/demand 各自本域对账定时任务（漂移 → ops_audit RECON_DRIFT →
+  自动修复 RECON_HEAL）；ops 端点（planning/demand：replay-outbox、replay-dlq、
+  recompute-batch/line/order-status、adjust-allocation【Phase 4 遗留补偿窗口的人工收敛通道】、
+  health 巡检；execution：outbox 巡检、replay-outbox、资源事件登记/追溯）；运维对账脚本
+  `scratch/phase5/recon.py`（跨域 X1 批次 vs 投影、X2 任务事件流水 vs planning 终态、
+  X3 allocated_qty vs SUM(batch_qty)、P1/D1/D2 本域不变式复核 + heal/replay 命令）。
+- SQL：`execution_schema.sql`（执行 2 表逐字节 + 4 张基础设施表）；planning/demand schema
+  追加同名基础设施表（服务权属，根 schema.sql 零改动）。
+- gateway：/execute/event 正式路由 + swagger 聚合项；.env.example 补 EXECUTION_DB_*。
+- 单测新增 34 条：cloud-messaging 6（envelope 编解码/演进、outbox 退避语义）、planning 10
+  （消费编排幂等/STALE/非法 payload 6 + 批次聚合 4）、demand 11（消费编排 5 + 行/单聚合 6）、
+  execution 7（单体 5 条语义移植 + 事件 payload/fail-closed 断言）。
+
+**事件拓扑（冻结，ADR-0004 §5，README.md 有全表）**：exchange `execution.events`/
+`planning.events`/`demand.events`（direct/durable），routing key = eventType；queue
+`product-planning.execution`（task.status.changed + resource.status.changed）、
+`product-demand.planning`（batch.progress.changed）；每 queue 配 `{queue}.dlx`/`{queue}.dlq`，
+死信审计监听器落库后 ack。envelope v1 演进策略：只加不改（新增可选字段不升版本；语义/类型
+变更必须升 version 并新增 eventType）。
+
+**验证结果（本机实测，temurin 17.0.20+8 / Maven 3.9.16）**：
+1. 根构建（回滚点，relay 修复后最终 clean run）：`mvn -DskipTests clean compile`
+   **28/28 模块** BUILD SUCCESS（27+cloud-messaging）；单体/根 pom/root schema.sql/
+   compose.dev.yml 零改动（git status 仅 product-services/**、.env.example、README、
+   .trellis/task 记录）。
+2. 离线测试（最终 clean run）：`product-services` 下 `mvn clean test` **13/13 模块
+   BUILD SUCCESS，181 用例全绿**（cloud-common 19、cloud-security 11、**cloud-messaging 6**、
+   gateway 16、identity 28、master-data 6、demand-service 26、planning 58、execution 11；
+   Phase 4 为 147 条 → +34；日志 scratch/phase5/phase5_clean_test_v2.log）。
+3. **状态对拍（回滚点核心，scratch/phase5/parity_*_transcript.txt + parity_compare_transcript.txt）**：
+   同一数据集（order 9701/line 9711/batch 9721/tasks 9731+9732，SCHEDULED/RELEASED/CONFIRMED
+   起点）+ 同一事件序列 10 步（start→pause→resume→start→complete→complete→幽灵任务→对 DONE
+   任务 pause→resume→complete），单体侧为**当前源码 clean-room 临时实例**（8082，独立库
+   product_phase5_mono = 根 schema.sql 原样初始化，SPRING_DATASOURCE_URL 环境覆盖，不改任何
+   配置文件），微服务侧为全栈事件链（execution 8105 命令 → RabbitMQ → planning/demand 消费，
+   每步等 outbox PENDING=0 且状态稳定后快照）。**10/10 步逐字段一致（PARITY OK）**：
+   task1/task2/batch/line/order 五状态 + task_event 事件序列（event_type + resource_id，
+   含派工机台 9741 回填）+ 命令失败语义（幽灵任务双侧同为 HTTP 200 + `{"msg":"操作失败",
+   "code":500}` 且不留事件行）。异常路径语义对齐：DONE→PAUSE 无条件映射引发批次/订单行/订单
+   级联回退（DONE→IN_PROCESS→IN_PRODUCTION→IN_PRODUCTION）两侧一致；完整级联
+   （start→全链 IN_PROCESS/IN_PRODUCTION、双双 complete→全链 DONE）两侧一致。
+   **差异分类**：a) 冻结缺陷修复（非本次引入）：见第 4 条单体 live 不可用记录；
+   b) 刻意新增/架构性：命令成功时点任务状态尚为异步推进（单体同事务同步）、demand 以
+   planning_batch_state 事件溯源投影替代跨库读批次表、跨域引用校验/投影清理为新增防御；
+   c) 无未解释差异。
+4. **单体 live 链数据依赖缺陷（冻结缺陷族新增实锤，非本次引入）**：用户 live 库 product 的
+   ID 列为 VARCHAR(64) 且存量含非数字 ID（customer_order.order_id='O1'/'O2'），单体刷新链
+   `Db...in(ProductionBatch::getBatchId, <Long>)` 数字比较触发全列隐式 cast →
+   `Data truncation: Truncated incorrect DOUBLE value: 'O1'` → /execute/event/start|pause|
+   resume|complete 全部 500 回滚（8082+live 库实测，transcript parity_mono_transcript.txt
+   初版）。属单体存量数据形态缺陷，微服务侧服务库 BIGINT 无此问题；统一切换评审按"冻结缺陷
+   （live 数据触发）"归类，对拍基线改用 clean-room 库（第 3 条）。
+5. **异常语义实测证据清单（全部 live，transcripts 在 scratch/phase5/）**：
+   - 场景A outbox 有界重试→HALTED→人工重放（scenarioA_outbox_halted.txt）：停 RabbitMQ 后
+     登记资源事件（命令 200，本地事务已提交）→ 退避重试 8 次（1+2+4+8+16+32+64s）→ HALTED；
+     Rabbit 恢复后 HALTED 行不被自动重投（selectPending 仅 PENDING）；ops replay-outbox →
+     新 eventId PUBLISHED + planning 消费 APPLIED + ops_audit REPLAY_OUTBOX(admin)。
+   - 场景B 重复/过期/乱序（scenarioB_idem_order.txt）：同 eventId 重投 → 幂等跳过
+     （consumed_event 不增、日志"重复事件跳过(幂等)"、状态不变）；occurredAt 早于最后应用
+     4.5h 的延迟事件 → outcome=STALE 记录丢弃、状态不回退；全新聚合 9733 先 FINISH(10:00)
+     后迟到 START(09:00) → FINISH APPLIED、迟到 START STALE 丢弃、终态 DONE 不变。
+   - 场景C 消费者失败→DLX→审计→重放（scenarioC_dlx.txt）：毒消息（payload 缺 targetStatus）
+     → 有界重试 3 次耗尽 → DLX → dead_letter_audit 落库（x-death reason=rejected）→ DLQ
+     排空（审计后 messages=0）；replay-dlq → 原行标 replayed=1 + replay_event_id，毒消息按
+     设计再次死信形成新审计行（不丢不吞）+ ops_audit REPLAY_DLQ。
+   - 场景D MQ 暂停-恢复（scenarioD_pause_resume.txt）：停 demand → execution 命令成功、
+     planning 第一跳正常推进、batch 事件持久化积压（messages=1, consumers=0，零丢失）→
+     重启 demand → 消费者重连排空（messages=0, consumers=1）→ line/order 状态收敛 APPLIED。
+   - 场景E 对账/补偿/分配窗口（scenarioE_recon_heal.txt）：注入 line 状态漂移 → 需求域对账
+     检出（RECON_DRIFT lines=[9711,9712]）→ 自动修复（RECON_HEAL）回 DONE；注入投影漂移 →
+     本域对账按冻结规则修复行状态、跨域 X1 由 recon.py 报告 → planning 侧 replay-outbox
+     重放批次事件修复投影并级联重算；allocated_qty 漂移（X3 检出 30 vs 20）→
+     adjust-allocation 幂等设值 → X3 清零 + ADJUST_ALLOCATION 审计（场景当时报告里的
+     "3 vs 2" 为 recon.py 取值串下标缺陷的截断显示，漂移判定本身有效；该缺陷已修复并
+     定向回归：预期 planned=30 vs alloc=20 如实上报，探针行已清理）。
+     最终 recon.py 13 项检查 drifts=[]（recon_final_report.json；保留证据性遗留：execution
+     HALTED 1 行、planning 未重放死信 1 行，均为场景 A/C 实测产物）。
+   - 网关契约（gateway_transcript.txt）：/execute/event/list 经 8080 返回 TableDataInfo
+     （Long→String 契约）；无 token 直连 8105 → HTTP 200 + 单体逐字节 401 体；
+     /internal/** 经网关字面与前缀形态均 404。
+6. 进程安全：全部本次启动 JVM（5 服务 + 迭代重启 + clean-room 单体及其 mvn 父进程）终止，
+   8080/8082/8101/8103/8104/8105 释放；product-nacos/product-rabbitmq 容器停止（前次中断
+   运行遗留的 6 个 JVM 先行清点终止，pids_stale_leftovers.txt）；用户 product-mysql/
+   product-redis 容器与 8081 端口未触碰；product 库本会话测试行逐表删除核实 0 残留、
+   clean-room 库已 DROP、三个服务库重置为种子空库（业务表 0 行 + 基础设施表清空）。
+
+**遗留问题（不阻塞 Phase 6）**：
+- Sentinel 规则 Nacos 持久化、OpenAPI 网关聚合收敛、span 导出器（OTLP）仍沿 Phase 2/3/4
+  遗留清单（Phase 6 统一切换前完成）。
+- order_line.progress.changed 为预留出站（无消费方，单体现状订单行状态仅由批次聚合驱动，
+  事件仅作审计/未来扩展）——如有跨域消费需求需先评审契约。
+- planning_batch_state 投影为服务权属派生表（可由事件重放/对账重建），Phase 6 数据校验
+  脚本需包含投影与 planning 批次事实的一致性核对（recon.py X1 已实现）。
+- 单体 live 库 VARCHAR ID + 非数字存量的数据依赖缺陷（第 4 条）如需在单体内修复属新功能，
+  需单独评审；统一切换以服务侧行为为准。
+- **check 交接 Phase 6**：① OutboxRelay 裸 AMQP 线格式（content-type/头/无 Base64）目前仅
+  live transcript 证明，需补离线回归测试把该 live 发现的缺陷固化为测试；② ops/重放/对账端点
+  现为"JWT + 网关拒绝 + 审计"但无 admin 角色门禁（与冻结基线一致），统一切换评审时需显式决策。
 
 ## Phase 6: Unified Cutover
 

@@ -19,6 +19,7 @@
     <modules>
         <module>product-cloud-common</module>
         <module>product-cloud-security</module>
+        <module>product-cloud-messaging</module>
         <module>product-master-data-api</module>
         <module>product-demand-api</module>
         <module>product-planning-api</module>
@@ -45,6 +46,12 @@
             <dependency>
                 <groupId>com.product</groupId>
                 <artifactId>product-cloud-security</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- 事件一致性基础设施（Phase 5，ADR-0004） -->
+            <dependency>
+                <groupId>com.product</groupId>
+                <artifactId>product-cloud-messaging</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <!-- 服务契约模块（ADR-0002 决策 1：每服务独立 API contract，禁止共享持久化 Entity） -->

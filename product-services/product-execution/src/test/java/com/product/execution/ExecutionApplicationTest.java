@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -12,16 +13,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * product-execution 骨架冒烟测试（离线，禁用 Nacos 注册/配置）。
+ * product-execution 冒烟测试（离线，禁用 Nacos 注册/配置、数据源与本地验签安全链——
+ * 数据访问与 JWKS 拉取不参与离线单测，见 spec/backend/microservices-platform.md）。
  */
 @SpringBootTest(properties = {
         "spring.cloud.nacos.discovery.enabled=false",
         "spring.cloud.nacos.config.enabled=false",
         "spring.cloud.service-registry.auto-registration.enabled=false",
-        // 离线单测关闭本地验签安全链（无 JWKS 可拉取）；live 环境默认开启（ADR-0003）。
-        // cloud-security 引入 spring-security-web/config 后，还需排除 Boot 默认 servlet 安全链，
-        // 否则 @ConditionalOnDefaultWebSecurity 的兜底链会对 /skeleton/info 返回 401。
-        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration,org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration",
+        // Phase 5：离线单测关闭事件基础设施（无 Rabbit/JDBC；服务 yml 默认 enabled=true）。
+        // 同时排除 Rabbit 自动装配——amqp starter 会注册 RabbitHealthIndicator，
+        // 离线无 Rabbit 时 /actuator/health 会 DOWN → 503。
+        "product.messaging.enabled=false",
+        // 离线：无 MySQL/JWKS。排除 DataSource/MyBatis-Plus/Rabbit 自动装配，并关闭本地验签安全链与 Boot 默认链。
+        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration,org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration,org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration",
         "product.security.enabled=false"
 })
 @AutoConfigureMockMvc
@@ -29,6 +33,12 @@ class ExecutionApplicationTest {
 
     @Autowired
     MockMvc mockMvc;
+
+    /** 数据访问离线替换（MyBatis-Plus 自动装配已排除，Mapper 用 mock 占位）。 */
+    @MockitoBean com.product.execution.mapper.TaskEventMapper taskEventMapper;
+    @MockitoBean com.product.execution.mapper.ResourceStatusEventMapper resourceStatusEventMapper;
+    /** Phase 5：事件出站通道离线替换（无 Rabbit/JDBC；业务测试见 TaskEventServiceImplTest）。 */
+    @MockitoBean com.product.cloud.messaging.outbox.OutboxPublisher outboxPublisher;
 
     @Test
     void skeletonInfoShouldExposeServiceIdentity() throws Exception {

@@ -15,6 +15,7 @@
 | product-execution | `product-execution` | 8105 | 任务/资源状态事件、现场追溯（Phase 5 迁移） |
 | product-cloud-common | （库，不部署） | — | 统一错误契约、请求上下文、日志基线（SERVLET 条件装配，WebFlux 网关自动跳过） |
 | product-cloud-security | （库，不部署） | — | JWT RS256 验签核心 + JWKS + 服务端本地验签安全链 + @ss 权限（ADR-0003；SERVLET 条件装配，网关只复用纯 Java 验签核心） |
+| product-cloud-messaging | （库，不部署） | — | 跨服务事件一致性基础设施（ADR-0004，Phase 5）：版本化 envelope、事务内 Outbox + publisher confirm 中继、eventId 幂等消费、有界重试 + DLX 死信审计、对账/重放/运维审计（JdbcTemplate 访问各服务自有库同名权属表） |
 
 > 命名说明：demand 的 Maven 模块叫 `product-demand-service`（避免与旧业务模块 `product-demand` 坐标冲突），
 > Nacos 注册名与配置 Data ID 仍用目标服务名 `product-demand`。
@@ -137,3 +138,44 @@ curl -s "http://127.0.0.1:8848/nacos/v1/ns/service/list?pageNo=1&pageSize=20&nam
 #   -> doms 含全部 product-* 服务
 curl -s http://127.0.0.1:8101/actuator/health   # -> UP；/actuator/prometheus 输出指标
 ```
+
+## 事件一致性基线（Phase 5，ADR-0004）
+
+product-cloud-messaging 在 `product.messaging.enabled=true` 时自动装配；各服务自有库内
+同名权属表 `event_outbox` / `consumed_event` / `dead_letter_audit` / `ops_audit`
+（服务自建，非单体基线表，根 schema.sql 零改动，见各服务 `db/init/*_schema.sql`）。
+
+### 拓扑（冻结命名，ADR-0004 §5；声明由消费方配置驱动，双侧幂等）
+
+| exchange（direct/durable） | 生产者 | routing key（= eventType） | queue（durable） | 消费者 |
+| --- | --- | --- | --- | --- |
+| `execution.events` | product-execution | `task.status.changed` | `product-planning.execution` | product-planning |
+| `execution.events` | product-execution | `resource.status.changed` | `product-planning.execution` | product-planning（仅记录/告警） |
+| `planning.events` | product-planning | `batch.progress.changed` | `product-demand.planning` | product-demand |
+| `demand.events` | product-demand | `order_line.progress.changed`（预留，无消费方） | — | — |
+
+死信：每 queue 配 `x-dead-letter-exchange={queue}.dlx` / `routing-key={queue}.dlq`；
+DLQ `{queue}.dlq` 由消费方死信审计监听器落库 `dead_letter_audit` 后 ack（审计未落库不 ack）。
+
+### envelope v1（契约冻结；演进策略：只加不改）
+
+`{eventId(UUID,幂等键), eventType(=routing key), version=1, occurredAt(ISO-8601 带时区),
+producer, aggregateId, correlationId(透传命令 traceId), payload}`。新增可选 payload 字段
+不升版本；字段语义/类型变更或删除必须升 version 并新增 eventType（或 version 分支消费）。
+
+### 可靠投递 / 可靠消费
+
+- 生产：业务行 + `event_outbox` 行同一本地事务；`OutboxRelay` 轮询投递（**原始 JSON 字节
+  直接构造 AMQP Message**——勿改回 `convertAndSend(byte[])`，Jackson 转换器会把 byte[]
+  Base64 成字符串，Phase 5 live 踩坑），publisher confirm 成功才标 PUBLISHED；失败有界退避
+  重试（默认 8 次，1s×2^n 封顶 5min），超限 HALTED 待人工重放。
+- 消费：容器逐条成功后确认；业务失败经有界重试（默认 3 次，0.5s×2^n）后拒绝进 DLX；
+  `eventId` 去重（consumed_event）+ 同聚合 `occurredAt` 单调性守卫（过期事件记 STALE 丢弃）。
+
+### 对账 / 补偿 / 人工重放
+
+- 各服务内置本域对账（planning：batch=aggregate(tasks)；demand：line=aggregate(投影)、
+  order=aggregate(lines)），漂移写 `ops_audit`（RECON_DRIFT）并自动修复（RECON_HEAL）。
+- 跨域对账/补偿/重放工具：任务 scratch `phase5/recon.py`（report / heal batch|line|order /
+  heal allocation / replay outbox|dlq；经服务内部 ops 端点执行，全部动作服务端 ops_audit 留痕：
+  `/internal/{planning|demand}/ops/*`、`/internal/execution/ops/*`；网关对 /internal/** 显式拒绝）。

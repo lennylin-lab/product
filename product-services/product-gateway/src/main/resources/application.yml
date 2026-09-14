@@ -78,6 +78,12 @@ spring:
               uri: lb://product-demand
               predicates:
                 - Path=/demand/**
+            # ---- Execution 正式路由（Phase 5）：任务事件归 execution 所有，
+            # 对外路径与单体保持一致（baselines.md §1.2：/execute/event）。----
+            - id: execution-event
+              uri: lb://product-execution
+              predicates:
+                - Path=/execute/event,/execute/event/**
             # ---- Phase 1 骨架冒烟路由（StripPrefix=1，服务本地路径以 / 开头）----
             # 未迁移服务（Phase 3-5）继续使用前缀占位路由；经网关访问同样需要有效 JWT。
             - id: identity

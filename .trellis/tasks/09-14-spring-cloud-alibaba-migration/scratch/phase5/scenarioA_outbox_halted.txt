@@ -1,0 +1,19 @@
+=== 场景A: outbox 有界重试 -> HALTED -> 人工重放（Tue Sep 15 04:41:53 AM CST 2026） ===
+1) 停止 RabbitMQ 容器（生产者不可达）
+2) RabbitMQ 停机期间发起 start 9731? 已 DONE -> 改用资源事件登记(不驱动状态机): POST /internal/execution/resource-status-events
+{"msg":"操作成功","code":200,"data":{"createTime":"2026-09-15 04:41:56","updateTime":"2026-09-15 04:41:56","eventId":"2099599553411272706","resourceId":"9741","time":"2026-09-15 04:41:56","fromSta
+3) 命令返回 true（本地事务已提交，outbox PENDING），等待退避重试耗尽（maxAttempts=8, backoff 1s*2^n cap 5min）...
+4) 实测: 重试 8 次后 HALTED（退避 1+2+4+8+16+32+64s）；restart RabbitMQ
+5) HALTED 行不被 relay 自动重投（selectPending 只取 PENDING）——等待 5s 复核:
+id	status	retry_count
+12	HALTED	8
+6) 人工重放 HALTED 行 outboxId=12（POST /internal/execution/ops/replay-outbox）:
+{"msg":"重放已入队","code":200,"data":"344ecd07-e9d8-4841-b649-663b697a9c04"}
+7) 重放行投递结果 + planning 消费 + ops_audit 留痕:
+id	event_id	event_type	status	replayed_from
+13	344ecd07-e9d8-4841-b649-663b697a9c04	resource.status.changed	PUBLISHED	c5abde87-b144-48ea-afac-9499d00ca221
+12	c5abde87-b144-48ea-afac-9499d00ca221	resource.status.changed	HALTED	NULL
+id	event_type	aggregate_id	outcome
+11	resource.status.changed	9741	APPLIED
+id	action	operator	result
+1	REPLAY_OUTBOX	admin	OK

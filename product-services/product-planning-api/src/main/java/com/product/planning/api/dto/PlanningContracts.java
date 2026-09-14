@@ -184,4 +184,95 @@ public final class PlanningContracts {
             this.blocking = blocking;
         }
     }
+
+    /** 按任务 ID 批量取任务运行时请求（taskIds 非空必填、去重、上限 1000；Phase 5）。 */
+    public static class TaskRuntimeRequest implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        public static final int MAX_IDS = 1000;
+
+        private List<Long> taskIds;
+
+        public TaskRuntimeRequest() {
+        }
+
+        public TaskRuntimeRequest(List<Long> taskIds) {
+            this.taskIds = taskIds;
+        }
+
+        public List<Long> getTaskIds() {
+            return taskIds;
+        }
+
+        public void setTaskIds(List<Long> taskIds) {
+            this.taskIds = taskIds;
+        }
+    }
+
+    /**
+     * 工序任务运行时只读视图（Phase 5，任务事件登记用；非持久化模型）。
+     * machineId 为该任务派工主行机台（单体 TaskEventServiceImpl.loadMachineIdByTaskId
+     * 同源语义：取 limit 1 的派工行 machine_id，无派工为 null）。
+     */
+    public static class TaskRuntimeDTO implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        private Long taskId;
+
+        private Long batchId;
+
+        private Long machineId;
+
+        private String status;
+
+        public Long getTaskId() {
+            return taskId;
+        }
+
+        public void setTaskId(Long taskId) {
+            this.taskId = taskId;
+        }
+
+        public Long getBatchId() {
+            return batchId;
+        }
+
+        public void setBatchId(Long batchId) {
+            this.batchId = batchId;
+        }
+
+        public Long getMachineId() {
+            return machineId;
+        }
+
+        public void setMachineId(Long machineId) {
+            this.machineId = machineId;
+        }
+
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
+    }
+
+    /** 按任务 ID 批量取任务运行时响应（runtimes 仅包含存在的任务）。 */
+    public static class TaskRuntimeResponse implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        private List<TaskRuntimeDTO> runtimes;
+
+        public List<TaskRuntimeDTO> getRuntimes() {
+            return runtimes;
+        }
+
+        public void setRuntimes(List<TaskRuntimeDTO> runtimes) {
+            this.runtimes = runtimes;
+        }
+    }
 }

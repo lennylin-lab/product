@@ -44,6 +44,15 @@ spring:
       password: ${SPRING_DATA_REDIS_PASSWORD:123456}
       database: ${SPRING_DATA_REDIS_DATABASE:0}
       timeout: ${SPRING_DATA_REDIS_TIMEOUT:10000ms}
+  # RabbitMQ（compose.dev.yml 既有实例，ADR-0004）：本服务消费 execution.events
+  # （task.status.changed / resource.status.changed），生产 batch.progress.changed（Outbox 出站）
+  rabbitmq:
+    host: ${RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_AMQP_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    publisher-confirm-type: correlated
 
 # MyBatis-Plus（与单体 mybatis 配置项一致；分页 maxLimit=100/overflow=true 见 MybatisPlusConfig）
 mybatis-plus:
@@ -100,6 +109,33 @@ product:
     token-url: ${PLANNING_SERVICE_IDENTITY_TOKEN_URL:http://127.0.0.1:8101/internal/identity/service-token}
     username: ${PLANNING_SERVICE_IDENTITY_USERNAME:planning_svc}
     password: ${PLANNING_SERVICE_IDENTITY_PASSWORD:planning-svc-dev-pwd}
+  # 事件一致性基础设施（Phase 5，ADR-0004）：消费队列 product-planning.execution
+  # （{consumer-service}.{event-domain}，ADR-0004 §5 命名规范）；死信审计队列同款后缀 .dlq。
+  # 离线单测不设置 enabled（骨架/单测无 Rabbit 依赖）
+  messaging:
+    enabled: ${PLANNING_MESSAGING_ENABLED:true}
+    producer: product-planning
+    exchange: planning.events
+    dead-letter-queue: product-planning.execution.dlq
+    dead-letter-replay-exchange: execution.events
+    relay:
+      enabled: true
+    consumer:
+      max-attempts: 3
+      initial-interval-ms: 500
+      multiplier: 2.0
+      max-interval-ms: 5000
+    queues:
+      - queue: product-planning.execution
+        exchange: execution.events
+        routing-keys:
+          - task.status.changed
+          - resource.status.changed
+  # 计划域状态对账（batch.status = aggregate(task.status)，漂移自动修复 + ops_audit 留痕）
+  planning:
+    recon:
+      interval-ms: ${PLANNING_RECON_INTERVAL_MS:60000}
+      initial-delay-ms: ${PLANNING_RECON_INITIAL_DELAY_MS:15000}
 
 logging:
   level:

@@ -12,7 +12,9 @@
     <artifactId>product-execution</artifactId>
 
     <name>product-execution</name>
-    <description>product-execution: 执行域服务骨架（任务执行事件、资源状态事件、现场追溯；ADR-0002）</description>
+    <description>product-execution: 执行域服务（任务/资源状态事件、现场追溯；ADR-0002）。
+        Phase 5：/execute/event 契约与单体一致，任务事件经 Outbox + RabbitMQ 发布（ADR-0004），
+        任务/批次/订单状态推进改由 Planning/Demand 消费事件各自完成。</description>
 
     <dependencies>
         <dependency>
@@ -47,12 +49,64 @@
             <groupId>com.product</groupId>
             <artifactId>product-cloud-common</artifactId>
         </dependency>
-        <!-- 认证基线：本地验签安全链（ADR-0003：服务端两层校验的服务侧，
-             直连服务端口必须携带有效签名 JWT；servlet 安全链由 cloud-security 自动装配） -->
+        <!-- 认证基线：本地验签安全链（ADR-0003：直连服务端口必须携带有效签名 JWT） -->
         <dependency>
             <groupId>com.product</groupId>
             <artifactId>product-cloud-security</artifactId>
         </dependency>
+        <!-- 事件一致性基础设施（Phase 5，ADR-0004）：Outbox/publisher confirm/幂等去重/DLX 审计 -->
+        <dependency>
+            <groupId>com.product</groupId>
+            <artifactId>product-cloud-messaging</artifactId>
+        </dependency>
+
+        <!-- 跨域只读契约（ADR-0002 决策 5 / ADR-0004 §1）：任务事件登记前经 planning 契约
+             读取任务运行时（存在性/派工机台），替代单体进程内跨模块查询 task_assignment -->
+        <dependency>
+            <groupId>com.product</groupId>
+            <artifactId>product-planning-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+        </dependency>
+
+        <!-- 数据访问：execution_db 独立数据源（ADR-0005 database per service） -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-jsqlparser</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+        </dependency>
+
+        <!-- RabbitMQ（spring.rabbitmq.*，compose.dev.yml 既有实例；ADR-0004） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+
+        <!-- Excel 导入导出（/execute/event /export /importTemplate /importData，单体忠实移植） -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

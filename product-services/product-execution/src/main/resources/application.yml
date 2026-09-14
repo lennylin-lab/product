@@ -16,6 +16,40 @@ spring:
         group: PRODUCT_GROUP
       config:
         namespace: ${NACOS_NAMESPACE:dev}
+    # Feign 契约超时（design.md §4：明确超时、禁止无界重试；key 为 @FeignClient contextId）。
+    # 重试维持 OpenFeign 默认 Retryer.NEVER_RETRY；任务运行时为只读单次调用，
+    # 不可达/超时由 TaskEventServiceImpl fail-closed（命令失败，不静默放行）。
+    openfeign:
+      client:
+        config:
+          planningTaskRuntimeClient:
+            connect-timeout: 2000
+            read-timeout: 3000
+  # 数据源：execution_db（ADR-0005 database per service；独立最小权限账号 execution_svc，
+  # 仅 execution_db 的 DML 权限，见 db/init/execution_schema.sql）
+  datasource:
+    url: jdbc:mysql://${EXECUTION_DB_HOST:127.0.0.1}:${EXECUTION_DB_PORT:33066}/execution_db?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Taipei&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${EXECUTION_DB_USERNAME:execution_svc}
+    password: ${EXECUTION_DB_PASSWORD:execution-dev-pwd}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  # RabbitMQ（compose.dev.yml 既有实例，ADR-0004）：publisher confirm 用于 Outbox
+  # 投递确认（OutboxRelay：confirm 成功才标 PUBLISHED）
+  rabbitmq:
+    host: ${RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_AMQP_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    publisher-confirm-type: correlated
+
+# MyBatis-Plus（与单体 mybatis 配置项一致；分页 maxLimit=100/overflow=true 见 MybatisPlusConfig）
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.product.execution.domain.entity
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
 
 # ---- 可观测性基线（健康检查 liveness/readiness、Prometheus 指标） ----
 management:
@@ -27,13 +61,41 @@ management:
     health:
       probes:
         enabled: true
-  # 追踪基线：W3C 传播由 micrometer-tracing-otel 桥接默认启用；开发期全量采样，
-  # 生产采样率与 OTLP 导出（collector）在统一切换前（Phase 6）接入。
   tracing:
     sampling:
       probability: 1.0
 
+# ---- OpenAPI 基线 ----
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+
+# 服务安全基线：本地验签（ADR-0003：直连端口必须携带有效签名 token）
 product:
-  skeleton:
-    config-marker: local-default
-    shared-marker: local-default
+  security:
+    enabled: true
+    header: Authorization
+    jwks-uri: ${PRODUCT_SECURITY_JWKS_URI:http://127.0.0.1:8101/jwks}
+  # 事件一致性基础设施（Phase 5，ADR-0004）：本服务为生产者（execution.events：
+  # task.status.changed / resource.status.changed），无消费队列
+  messaging:
+    enabled: true
+    producer: product-execution
+    exchange: execution.events
+    relay:
+      enabled: ${EXECUTION_MESSAGING_RELAY_ENABLED:true}
+      poll-interval-ms: ${EXECUTION_MESSAGING_POLL_MS:1000}
+      batch-size: 100
+      confirm-timeout-ms: 5000
+      max-attempts: 8
+      backoff-initial-ms: 1000
+      backoff-multiplier: 2.0
+      backoff-max-ms: 300000
+
+logging:
+  level:
+    com.product: info

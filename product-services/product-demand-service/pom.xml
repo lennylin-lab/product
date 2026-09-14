@@ -59,6 +59,16 @@
             <groupId>com.product</groupId>
             <artifactId>product-cloud-security</artifactId>
         </dependency>
+        <!-- 事件一致性基础设施（Phase 5，ADR-0004）：消费 batch.progress.changed 推进
+             订单行/订单状态；order_line.progress.changed 经 Outbox 出站；死信审计与人工重放 -->
+        <dependency>
+            <groupId>com.product</groupId>
+            <artifactId>product-cloud-messaging</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
 
         <!-- 主数据服务契约（ADR-0002 决策 5）：订单行 product_id 跨域引用校验经
              MasterDataBatchQueryApi（OpenFeign, name=product-master-data）调用 master-data，
