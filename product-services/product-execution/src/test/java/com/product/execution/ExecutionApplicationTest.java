@@ -17,7 +17,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {
         "spring.cloud.nacos.discovery.enabled=false",
         "spring.cloud.nacos.config.enabled=false",
-        "spring.cloud.service-registry.auto-registration.enabled=false"
+        "spring.cloud.service-registry.auto-registration.enabled=false",
+        // 离线单测关闭本地验签安全链（无 JWKS 可拉取）；live 环境默认开启（ADR-0003）。
+        // cloud-security 引入 spring-security-web/config 后，还需排除 Boot 默认 servlet 安全链，
+        // 否则 @ConditionalOnDefaultWebSecurity 的兜底链会对 /skeleton/info 返回 401。
+        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration,org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration,org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration",
+        "product.security.enabled=false"
 })
 @AutoConfigureMockMvc
 class ExecutionApplicationTest {

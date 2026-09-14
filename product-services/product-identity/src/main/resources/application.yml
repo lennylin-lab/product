@@ -16,6 +16,66 @@ spring:
         group: PRODUCT_GROUP
       config:
         namespace: ${NACOS_NAMESPACE:dev}
+  # i18n（与单体 spring.messages.basename 一致：用户异常消息文本）
+  messages:
+    basename: i18n/messages
+  # 数据源：identity_db（ADR-0005 database per service；独立最小权限账号）
+  datasource:
+    url: jdbc:mysql://${IDENTITY_DB_HOST:127.0.0.1}:${IDENTITY_DB_PORT:33066}/identity_db?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Taipei&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${IDENTITY_DB_USERNAME:identity_svc}
+    password: ${IDENTITY_DB_PASSWORD:identity-dev-pwd}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  # 缓存：与单体同一 Redis 实例，key 前缀 identity:（ADR-0005 §4 命名空间隔离）
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:127.0.0.1}
+      port: ${SPRING_DATA_REDIS_PORT:6380}
+      password: ${SPRING_DATA_REDIS_PASSWORD:123456}
+      database: ${SPRING_DATA_REDIS_DATABASE:0}
+      timeout: ${SPRING_DATA_REDIS_TIMEOUT:10000ms}
+  # 头像上传（与单体 multipart 上限一致）
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 20MB
+
+# 登录密码重试限制（与单体 user.password 配置一致）
+user:
+  password:
+    maxRetryCount: 10
+    lockTime: 10
+
+# MyBatis-Plus（与单体 mybatis 配置项一致）
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.product.identity.domain.entity
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+
+# 服务业务配置
+product:
+  # 验证码类型（与单体 product.captchaType 一致：math 数学运算式）
+  captcha-type: ${PRODUCT_CAPTCHA_TYPE:math}
+  profile: ${PRODUCT_PROFILE:./uploadPath}
+  address-enabled: false
+  identity:
+    jwt:
+      # 令牌有效期（与单体 token.expireTime 一致：300 分钟，baselines.md §1.1）
+      expire-minutes: 300
+      # RS256 签名私钥（PEM/PKCS#8）。生产必须环境注入；留空时生成临时开发密钥（重启后 token 失效）。
+      private-key: ${IDENTITY_JWT_PRIVATE_KEY:}
+      # 轮换窗口公钥（PEM/X.509，可选）：与当前公钥一并发布于 /jwks（ADR-0003 决策 3）
+      previous-public-key: ${IDENTITY_JWT_PREVIOUS_PUBLIC_KEY:}
+  security:
+    # 本地验签（ADR-0003 决策 4：服务端两层校验的服务侧；直连端口必须携带有效签名 token）
+    enabled: true
+    header: Authorization
+    # 公钥来源：Identity 自身 JWKS 端点
+    jwks-uri: ${PRODUCT_SECURITY_JWKS_URI:http://127.0.0.1:8101/jwks}
+    # 基线匿名端点（/login、/register、/captchaImage、/jwks、swagger、健康检查）已在
+    # product-cloud-security 内建，无需额外配置；/register 冻结为不存在（无 handler）。
 
 # ---- 可观测性基线（健康检查 liveness/readiness、Prometheus 指标） ----
 management:
@@ -27,13 +87,19 @@ management:
     health:
       probes:
         enabled: true
-  # 追踪基线：W3C 传播由 micrometer-tracing-otel 桥接默认启用；开发期全量采样，
-  # 生产采样率与 OTLP 导出（collector）在统一切换前（Phase 6）接入。
   tracing:
     sampling:
       probability: 1.0
 
-product:
-  skeleton:
-    config-marker: local-default
-    shared-marker: local-default
+# ---- OpenAPI 基线 ----
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+
+logging:
+  level:
+    com.product: info

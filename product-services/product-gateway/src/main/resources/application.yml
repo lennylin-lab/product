@@ -4,6 +4,13 @@ server:
 spring:
   application:
     name: product-gateway
+  # 网关自带 JWT 前置校验（JwtAuthGlobalFilter），排除 Boot 默认 Reactive Security
+  # （否则默认链先于网关路由生效：全部请求 401、/login 被替换为自动生成登录页，ADR-0003 网关侧语义被破坏）
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.reactive.ReactiveSecurityAutoConfiguration
+      - org.springframework.boot.autoconfigure.security.reactive.ReactiveUserDetailsServiceAutoConfiguration
+      - org.springframework.boot.actuate.autoconfigure.security.reactive.ReactiveManagementWebSecurityAutoConfiguration
   config:
     import:
       - optional:nacos:product-common.yml?group=PRODUCT_COMMON
@@ -19,11 +26,29 @@ spring:
     gateway:
       server:
         webflux:
+          # CORS（对照单体 ResourcesConfig CorsFilter：originPattern */header */method *、maxAge 1800）
+          globalcors:
+            add-to-simple-url-handler-mapping: true
+            cors-configurations:
+              '[/**]':
+                allowedOriginPatterns: "*"
+                allowedHeaders: "*"
+                allowedMethods: "*"
+                maxAge: 1800
           routes:
+            # ---- Identity 正式路由（Phase 2）：外部 API 路径与单体保持一致（不剥离前缀）----
+            # 匿名端点 /login、/captchaImage、/jwks 与受保护端点共用同一组路由，
+            # 鉴权由 JWT 前置校验全局过滤器按 permitPaths 处理（ADR-0003）。
+            - id: identity-auth
+              uri: lb://product-identity
+              predicates:
+                - Path=/login,/register,/captchaImage,/jwks,/getInfo,/getRouters
+            - id: identity-system
+              uri: lb://product-identity
+              predicates:
+                - Path=/system/user/**,/system/menu/**,/system/dict/**
             # ---- Phase 1 骨架冒烟路由（StripPrefix=1，服务本地路径以 / 开头）----
-            # 说明：这些是按服务名的前缀占位路由，用于验证「经 Gateway 路由可达」。
-            # 保持现有外部 API 路径（/system/**、/master/**、/pps/**、/execute/**、/login 等）
-            # 的正式路由与权限前置在 Phase 2/3 落地（见 implement.md）。
+            # 未迁移服务（Phase 3-5）继续使用前缀占位路由；经网关访问同样需要有效 JWT。
             - id: identity
               uri: lb://product-identity
               predicates:
@@ -87,7 +112,18 @@ springdoc:
       - name: execution
         url: /execution/v3/api-docs
 
+# ---- JWT 前置校验与 Sentinel 网关流控（ADR-0003；Phase 2） ----
 product:
   skeleton:
     config-marker: local-default
     shared-marker: local-default
+  gateway:
+    header: Authorization
+    jwks-uri: ${PRODUCT_SECURITY_JWKS_URI:http://127.0.0.1:8101/jwks}
+    auth-enabled: true
+    # Sentinel 网关流控：routeId -> QPS（进程级规则；Nacos 持久化随 Phase 3+）
+    sentinel:
+      routes:
+        identity-auth: ${GATEWAY_IDENTITY_AUTH_QPS:200}
+        identity-system: ${GATEWAY_IDENTITY_SYSTEM_QPS:200}
+

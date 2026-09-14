@@ -123,7 +123,8 @@ Tests: the observability smoke check per phase asserts
 ## product-services code conventions (differ from monolith)
 
 - Use **constructor injection** for new platform code (monolith legacy uses `@Autowired` field
-  injection; do not copy that style into `product-services`).
+  injection; do not copy that style into `product-services`). Exception: classes ported
+  byte-faithfully from the monolith keep their original style — contract fidelity wins there.
 - Service skeletons carry a `@SpringBootTest` + MockMvc smoke test per module
   (`ApplicationTests`), runnable offline with Nacos disabled; keep them green in CI
   (`.github/workflows/build.yml` runs `mvn -B -ntp package` for all modules).
@@ -133,3 +134,40 @@ Tests: the observability smoke check per phase asserts
   is byte-compatible with the monolith contract documented in
   [error-handling.md](./error-handling.md); validation-error and AccessDenied messages must stay
   identical so frontend behavior is unchanged across the migration.
+
+---
+
+## Per-service migration recipe (established in Phase 2, identity)
+
+Every monolith domain migrated into `product-services/<service>` must include:
+
+1. **Security wiring**: `product-cloud-security` dependency. The auto-config is
+   secure-by-default (`product.security.enabled` conditional). Tests that must run offline opt
+   out with `product.security.enabled=false` PLUS
+   `spring.autoconfigure.exclude` of `SecurityAutoConfiguration`,
+   `SecurityFilterAutoConfiguration`, `UserDetailsServiceAutoConfiguration`,
+   `ManagementWebSecurityAutoConfiguration` — otherwise Boot's default servlet security chain
+   401s every MockMvc request.
+2. **Direct-port protection test**: one `*DirectPortSecurityTest` per service asserting
+   `GET /skeleton/info` without a token returns the byte-exact monolith 401 body
+   (`{"msg":"请求访问：/skeleton/info，认证失败，无法访问系统资源","code":401}`).
+   This is the anti-spoofing guarantee: no client can bypass the gateway.
+3. **SQL exception handling**: port the monolith's
+   `@ExceptionHandler({SQLException, DataAccessException, PersistenceException,
+   MyBatisSystemException})` + `getSqlErrorMessage` into the SERVICE module (see identity's
+   `GlobalSqlExceptionHandler`), not cloud-common — the mybatis/spring-tx class literals in
+   `@ExceptionHandler` crash startup of DB-less modules (same introspection-failure class as
+   the filter-name gotcha above). Messages must be byte-identical to the monolith handler
+   (duplicate entry → `数据已存在，请检查重复数据`, etc.).
+4. **Schema init script** (`src/main/resources/db/init/<service>_schema.sql`): DDL must be
+   byte-verbatim from root `schema.sql` INCLUDING the `AUTO_INCREMENT=N` table options;
+   `CREATE DATABASE/USER IF NOT EXISTS` + `DROP TABLE IF EXISTS` reset semantics;
+   dedicated per-service account with DML-only grants on its own database, nothing else.
+   Any env var the script or `application.yml` references must exist in `.env.example`.
+5. **Redis namespace**: key prefix `<service>:` (identity: `identity:captcha_codes:` etc.),
+   shared Redis instance (ADR-0005 §4).
+
+Warning learned twice now: record numbers in the task's implement.md execution record
+(test counts, wiring claims, diff bookkeeping) MUST come from a clean `mvn clean test` run
+and committed scripts — stale target/ reports and edit scripts that print success without
+verifying have produced false records in Phases 1–2.

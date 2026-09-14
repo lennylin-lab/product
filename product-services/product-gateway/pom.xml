@@ -70,6 +70,12 @@
             <groupId>com.product</groupId>
             <artifactId>product-cloud-common</artifactId>
         </dependency>
+        <!-- JWT 本地验签核心（JwksKeyHolder/JwtVerifier；servlet 安全链对 WebFlux 不生效，ADR-0003） -->
+        <dependency>
+            <groupId>com.product</groupId>
+            <artifactId>product-cloud-security</artifactId>
+        </dependency>
+        <!-- Micrometer Tracer（网关错误响应回写 X-Trace-Id 用） -->
 
         <!-- 测试 -->
         <dependency>

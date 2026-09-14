@@ -87,12 +87,16 @@ public class GlobalServiceExceptionHandler {
     }
 
     /**
-     * 静态资源/路径不存在
+     * 静态资源/路径不存在。
+     *
+     * <p>Phase 2 契约修正：单体 GlobalExceptionHandler 无 NoResourceFoundException 专属映射，
+     * 落入 Exception 兜底 → HTTP 200 + code 500 + e.getMessage()（如 "No static resource xxx."）。
+     * 这里按单体语义对齐（Phase 1 曾映射为 404 中文提示，与单体不一致，随真实端点迁移一并纠正）。</p>
      */
     @ExceptionHandler(NoResourceFoundException.class)
     public AjaxResult handleNoResourceFound(NoResourceFoundException e, HttpServletRequest request) {
         log.error("请求地址'{}',资源不存在.", request.getRequestURI());
-        return AjaxResult.error(ApiStatus.NOT_FOUND, "请求资源不存在");
+        return AjaxResult.error(e.getMessage());
     }
 
     /**

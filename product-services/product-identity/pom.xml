@@ -12,7 +12,7 @@
     <artifactId>product-identity</artifactId>
 
     <name>product-identity</name>
-    <description>product-identity: 认证与用户域服务骨架（登录、验证码、用户/角色/菜单/字典/权限；ADR-0002）</description>
+    <description>product-identity: 认证与用户域服务（登录、验证码、JWT RS256 签发/JWKS、用户/角色/菜单/字典；ADR-0002/0003）</description>
 
     <dependencies>
         <dependency>
@@ -22,6 +22,17 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- 认证基线：本地验签安全链、@ss 权限、PrincipalUser（ADR-0003） -->
+        <dependency>
+            <groupId>com.product</groupId>
+            <artifactId>product-cloud-security</artifactId>
+        </dependency>
+        <!-- 统一错误契约与请求上下文（cloud-security 传递依赖，显式声明便于直接使用） -->
+        <dependency>
+            <groupId>com.product</groupId>
+            <artifactId>product-cloud-common</artifactId>
         </dependency>
 
         <!-- 注册中心与配置中心 -->
@@ -34,7 +45,57 @@
             <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
         </dependency>
 
-        <!-- 可观测性基线：Prometheus 指标 + Micrometer Tracing（W3C 传播，traceId 进 MDC） -->
+        <!-- 数据访问：MyBatis-Plus（版本由根 POM 管理，与单体一致）；identity_db 独立数据源（ADR-0005） -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-jsqlparser</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+        </dependency>
+
+        <!-- 缓存：Redis（验证码/密码重试/字典缓存），identity: key 前缀命名空间（ADR-0005 §4） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- 验证码（与单体同坐标 pro.fessional:kaptcha，版本由根 POM 管理） -->
+        <dependency>
+            <groupId>pro.fessional</groupId>
+            <artifactId>kaptcha</artifactId>
+        </dependency>
+
+        <!-- 登录设备信息解析（与单体同坐标 UserAgentUtils，版本由根 POM 管理） -->
+        <dependency>
+            <groupId>eu.bitwalker</groupId>
+            <artifactId>UserAgentUtils</artifactId>
+        </dependency>
+
+        <!-- Excel 导出（字典类型/字典数据导出端点；版本由根 POM 管理） -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+        </dependency>
+
+        <!-- FileUploadUtils（头像上传）使用的 commons-io（版本由根 POM 管理） -->
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+        </dependency>
+
+        <!-- DictUtils 兼容单体 Redis 反序列化分支使用的 JSON 工具（版本由根 POM 管理） -->
+        <dependency>
+            <groupId>com.alibaba.fastjson2</groupId>
+            <artifactId>fastjson2</artifactId>
+        </dependency>
+
+        <!-- 可观测性基线 -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
@@ -44,16 +105,16 @@
             <artifactId>micrometer-tracing-bridge-otel</artifactId>
         </dependency>
 
-        <!-- OpenAPI 基线：每服务发布 /v3/api-docs，由网关聚合 -->
+        <!-- OpenAPI 基线 -->
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
         </dependency>
 
-        <!-- 共享基础库：统一错误契约、请求上下文、日志基线 -->
         <dependency>
-            <groupId>com.product</groupId>
-            <artifactId>product-cloud-common</artifactId>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
         </dependency>
 
         <!-- 测试 -->

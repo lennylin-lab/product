@@ -14,6 +14,7 @@
 | product-planning | `product-planning` | 8104 | 批次/工序任务/资源需求/派工/排程（Phase 4 迁移） |
 | product-execution | `product-execution` | 8105 | 任务/资源状态事件、现场追溯（Phase 5 迁移） |
 | product-cloud-common | （库，不部署） | — | 统一错误契约、请求上下文、日志基线（SERVLET 条件装配，WebFlux 网关自动跳过） |
+| product-cloud-security | （库，不部署） | — | JWT RS256 验签核心 + JWKS + 服务端本地验签安全链 + @ss 权限（ADR-0003；SERVLET 条件装配，网关只复用纯 Java 验签核心） |
 
 > 命名说明：demand 的 Maven 模块叫 `product-demand-service`（避免与旧业务模块 `product-demand` 坐标冲突），
 > Nacos 注册名与配置 Data ID 仍用目标服务名 `product-demand`。
@@ -75,6 +76,22 @@
     属 Phase 2 网关错误契约范围。
 - 骨架阶段不配置 span 导出器（无 OTLP collector，不产生导出报错）；collector 接入在统一切换前（Phase 6）完成。
   开发期采样率 `management.tracing.sampling.probability=1.0`。
+
+## 认证基线（Phase 2，ADR-0003）
+
+- Identity 签发 RS256 JWT（jjwt 0.12.6），`GET /jwks` 匿名发布公钥（kid=公钥模组 SHA-256 指纹前 16 hex）。
+  私钥经 `IDENTITY_JWT_PRIVATE_KEY`（PEM/PKCS#8）注入；未注入时生成临时开发密钥（重启后 token 失效）。
+  `IDENTITY_JWT_PREVIOUS_PUBLIC_KEY` 发布轮换窗口公钥，新旧 kid 并存，仅当前密钥签名。
+- 两层校验：网关 `JwtAuthGlobalFilter` 前置验签（permitAll 对照单体 SecurityConfig），服务端
+  `JwtAuthenticationFilter` 本地验签重建 SecurityContext；`@PreAuthorize("@ss.hasPermi(...)")` 与单体同语义。
+- 防伪：服务只信任验签 token，不读明文内部头；网关入口强制剥离 X-User-Id/X-User-Name/X-User-Account/
+  X-User-Permissions/X-Internal-Client；直连服务端口必须携带有效签名 token（`product.security.enabled` 默认开启，
+  离线单测显式关闭；网关已排除 Boot 默认 Reactive Security，避免默认链抢先 401）。
+- 错误体：401（网关与服务）与 404/503（网关非代理错误）、429（Sentinel 限流）均为统一 {msg,code} JSON + X-Trace-Id；
+  401 文案与单体 AuthenticationEntryPointImpl 逐字节一致。
+- 身份库：identity_db（独立 database）+ 账号 identity_svc（仅 DML 权限）；初始化脚本
+  `product-identity/src/main/resources/db/init/identity_schema.sql` 可重复执行（重复执行=重置为种子状态）。
+- 缓存：identity 沿用 Redis，key 前缀 `identity:`（`identity:captcha_codes:` 等，ADR-0005 §4 命名空间隔离）。
 
 ## 统一错误契约与请求上下文（product-cloud-common）
 

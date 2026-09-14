@@ -18,6 +18,7 @@
 
     <modules>
         <module>product-cloud-common</module>
+        <module>product-cloud-security</module>
         <module>product-gateway</module>
         <module>product-identity</module>
         <module>product-master-data</module>
@@ -36,6 +37,11 @@
             <dependency>
                 <groupId>com.product</groupId>
                 <artifactId>product-cloud-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.product</groupId>
+                <artifactId>product-cloud-security</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>
