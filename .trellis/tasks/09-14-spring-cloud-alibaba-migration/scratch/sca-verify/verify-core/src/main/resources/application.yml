@@ -1,0 +1,18 @@
+server:
+  port: 18081
+
+spring:
+  application:
+    name: verify-core
+  config:
+    import: optional:nacos:verify-core.properties
+  cloud:
+    nacos:
+      server-addr: 127.0.0.1:8848
+      config:
+        file-extension: properties
+  rabbitmq:
+    host: 127.0.0.1
+    port: 35672
+    username: guest
+    password: guest

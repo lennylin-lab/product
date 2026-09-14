@@ -1,0 +1,17 @@
+server:
+  port: 18080
+
+spring:
+  application:
+    name: verify-gateway
+  cloud:
+    nacos:
+      server-addr: 127.0.0.1:8848
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: provider
+              uri: lb://verify-provider
+              predicates:
+                - Path=/provider/**

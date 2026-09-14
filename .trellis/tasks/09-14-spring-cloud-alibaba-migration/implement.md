@@ -1,20 +1,25 @@
 # Implementation Plan
 
-> 本文是后续实施计划。本任务当前只完成规划并推进状态，不执行以下代码变更。
+> 本文是本任务进入 `in_progress` 后的实施计划。任务创建与规划审核会话不执行代码变更，后续会话按以下阶段实施、验证和审核。
 
 ## Phase 0: Architecture Gate
 
-- 进入条件: 本规划经用户最终批准；产品代码相对规划任务开始前无变更（AC8）。
-
-- [ ] 根据官方兼容矩阵选定 Spring Boot、Spring Cloud、Spring Cloud Alibaba 与 JDK 组合，并用空白最小应用验证 Nacos Discovery/Config、Gateway、Feign、Sentinel 和 Spring AMQP/RabbitMQ 可启动。
-- [ ] 建立 Architecture Decision Records：服务边界、JWT/JWK、事件一致性、数据库隔离、版本基线。
-- [ ] 冻结外部 API 基线、数据库基线和核心 E2E 用例。
+- [x] 根据官方兼容矩阵选定 Spring Boot、Spring Cloud、Spring Cloud Alibaba 与 JDK 组合，并用空白最小应用验证 Nacos Discovery/Config、Gateway、Feign、Sentinel 和 Spring AMQP/RabbitMQ 可启动。
+- [x] 建立 Architecture Decision Records：服务边界、JWT/JWK、事件一致性、数据库隔离、版本基线。
+- [x] 冻结外部 API 基线、数据库基线和核心 E2E 用例。
 - Validation: BOM 依赖树无冲突；最小应用启动测试通过；ADR 和契约基线评审通过。
 - Rollback point: 不修改业务模块；版本组合不兼容时调整基线后重测。
 
+### Phase 0 执行记录（2026-09-14）
+
+- 选定基线：JDK 17 / Spring Boot 3.5.16 / Spring Cloud 2025.0.3 / Spring Cloud Alibaba 2025.0.0.0 / Nacos Server 3.0.x（详见 `adr/0001-version-baseline.md`）。依据：SCA 官方分支对照表（2025.0.x ↔ SC 2025.0.x ↔ Boot 3.5.x，JDK 17+）与 Maven Central 最新补丁。
+- 实际验证（本机真实执行）：最小应用 `scratch/sca-verify/` 三模块 BUILD SUCCESS；verbose 依赖树 0 冲突；Nacos v3.0.3 + RabbitMQ 3.13 容器实机启动，三服务注册成功、Nacos Config 远程属性生效、Feign 经注册中心调用成功、Sentinel QPS 流控生效、AMQP 收发成功、Gateway `lb://` 路由成功（步骤与断言见 `scratch/sca-verify/README.md`）。
+- 产出：`adr/0001`~`0005`、`baselines.md`（API/数据库/E2E 基线）。
+- 遗留/待评审：① ADR 与基线文档的"评审通过"尚待用户/主会话确认；② 项目 Boot 补丁版本 3.5.0 → 3.5.16 的升级动作留待 Phase 1 父 POM 重组；③ `/logout` 与 `/register` 现状未实现，已在 baselines.md 冻结为"不存在"。
+
 ## Phase 1: Platform Skeleton
 
-- [ ] 重组父 POM 与公共依赖管理，创建 Gateway 与五个业务服务（identity、master-data、demand、planning、execution）共六个启动骨架。
+- [ ] 重组父 POM 与公共依赖管理，创建 Gateway 和六个服务启动骨架。
 - [ ] 建立 Nacos namespace/group/Data ID 规范和本地 Compose 基础设施。
 - [ ] 建立统一错误契约、请求上下文、OpenAPI、健康检查、日志、指标和追踪基线。
 - [ ] 建立 CI 构建、镜像和服务级测试框架。
