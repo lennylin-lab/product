@@ -90,3 +90,32 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 5: Spring Cloud Alibaba 微服务化改造：Phase 0–6 全程实施与验收
+<!-- trellis-session: v=2 fp=64013aba5f02c507 -->
+
+**Date**: 2026-09-15
+**Task**: Spring Cloud Alibaba 微服务化改造：Phase 0–6 全程实施与验收
+**Branch**: `master`
+
+### Summary
+
+完成单体到 SCA 微服务的七阶段迁移：版本基线与 ADR（JDK17/Boot3.5.16/SC2025.0.3/SCA2025.0.0.0/Nacos3.0.3）；平台骨架（网关+5 服务+公共库+CI）；Identity（RS256+JWKS、契约逐字节兼容）；主数据/需求域（demand→pps 解耦、Feign 批量契约、版本化快照）；排程域（37 单测全量迁移、对拍逐字段一致、漂移守卫/互斥/超时）；执行域与事件（Outbox/幂等/重试/DLX/对账重放，状态链事件化对拍 10/10）；统一切换验收（E2E 42 断言、安全/故障/容量、备份回滚演练、文档收口）。全程每阶段 trellis-check 独立校验并修复（拦下跨库 JOIN、虚报记录、测试红等 20+ 问题），最终 mvn clean verify 28/28 模块 243 用例全绿。遗留：推送前建议 squash 含演练 JWT 私钥的提交历史；CI 远端首跑待推送确认；生产切换决策待用户。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8d4fb64` | docs(trellis): complete phase 0 architecture gate for sca migration |
+| `40baafb` | feat(services): phase 1 platform skeleton for sca microservices |
+| `8eff448` | feat(identity): phase 2 identity service and gateway security |
+| `4ea022d` | feat(master-data,demand): phase 3 master data and order domain services |
+| `1ea8ca5` | feat(planning): phase 4 planning domain and scheduling parity |
+| `c4cea14` | feat(execution,messaging): phase 5 event consistency backbone |
+| `bc0fa88` | feat(cutover): phase 6 unified cutover and acceptance |
+| `a054770` | chore(security): remove drill JWT private keys from repo, ignore jwt-keys/ |
+
+### Status
+
+[OK] **Completed**
