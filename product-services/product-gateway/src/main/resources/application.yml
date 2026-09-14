@@ -1,0 +1,93 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: product-gateway
+  config:
+    import:
+      - optional:nacos:product-common.yml?group=PRODUCT_COMMON
+      - optional:nacos:product-gateway.yml?group=PRODUCT_GATEWAY
+  cloud:
+    nacos:
+      server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+      discovery:
+        namespace: ${NACOS_NAMESPACE:dev}
+        group: PRODUCT_GROUP
+      config:
+        namespace: ${NACOS_NAMESPACE:dev}
+    gateway:
+      server:
+        webflux:
+          routes:
+            # ---- Phase 1 骨架冒烟路由（StripPrefix=1，服务本地路径以 / 开头）----
+            # 说明：这些是按服务名的前缀占位路由，用于验证「经 Gateway 路由可达」。
+            # 保持现有外部 API 路径（/system/**、/master/**、/pps/**、/execute/**、/login 等）
+            # 的正式路由与权限前置在 Phase 2/3 落地（见 implement.md）。
+            - id: identity
+              uri: lb://product-identity
+              predicates:
+                - Path=/identity/**
+              filters:
+                - StripPrefix=1
+            - id: master-data
+              uri: lb://product-master-data
+              predicates:
+                - Path=/master-data/**
+              filters:
+                - StripPrefix=1
+            - id: demand
+              uri: lb://product-demand
+              predicates:
+                - Path=/demand-svc/**
+              filters:
+                - StripPrefix=1
+            - id: planning
+              uri: lb://product-planning
+              predicates:
+                - Path=/planning/**
+              filters:
+                - StripPrefix=1
+            - id: execution
+              uri: lb://product-execution
+              predicates:
+                - Path=/execution/**
+              filters:
+                - StripPrefix=1
+
+# ---- 可观测性基线（健康检查 liveness/readiness、Prometheus 指标） ----
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,gateway
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  # 追踪基线：W3C 传播由 micrometer-tracing-otel 桥接默认启用；开发期全量采样，
+  # 生产采样率与 OTLP 导出（collector）在统一切换前（Phase 6）接入。
+  tracing:
+    sampling:
+      probability: 1.0
+
+# ---- OpenAPI 聚合基线：各服务 /v3/api-docs 经路由聚合（baselines.md §1.3 显式差异） ----
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: identity
+        url: /identity/v3/api-docs
+      - name: master-data
+        url: /master-data/v3/api-docs
+      - name: demand
+        url: /demand-svc/v3/api-docs
+      - name: planning
+        url: /planning/v3/api-docs
+      - name: execution
+        url: /execution/v3/api-docs
+
+product:
+  skeleton:
+    config-marker: local-default
+    shared-marker: local-default

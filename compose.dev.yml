@@ -1,4 +1,50 @@
 services:
+  nacos:
+    image: nacos/nacos-server:v3.0.3
+    container_name: product-nacos
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Taipei}
+      MODE: standalone
+      # Nacos v3 镜像即使关闭鉴权也要求提供 AUTH_TOKEN/IDENTITY（Phase 0 验证结论）
+      NACOS_AUTH_ENABLE: "false"
+      NACOS_AUTH_TOKEN: ${NACOS_AUTH_TOKEN:-SecretKey012345678901234567890123456789012345678901234567890123456789}
+      NACOS_AUTH_IDENTITY_KEY: ${NACOS_AUTH_IDENTITY_KEY:-serverIdentity}
+      NACOS_AUTH_IDENTITY_VALUE: ${NACOS_AUTH_IDENTITY_VALUE:-product-dev}
+      JVM_XMS: ${NACOS_JVM_XMS:-256m}
+      JVM_XMX: ${NACOS_JVM_XMX:-512m}
+    ports:
+      - "${NACOS_PORT:-8848}:8848"
+      - "${NACOS_GRPC_PORT:-9848}:9848"
+      # v3 控制台运行在容器内 8080；宿主机 8080 留给 product-gateway
+      - "${NACOS_CONSOLE_PORT:-8090}:8080"
+    healthcheck:
+      # Nacos v3：8848 上的 v1/v2 console API 已废弃（410）；readiness 在主端口（容器内 8080）的
+      # /v3/console/health/readiness（Phase 1 实测）
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/v3/console/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: product-rabbitmq
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Taipei}
+    ports:
+      - "${RABBITMQ_AMQP_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15673}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
   mysql:
     image: mysql:8.4
     container_name: product-mysql
@@ -108,3 +154,4 @@ volumes:
   mysql_data:
   redis_data:
   es_data:
+  rabbitmq_data:

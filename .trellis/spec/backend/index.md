@@ -21,6 +21,7 @@ This directory contains guidelines derived from the actual codebase. They docume
 | [Error Handling](./error-handling.md) | ServiceException, GlobalExceptionHandler, AjaxResult | Filled |
 | [Quality Guidelines](./quality-guidelines.md) | Auth, testing, required/forbidden patterns | Filled |
 | [Logging Guidelines](./logging-guidelines.md) | SLF4J, Logback, MDC, log levels | Filled |
+| [Microservices Platform](./microservices-platform.md) | product-services skeleton: versions, filter/trace/Nacos contracts, gotchas | Filled |
 
 ---
 

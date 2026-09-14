@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  product-cloud-common 日志基线（Phase 1 可观测性基线的一部分）。
+
+  各微服务在自己的 logback-spring.xml 中 include 本文件：
+      <include resource="logback/product-cloud-base.xml"/>
+
+  控制台格式与 JSON 文件字段（service.name/service.env/traceId/requestId/clientIp/
+  httpMethod/requestUri）与现有单体的 logback-spring.xml 保持一致，ELK 管线无需改动。
+  appName 从 Spring 环境的 spring.application.name 解析，各服务无需重复配置。
+-->
+<included>
+    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="product-service"/>
+    <springProperty scope="context" name="activeProfile" source="spring.profiles.active" defaultValue="default"/>
+    <springProperty scope="context" name="logPath" source="logging.file.path" defaultValue="./logs"/>
+
+    <property name="CONSOLE_LOG_PATTERN"
+              value="%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr([%X{traceId:-N/A}]){yellow} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx"/>
+
+    <conversionRule conversionWord="clr" class="org.springframework.boot.logging.logback.ColorConverter"/>
+    <conversionRule conversionWord="wex" class="org.springframework.boot.logging.logback.WhitespaceThrowableProxyConverter"/>
+    <conversionRule conversionWord="wEx" class="org.springframework.boot.logging.logback.ExtendedWhitespaceThrowableProxyConverter"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+        </encoder>
+    </appender>
+
+    <!-- APP_FILE: 应用日志文件（JSON，供 ELK/filebeat 采集，字段与单体一致） -->
+    <appender name="APP_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${logPath}/app.json.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${logPath}/app.%d{yyyy-MM-dd}.%i.json.log</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>5GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <providers>
+                <timestamp>
+                    <fieldName>@timestamp</fieldName>
+                    <timeZone>Asia/Taipei</timeZone>
+                </timestamp>
+                <pattern>
+                    <pattern>
+                        {
+                        "service.name":"${appName}",
+                        "service.env":"${activeProfile}",
+                        "log.type":"application",
+                        "level":"%level",
+                        "logger":"%logger",
+                        "thread":"%thread",
+                        "message":"%message",
+                        "traceId":"%X{traceId:-}",
+                        "requestId":"%X{requestId:-}",
+                        "userId":"%X{userId:-}",
+                        "username":"%X{username:-}",
+                        "clientIp":"%X{clientIp:-}",
+                        "httpMethod":"%X{httpMethod:-}",
+                        "requestUri":"%X{requestUri:-}"
+                        }
+                    </pattern>
+                </pattern>
+                <mdc/>
+                <arguments/>
+                <stackTrace>
+                    <fieldName>stack_trace</fieldName>
+                </stackTrace>
+            </providers>
+        </encoder>
+    </appender>
+
+    <!-- ERROR_FILE: 错误日志文件（JSON，仅 ERROR 级别） -->
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${logPath}/error.json.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${logPath}/error.%d{yyyy-MM-dd}.%i.json.log</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>60</maxHistory>
+            <totalSizeCap>5GB</totalSizeCap>
+        </rollingPolicy>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>ERROR</level>
+        </filter>
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <providers>
+                <timestamp>
+                    <fieldName>@timestamp</fieldName>
+                    <timeZone>Asia/Taipei</timeZone>
+                </timestamp>
+                <pattern>
+                    <pattern>
+                        {
+                        "service.name":"${appName}",
+                        "service.env":"${activeProfile}",
+                        "log.type":"error",
+                        "level":"%level",
+                        "logger":"%logger",
+                        "thread":"%thread",
+                        "message":"%message",
+                        "traceId":"%X{traceId:-}",
+                        "requestId":"%X{requestId:-}",
+                        "userId":"%X{userId:-}",
+                        "username":"%X{username:-}",
+                        "clientIp":"%X{clientIp:-}",
+                        "httpMethod":"%X{httpMethod:-}",
+                        "requestUri":"%X{requestUri:-}"
+                        }
+                    </pattern>
+                </pattern>
+                <mdc/>
+                <arguments/>
+                <stackTrace>
+                    <fieldName>stack_trace</fieldName>
+                </stackTrace>
+            </providers>
+        </encoder>
+    </appender>
+
+    <logger name="com.product" level="INFO"/>
+    <logger name="org.springframework" level="INFO"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="APP_FILE"/>
+        <appender-ref ref="ERROR_FILE"/>
+    </root>
+</included>

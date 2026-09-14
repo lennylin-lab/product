@@ -1,0 +1,135 @@
+# Microservices Platform (product-services)
+
+> Conventions and gotchas for the Spring Cloud Alibaba service skeleton introduced in the
+> `09-14-spring-cloud-alibaba-migration` task (Phase 1). Authoritative task-level decisions live in
+> `.trellis/tasks/09-14-spring-cloud-alibaba-migration/adr/` and `product-services/README.md`;
+> this file captures only what future code in this repo must follow.
+
+---
+
+## Version Baseline (locked by ADR-0001)
+
+| Component | Version |
+|-----------|---------|
+| JDK | 17 |
+| Spring Boot | 3.5.16 (property `spring-boot.version` in root pom) |
+| Spring Cloud | 2025.0.3 |
+| Spring Cloud Alibaba | 2025.0.0.0 |
+| Nacos server | 3.0.3 |
+| Sentinel | 1.8.9 (managed by SCA BOM) |
+
+BOM import order in root `pom.xml` is significant: Boot → Spring Cloud → Spring Cloud Alibaba.
+New dependencies for services must come from these BOMs — do not pin ad-hoc versions.
+
+**Gateway starter coordinates** (Boot 3.5 / SC 2025 naming):
+- `spring-cloud-starter-gateway-server-webflux` (NOT the legacy `spring-cloud-starter-gateway`).
+- Sentinel gateway adapter: `com.alibaba.cloud:spring-cloud-alibaba-sentinel-gateway`
+  (the old `sentinel-spring-cloud-gateway-adapter` is NOT managed by the SCA BOM).
+
+---
+
+## Scenario: registering a servlet filter in product-services
+
+### 1. Scope / Trigger
+- Trigger: any `FilterRegistrationBean` in `product-cloud-common` or service modules. Infra integration.
+
+### 2. Signatures
+- `new FilterRegistrationBean<OncePerRequestFilter>(filter)` — the bean name of the
+  registration defaults to the `@Bean` method name; the FILTER chain name defaults to the
+  class-derived name (`requestContextFilter` for `RequestContextFilter`).
+
+### 3. Contracts
+- Custom filter registrations MUST set an explicit, product-prefixed chain name:
+  `registration.setName("productRequestContextFilter")`
+  (see `ProductCloudCommonAutoConfiguration`).
+
+### 4. Validation & Error Matrix
+- Chain name collides with a Boot auto-configured filter name (e.g. `requestContextFilter`,
+  which `WebMvcAutoConfiguration` in Boot 3.5 registers itself) -> duplicate/abstract filter
+  resolution failure: service crashes at real Tomcat startup.
+- MockMvc (`@SpringBootTest` + MockMvc) does NOT go through the servlet filter chain the same
+  way -> this crash is INVISIBLE in MockMvc tests. Only a real boot (fat-jar or
+  `SpringApplicationBuilder`... with real servlet container) catches it.
+
+### 5. Good/Base/Bad Cases
+- Good: `productRequestContextFilter` (explicit, prefixed).
+- Base: Boot-provided filters keep their default names; never re-register them.
+- Bad: relying on the default filter-chain name for a custom filter.
+
+### 6. Tests Required
+- A `@SpringBootTest` smoke test that starts the real web application context (all service
+  modules already have `ApplicationTests`); plus at least one live-boot run per phase that adds
+  filters (real JVM, real Tomcat) before marking a phase validated.
+
+### 7. Wrong vs Correct
+#### Wrong
+```java
+@Bean
+public FilterRegistrationBean<RequestContextFilter> requestContextFilter() { ... } // default name clash
+```
+#### Correct
+```java
+@Bean
+public FilterRegistrationBean<RequestContextFilter> requestContextFilterRegistration(Filter filter) {
+    FilterRegistrationBean<RequestContextFilter> reg = new FilterRegistrationBean<>(filter);
+    reg.setName("productRequestContextFilter");
+    ...
+}
+```
+
+---
+
+## Distributed Tracing
+
+**Rule**: trace propagation is owned by framework-native mechanisms only.
+
+- Services: `RequestContextFilter` (product-cloud-common) resolves `X-Trace-Id` → W3C
+  `traceparent` → generated UUID, and SYNTHESIZES a `traceparent` header when absent so the
+  Micrometer server span, MDC, and the `X-Trace-Id` response header share one traceId. Do not
+  bypass it by writing MDC alone — the server span will overwrite MDC with a fresh traceId and
+  logs/headers will diverge (Phase 1 live-tested failure mode).
+- Gateway: Spring Cloud Gateway's native Micrometer propagation is the ONLY propagation
+  mechanism. Do NOT add a custom global filter that injects `traceparent`/`X-Trace-Id` — a
+  previous `GatewayTraceFilter` produced double traceIds and was deleted. (Phase 1 live-tested.)
+
+Tests: the observability smoke check per phase asserts
+`service JSON log traceId == X-Trace-Id response header == MDC/span traceId`.
+
+---
+
+## Nacos (v3) infra contract
+
+- compose healthcheck MUST use `http://127.0.0.1:8080/v3/console/health/readiness`
+  (container-internal port). The v1 readiness endpoint returns **410 Gone** on Nacos v3 —
+  a v1-based healthcheck makes the container permanently `unhealthy` while running fine.
+- Namespace/group/Data ID conventions: see `product-services/README.md`
+  (namespace `dev`; discovery group `PRODUCT_GROUP`; config `product-common.yml`@`PRODUCT_COMMON`
+  + `product-<service>.yml`@`PRODUCT_<SERVICE>`). New services must follow it, no exceptions.
+- Nacos registration names are the service names used in gateway `lb://` routes; the demand
+  module's Maven artifactId is `product-demand-service` (avoids coordinate clash with the
+  monolith module) while its Nacos name stays `product-demand`.
+
+---
+
+## Environment Gotchas (local dev machine)
+
+> **Warning**: mise default JDK 17.0.2 crashes under cgroup v2
+> (`ProcessorMetrics` — known old-patch JDK bug) when starting actuator-enabled apps.
+> Use temurin 17.0.20+ locally for live runs (`mise use java:temurin-17` or equivalent).
+> CI pins temurin 17 (latest patch) and is unaffected.
+
+---
+
+## product-services code conventions (differ from monolith)
+
+- Use **constructor injection** for new platform code (monolith legacy uses `@Autowired` field
+  injection; do not copy that style into `product-services`).
+- Service skeletons carry a `@SpringBootTest` + MockMvc smoke test per module
+  (`ApplicationTests`), runnable offline with Nacos disabled; keep them green in CI
+  (`.github/workflows/build.yml` runs `mvn -B -ntp package` for all modules).
+- Shared service code goes in `product-cloud-common` (auto-configured via
+  `META-INF/spring/...AutoConfiguration.imports`) — never into the monolith's `product-common`.
+- Error contract (`AjaxResult`/`ApiStatus`/`ServiceException` + `GlobalServiceExceptionHandler`)
+  is byte-compatible with the monolith contract documented in
+  [error-handling.md](./error-handling.md); validation-error and AccessDenied messages must stay
+  identical so frontend behavior is unchanged across the migration.

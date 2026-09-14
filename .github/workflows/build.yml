@@ -1,0 +1,28 @@
+# CI 构建基线（implement.md Phase 1 第 4 项）
+#
+# 范围：整个多模块仓库 —— 现有单体模块（Boot 3.5.16 补丁升级后必须持续可构建，回滚点要求）
+# 与 product-services 微服务骨架（含离线单元测试：测试均禁用 Nacos 注册/配置，无需中间件）。
+# 镜像构建与集成验证（真实 Nacos/MySQL/RabbitMQ）不在本 workflow，见 product-services/README.md。
+name: build
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Build and test (monolith + product-services)
+        run: mvn -B -ntp package

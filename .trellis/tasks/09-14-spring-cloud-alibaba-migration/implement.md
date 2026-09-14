@@ -19,12 +19,51 @@
 
 ## Phase 1: Platform Skeleton
 
-- [ ] 重组父 POM 与公共依赖管理，创建 Gateway 和六个服务启动骨架。
-- [ ] 建立 Nacos namespace/group/Data ID 规范和本地 Compose 基础设施。
-- [ ] 建立统一错误契约、请求上下文、OpenAPI、健康检查、日志、指标和追踪基线。
-- [ ] 建立 CI 构建、镜像和服务级测试框架。
+- [x] 重组父 POM 与公共依赖管理，创建 Gateway 和五个业务服务启动骨架（ADR-0002 边界：gateway + identity/master-data/demand/planning/execution）。
+- [x] 建立 Nacos namespace/group/Data ID 规范和本地 Compose 基础设施。
+- [x] 建立统一错误契约、请求上下文、OpenAPI、健康检查、日志、指标和追踪基线。
+- [x] 建立 CI 构建、镜像和服务级测试框架。
 - Validation: 所有空骨架独立启动、注册、健康检查、经 Gateway 路由；配置隔离和 observability smoke test 通过。
 - Rollback point: 保留原模块与启动方式，骨架未通过不得迁移业务。
+
+### Phase 1 执行记录（2026-09-14）
+
+**范围**：仅平台骨架，未迁移任何业务代码（Phase 2+ 内容零改动）；根 POM 变更仅限版本基线与 `<module>product-services</module>`。
+
+**产出**：
+- `product-services/`：聚合 POM + `product-cloud-common`（统一错误契约 AjaxResult/ApiStatus/ServiceException、`GlobalServiceExceptionHandler`、`RequestContextFilter`、`SkeletonController`、自动装配与共享日志基线 `logback/product-cloud-base.xml`）+ `product-gateway` + 5 个服务骨架（identity / master-data / demand-service / planning / execution，各含 Application、application.yml、logback-spring.xml、Dockerfile、离线冒烟测试）。demand 的 Maven 模块名为 `product-demand-service`（避开旧业务模块坐标），Nacos 注册名仍为 `product-demand`。
+- 规范文档：`product-services/README.md`（namespace/group/Data ID 规范、可观测性基线、本地启动与验证步骤）。
+- CI：`.github/workflows/build.yml`（GitHub Actions：temurin 17 + Maven 缓存 + `mvn -B -ntp package`，覆盖单体与微服务全部模块的构建与单测；仓库远端为 GitHub，故选 GH Actions 而非本地脚本）。
+- Compose：`compose.dev.yml` 新增 nacos(v3.0.3)/rabbitmq(3.13-management)；`.env.example` 增加对应变量。
+
+**验证结果（本机实测，JDK temurin 17.0.20 / Maven 3.9.16）**：
+1. 根构建（回滚点）：`mvn -DskipTests compile` 23/23 模块 BUILD SUCCESS；`product-server` 依赖树解析 `spring-boot:3.5.16`（3.5.0→3.5.16 补丁升级后单体系体持续可构建）。
+2. 服务测试：`product-services` 下 `mvn test` 8/8 模块 BUILD SUCCESS，36 个用例全部通过（网关 2、公共库 19、各服务 15；测试全部离线，禁用 Nacos 注册/配置）。
+3. 实机启动：Nacos v3.0.3 + RabbitMQ 3.13（compose，均 healthy）+ MySQL 8.4（compose 既有实例）之上，6 个 fat-jar 真实 JVM 启动，日志均出现 `NacosServiceRegistry: register finished`。
+4. 注册：Nacos `namespaceId=dev&groupName=PRODUCT_GROUP` 服务列表 6/6（product-gateway/identity/master-data/demand/planning/execution）。
+5. 健康检查：6/6 `/actuator/health` UP，readiness probe UP。
+6. 网关路由：`/identity/**`、`/master-data/**`、`/demand-svc/**`、`/planning/**`、`/execution/**` 五条 `lb://` 路由全部路由到对应实例并应答 `/skeleton/info`。
+7. 配置隔离：`PRODUCT_COMMON/product-common.yml`（shared-marker）对所有服务生效；`PRODUCT_IDENTITY/product-identity.yml`（config-marker）仅 identity 生效，其余服务保持 local-default —— namespace(dev)/group/Data ID 三级隔离成立。
+8. 可观测性冒烟：`/actuator/prometheus` 输出 54 组指标（含 http_server_requests）；经网关请求 404，服务 JSON 日志（ELK 字段）记录的 traceId == 响应头 `X-Trace-Id` == 服务端 MDC/span traceId，日志-链路关联成立。
+9. 清理：6 个 JVM 全部停止、端口释放；nacos/rabbitmq 容器停止并移除；用户既有 product-mysql 容器与单体运行进程未受影响。
+
+**审计中发现并修复的问题**（前次中断遗留的骨架缺陷）：
+- `product-cloud-common` 缺 lombok 依赖（编译失败）→ 补 provided 依赖。
+- `MasterDataApplication`/`PlanningApplication` javadoc 中 `product_*/route_*`、`task_*/` 等通配符包含 `*/`，提前终止注释导致编译失败 → 改写为表名枚举。
+- `SkeletonController` 无类级 `@RestController`，Spring MVC 不识别为处理器（MockMvc 发现不了）→ 补注解。
+- `FilterRegistrationBean` 默认名 `requestContextFilter` 与 Boot 3.5 `WebMvcAutoConfiguration` 自带的同名过滤器冲突，真实 Tomcat 启动即失败（MockMvc 发现不了）→ 更名 `productRequestContextFilter`。
+- `RequestContextFilter` 仅写 MDC 不合成 `traceparent`，Micrometer server span 会用新 traceId 覆盖 MDC，导致 `X-Trace-Id` 与日志/链路分叉 → 缺失时按解析出的 traceId 合成 traceparent（服务侧与网关原生传播同规则）。
+- 网关侧初版自造 `traceparent`/`X-Trace-Id` 的 `GatewayTraceFilter` 与 SCG 原生 Micrometer 传播冲突产生双 traceId → 删除，改用 SCG 原生传播（踩坑记录见 product-services/README.md）。
+- compose 的 Nacos healthcheck 用 v1 readiness 端点（v3 已 410 Gone）→ 改为容器内 `:8080/v3/console/health/readiness`。
+- 3 个单测断言/构造缺陷（类型不匹配消息期望值、MethodArgumentNotValidException 构造、UUID 断言字符集）→ 按单体契约修正。
+
+**环境备注**：本机默认 JDK 17.0.2（mise）存在 cgroup v2 下的 `ProcessorMetrics` 崩溃 bug（旧补丁版已知问题），actuator 应用无法启动；实测改用 temurin 17.0.20（17 线最新补丁，符合 ADR-0001 补丁策略）。CI 使用 temurin 17（latest patch）不受影响。
+
+**遗留问题（不阻塞 Phase 2）**：
+- 网关非代理错误响应（如无实例 503）尚无统一错误体与 `X-Trace-Id`，随 Phase 2 网关错误契约补齐。
+- Nacos v3 的 v1/v2 console API 已 410：namespace 建立需用 v3 console API（需先初始化 admin 用户）或控制台；`/nacos/v1/cs/configs` 与 `/v1/ns/*` 读写仍可用（Phase 1 实测）。后续版本升级时关注 compatibility 开关。
+- span 导出器（OTLP collector）未接，按计划 Phase 6 接入；Sentinel 规则持久化、OpenAPI 网关聚合的正式路由随 Phase 2/3 落地。
+- CI 尚未在远端 GitHub 实际触发验证（本地无法验证 runner 行为），推送后需确认首次运行。
 
 ## Phase 2: Identity And Gateway
 

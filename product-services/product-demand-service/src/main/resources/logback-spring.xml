@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- product-demand 日志：复用 product-cloud-common 日志基线（字段与单体 ELK 管线一致） -->
+<configuration>
+    <include resource="logback/product-cloud-base.xml"/>
+</configuration>

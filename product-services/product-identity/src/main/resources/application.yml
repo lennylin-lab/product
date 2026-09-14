@@ -1,0 +1,39 @@
+server:
+  port: 8101
+
+spring:
+  application:
+    name: product-identity
+  config:
+    import:
+      - optional:nacos:product-common.yml?group=PRODUCT_COMMON
+      - optional:nacos:product-identity.yml?group=PRODUCT_IDENTITY
+  cloud:
+    nacos:
+      server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+      discovery:
+        namespace: ${NACOS_NAMESPACE:dev}
+        group: PRODUCT_GROUP
+      config:
+        namespace: ${NACOS_NAMESPACE:dev}
+
+# ---- 可观测性基线（健康检查 liveness/readiness、Prometheus 指标） ----
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  # 追踪基线：W3C 传播由 micrometer-tracing-otel 桥接默认启用；开发期全量采样，
+  # 生产采样率与 OTLP 导出（collector）在统一切换前（Phase 6）接入。
+  tracing:
+    sampling:
+      probability: 1.0
+
+product:
+  skeleton:
+    config-marker: local-default
+    shared-marker: local-default
