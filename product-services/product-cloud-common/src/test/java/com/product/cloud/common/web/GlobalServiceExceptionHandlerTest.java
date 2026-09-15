@@ -53,6 +53,27 @@ class GlobalServiceExceptionHandlerTest {
     }
 
     @Test
+    void noResourceFoundShouldReturnCode404WithUnifiedMessage() {
+        // issue #5：服务内路由已匹配但端点缺失 → 统一 404 语义（与网关 404 同文案），不再 500
+        AjaxResult result = handler.handleNoResourceFound(
+                new org.springframework.web.servlet.resource.NoResourceFoundException(
+                        org.springframework.http.HttpMethod.GET, "register"),
+                request());
+        assertEquals(404, result.get(AjaxResult.CODE_TAG));
+        assertEquals("请求路径不存在", result.get(AjaxResult.MSG_TAG));
+    }
+
+    @Test
+    void noHandlerFoundShouldReturnCode404WithUnifiedMessage() {
+        AjaxResult result = handler.handleNoResourceFound(
+                new org.springframework.web.servlet.NoHandlerFoundException(
+                        "POST", "/register", null),
+                request());
+        assertEquals(404, result.get(AjaxResult.CODE_TAG));
+        assertEquals("请求路径不存在", result.get(AjaxResult.MSG_TAG));
+    }
+
+    @Test
     void methodArgumentNotValidShouldReturnFirstFieldErrorMessage() throws NoSuchMethodException {
         BeanPropertyBindingResult bindingResult =
                 new BeanPropertyBindingResult(new Object(), "order");

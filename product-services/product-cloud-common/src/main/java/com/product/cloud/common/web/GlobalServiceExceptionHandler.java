@@ -14,6 +14,7 @@ import org.springframework.web.bind.MissingPathVariableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
@@ -87,16 +88,17 @@ public class GlobalServiceExceptionHandler {
     }
 
     /**
-     * 静态资源/路径不存在。
+     * 静态资源/处理器不存在（路由已匹配到服务但端点缺失）。
      *
-     * <p>Phase 2 契约修正：单体 GlobalExceptionHandler 无 NoResourceFoundException 专属映射，
-     * 落入 Exception 兜底 → HTTP 200 + code 500 + e.getMessage()（如 "No static resource xxx."）。
-     * 这里按单体语义对齐（Phase 1 曾映射为 404 中文提示，与单体不一致，随真实端点迁移一并纠正）。</p>
+     * <p>Phase 2 曾按单体语义对齐（无专属映射 → 200 + code 500 + 原始消息）；
+     * issue #5 决议：500 语义会让调用方误重试且污染 5xx 错误率告警，统一改为
+     * HTTP 200 + code 404 + 与网关 <code>InternalPathDenyFilter</code>/统一错误体一致的
+     * 「请求路径不存在」文案，便于网关 404 与服务 404 串联排查（均带 X-Trace-Id）。</p>
      */
-    @ExceptionHandler(NoResourceFoundException.class)
-    public AjaxResult handleNoResourceFound(NoResourceFoundException e, HttpServletRequest request) {
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    public AjaxResult handleNoResourceFound(Exception e, HttpServletRequest request) {
         log.error("请求地址'{}',资源不存在.", request.getRequestURI());
-        return AjaxResult.error(e.getMessage());
+        return AjaxResult.error(404, "请求路径不存在");
     }
 
     /**
