@@ -43,6 +43,13 @@
             <version>8.0</version>
         </dependency>
 
+        <!-- issue #3：OpenAPI servers 收敛（仅编译期需要，运行时由各服务自带的 springdoc 提供） -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- @Slf4j（版本由 Boot BOM 管理；注解处理器路径已在根 POM compiler pluginManagement 配置） -->
         <dependency>
             <groupId>org.projectlombok</groupId>

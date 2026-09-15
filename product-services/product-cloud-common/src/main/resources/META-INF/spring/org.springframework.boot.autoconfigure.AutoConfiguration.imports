@@ -1,1 +1,2 @@
 com.product.cloud.common.config.ProductCloudCommonAutoConfiguration
+com.product.cloud.common.openapi.ProductOpenApiAutoConfiguration

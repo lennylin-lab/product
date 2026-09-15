@@ -78,6 +78,19 @@ public class GatewayConfiguration {
     }
 
     /**
+     * 网关自身文档的 servers 收敛（issue #3）：与五个 servlet 服务的
+     * ProductOpenApiAutoConfiguration 同规则，springdoc 不再按请求解析出内网
+     * IP + 端口，统一相对路径「经当前入口按前缀访问」。
+     */
+    @Bean
+    public io.swagger.v3.oas.models.OpenAPI gatewayOpenApi() {
+        io.swagger.v3.oas.models.OpenAPI openAPI = new io.swagger.v3.oas.models.OpenAPI();
+        openAPI.setServers(java.util.List.of(
+                new io.swagger.v3.oas.models.servers.Server().url("/").description("经网关按前缀访问")));
+        return openAPI;
+    }
+
+    /**
      * Sentinel 网关流控兜底规则：规则在网关启动时从属性装载（routeId + QPS 阈值 + 限流响应统一错误体）。
      * Phase 6：规则持久化到 Nacos（sentinel-datasource-nacos，dataId=product-gateway-flow-rules.json，
      * group=PRODUCT_GATEWAY）——Nacos 已发布配置时经 GatewayRuleManager 热加载覆盖本内存默认；
