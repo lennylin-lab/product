@@ -1,6 +1,6 @@
 # 注塑排程系统
 
-一个基于 Spring Boot 3.5 的注塑生产排程管理系统，采用 Maven 多模块架构，覆盖从订单管理、生产排程到生产执行的完整业务链路。
+一个基于 Spring Boot 3.5 与 Spring Cloud Alibaba 的注塑生产排程管理系统，覆盖从订单管理、生产排程到生产执行的完整业务链路。2026-09 起项目已由单体多模块整体迁移至微服务体系（网关统一入口 + 五个业务服务），单体模块代码保留作迁移对照。
 
 ## 项目简介
 
@@ -9,27 +9,28 @@
 - 订单管理：客户订单录入、查询、导入导出、状态跟踪
 - 生产排程：基于交期、优先级与资源约束的排程与任务分配
 - 生产执行：任务事件记录、状态流转、过程追溯
-- 主数据管理：机台、日历等基础资源维护
+- 主数据管理：机台、模具、日历、工艺路线等基础资源维护
 - 系统管理：用户、角色、菜单、字典等后台能力
-- 认证授权：登录、验证码、JWT、权限校验
-- 代码生成：基于表结构生成后端与前端代码
+- 认证授权：登录、验证码、JWT（RS256 + JWKS）、权限校验
+- 跨服务事件一致性：事务性 Outbox、幂等消费、死信审计与重放
+- 代码生成：基于表结构生成后端与前端代码（单体能力，未随微服务迁移）
 
-仓库中的 `docs/` 目录还补充了注塑工艺流程、排程方案落地现状、关键配置流程、代码生成规则等说明文档。
+仓库中的 `docs/` 目录还补充了注塑工艺流程、关键配置流程、微服务运维手册、数据补偿手册等说明文档。
 
-`deploy/` 目录补充了 Docker 化 MySQL 和 ELK 日志系统的部署说明。
+`deploy/` 目录补充了 Docker 化 MySQL、Redis、ELK 日志系统与告警基线的部署说明。
 
 ## 技术栈
 
 ### 后端技术
 
 - Java 17
-- Spring Boot 3.5.0
+- Spring Boot 3.5（单体 3.5.0；微服务基线 3.5.16，见 ADR-0001）
 - Spring Security
 - MyBatis Plus 3.5.9
 - Redis
 - MySQL 8.x
-- Druid 1.2.23
-- JWT（jjwt 0.9.1）
+- Druid 1.2.23（单体）
+- JWT（单体 jjwt 0.9.1；微服务 jjwt 0.12.6，RS256 + JWKS）
 - FastJSON2 2.0.53
 - Velocity 2.3
 - Caffeine 3.2.2
@@ -38,7 +39,36 @@
 - Apache POI 4.1.2
 - Lombok
 
-### 模块架构（14个模块）
+### 微服务技术（2026-09 迁移后，现役）
+
+- Spring Cloud 2025.0.3 + Spring Cloud Alibaba 2025.0.0.0
+- Spring Cloud Gateway：唯一入口、路由收敛、JWT 前置校验
+- Nacos 3.0.x：服务发现 + 配置中心（namespace / group / Data ID 三级隔离）
+- Sentinel 1.8.9：网关限流，规则 Nacos 持久化
+- RabbitMQ 3.13：跨服务事件（事务性 Outbox + publisher confirm、幂等消费、有界重试 + DLX 死信审计）
+- micrometer-tracing + OpenTelemetry OTLP：链路追踪（Jaeger）；Prometheus 指标；ELK JSON 日志
+
+## 模块架构
+
+### 微服务体系（`product-services/`，现役）
+
+> 版本基线与服务边界见 `product-services/adr/`（ADR-0001~0005）；网关路由、认证基线、事件一致性拓扑详见 `product-services/README.md`。
+
+| 模块 | 服务名（Nacos 注册名） | 端口 | 职责 |
+| --- | --- | --- | --- |
+| `product-gateway` | `product-gateway` | 8080 | 唯一入口：路由、CORS、限流、JWT 前置校验、trace 注入 |
+| `product-identity` | `product-identity` | 8101 | 登录、验证码、JWT 签发（RS256/JWKS）、用户/角色/菜单/字典/权限 |
+| `product-master-data` | `product-master-data` | 8102 | 产品、工艺路线、机台/模具/日历、换型规则、数据版本 |
+| `product-demand-service` | `product-demand` | 8103 | 客户/订单/订单行与订单生命周期、批次投影消费 |
+| `product-planning` | `product-planning` | 8104 | 批次/工序任务/资源需求/派工/异步排程（快照+漂移守卫）、任务事件消费 |
+| `product-execution` | `product-execution` | 8105 | 任务/资源状态事件（outbox 出站）、现场追溯 |
+| `product-cloud-common` | （库，不部署） | — | 统一错误契约、请求上下文、日志基线 |
+| `product-cloud-security` | （库，不部署） | — | JWT 验签核心 + JWKS + 本地验签安全链 + `@ss` 权限 |
+| `product-cloud-messaging` | （库，不部署） | — | 跨服务事件一致性：outbox/幂等消费/DLX 审计/对账重放 |
+
+本地依赖经根目录 `compose.dev.yml` 提供：Nacos、RabbitMQ、MySQL、Redis、Jaeger、ELK。
+
+### 单体模块（14个模块，已冻结，仅作迁移对照）
 
 #### 基础支撑模块
 
@@ -69,10 +99,9 @@
 
 - JDK 17+
 - Maven 3.6+
-- MySQL 8.0+
-- Redis 6.0+
+- Docker + docker compose（本地依赖统一由 `compose.dev.yml` 提供）
 
-### 安装步骤
+### 微服务启动（现役）
 
 1. 克隆项目
 
@@ -81,67 +110,54 @@ git clone <repository-url>
 cd product
 ```
 
-2. 创建数据库
-
-```sql
-CREATE DATABASE product CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-```
-
-3. 修改配置文件
-
-主要修改 `product-server/src/main/resources/application.yml` 和 `product-server/src/main/resources/application-druid.yml`。
-
-4. 编译打包
-
-```bash
-mvn clean compile
-mvn clean package
-mvn clean package -DskipTests
-mvn clean install
-```
-
-5. 准备本地 `.env`
-
-先复制一份开发环境模板：
+2. 准备 `.env` 并启动基础设施
 
 ```bash
 cp .env.example .env
+docker compose -f compose.dev.yml up -d
 ```
 
-根目录 `.env` 是开发环境的统一入口：
+`compose.dev.yml` 提供：Nacos（`8848`，控制台 `8090`）、RabbitMQ（`5672`）、MySQL（`33066`）、Redis（`6380`）、Jaeger（OTLP `4318` / UI `16686`）与 ELK。端口均可经 `.env` 覆盖；值含空格时写成带引号形式（如 `ES_JAVA_OPTS=\"-Xms1g -Xmx1g\"`）。
 
-- `docker compose` 读取它启动 MySQL、Redis 和 ELK
-- `./scripts/dev-run.sh` 会自动加载它并导出给 Spring Boot
-- `deploy/mysql/.env`、`deploy/redis/.env`、`deploy/elk/.env` 保留为单独启动某个依赖时的独立入口
-
-注意：如果 `.env` 里的值包含空格，例如 `ES_JAVA_OPTS`、`LS_JAVA_OPTS`，要写成带引号的形式，例如 `ES_JAVA_OPTS=\"-Xms1g -Xmx1g\"`。因为这份 `.env` 既会被 `docker compose` 读取，也会被 shell `source`。
-
-6. 启动依赖服务
+3. 初始化 Nacos namespace 与数据库
 
 ```bash
-./scripts/dev-up.sh
+# 创建 dev namespace（ID 与名称均为 dev，需在服务启动前就绪）
+curl -s -X POST "http://127.0.0.1:8848/nacos/v1/console/namespaces" \
+  -d "customNamespaceId=dev&namespaceName=dev"
 ```
 
-该脚本会通过根目录 `compose.dev.yml` 启动本地开发依赖：
+- 各服务自带可重复执行的初始化脚本：`product-services/*/src/main/resources/db/init/*_schema.sql`
+- 数据库规划、服务启停顺序、密钥注入等细节见 `docs/微服务运维手册.md`
 
-- MySQL：`${MYSQL_PORT}`，默认 `33066`
-- Redis：`${REDIS_PORT}`，默认 `6380`
-- Elasticsearch：`${ELASTICSEARCH_PORT}`，默认 `9201`
-- Kibana：`${KIBANA_PORT}`，默认 `5601`
-- Logstash API：`${LOGSTASH_API_PORT}`，默认 `9600`
+4. 构建并启动服务
 
-启动完成后，脚本会自动检查 MySQL 中 `${MYSQL_DATABASE}` 是否为空库：
+```bash
+mvn -pl product-services -am -DskipTests package
+java -jar product-services/product-gateway/target/product-gateway-*.jar
+# 其余服务同理：product-identity / product-master-data / product-demand-service / product-planning / product-execution
+```
 
-- 启动前先将根目录 [schema.sql](/home/lenny/Projects/pps/product/schema.sql:1) 同步到 `deploy/mysql/init/010-schema.sql`
-- 空库时自动导入根目录 [schema.sql](/home/lenny/Projects/pps/product/schema.sql:1)
-- 已有业务表时跳过导入，避免覆盖现有开发数据
+5. 访问应用
 
-空库初始化后，系统自带一个管理员账号：
+```text
+网关唯一入口：http://localhost:8080
+OpenAPI 聚合：/{identity|master-data|demand-svc|planning|execution}/v3/api-docs（经网关）
+Jaeger：http://localhost:16686    Nacos 控制台：http://localhost:8090
+```
 
-- 用户名 `admin`，密码 `admin123`，首次登录后请立即修改
-- 同时写入系统管理菜单、代码生成菜单、业务目录菜单与基础字典（详见 `schema.sql` 的种子数据部分）
+配置隔离冒烟、事件链验证等骨架验证步骤见 `product-services/README.md` §本地启动与骨架验证。
 
-如果你不走一键开发脚本，而是想单独启动某个依赖，也可以直接使用模块目录下的配置：
+### 单体启动（历史，仅作对照）
+
+单体入口为 `product-server`（端口 `8081`），一键脚本：
+
+```bash
+./scripts/dev-up.sh    # 经 compose.dev.yml 启动 MySQL/Redis/ELK 等依赖，空库自动导入根目录 schema.sql
+./scripts/dev-run.sh   # 以 local profile 启动单体（自动加载根目录 .env）
+```
+
+空库初始化后自带管理员账号 `admin / admin123`（首次登录后请立即修改），并写入系统管理、代码生成菜单与基础字典种子数据。也可单独启动某个依赖：
 
 ```bash
 docker compose -f deploy/mysql/docker-compose.yml up -d
@@ -149,34 +165,9 @@ docker compose -f deploy/redis/docker-compose.yml up -d
 docker compose -f deploy/elk/docker-compose.yml up -d
 ```
 
-这两条命令会分别读取：
-
-- [deploy/mysql/.env](/home/lenny/Projects/pps/product/deploy/mysql/.env:1)
-- [deploy/redis/.env](/home/lenny/Projects/pps/product/deploy/redis/.env:1)
-- [deploy/elk/.env](/home/lenny/Projects/pps/product/deploy/elk/.env:1)
-
-7. 启动服务
-
-```bash
-./scripts/dev-run.sh
-```
-
-本地开发 profile 为 `local`，会自动包含 `druid` 数据源配置，并优先读取根目录 `.env` 中的值。
-
-如果你启用了 ELK，应用日志会写到 `${PRODUCT_LOG_PATH}`，默认是 `./logs`，Filebeat 会从同一路径采集 JSON 日志。
-
-8. 访问应用
-
-```text
-http://localhost:8081
-```
-
-本地日志与观测入口：
-
-- Kibana：`http://localhost:5601`
-- Elasticsearch：`http://localhost:9201`
-
 ## 开发指南
+
+> 以下分层与编码约定在各微服务内部同样适用；「开发新功能模块」的 Maven 模块创建流程为单体时代做法，微服务下新功能在对应服务的包结构内扩展；代码生成器为单体能力。
 
 ### 分层架构
 
@@ -305,20 +296,28 @@ return getDataTable(entityService.selectPage(page, entity));
 
 ## 常用命令
 
-### Maven 命令
+### 微服务（现役）
 
 ```bash
-mvn clean compile
-mvn clean package
+mvn -pl product-services -am -DskipTests package        # 构建全部微服务
+mvn test -pl product-services/product-planning          # 运行单个服务的测试
+java -jar product-services/product-gateway/target/product-gateway-*.jar
+```
+
+### 单体（历史）
+
+```bash
 mvn clean package -DskipTests
-mvn clean install
 mvn spring-boot:run -pl product-server
-cp .env.example .env
 ./scripts/dev-up.sh
 ./scripts/dev-run.sh
+```
+
+### 通用
+
+```bash
 mvn dependency:tree
 mvn test
-mvn test -Dtest=ProductServerApplicationTests
 ```
 
 ### Git 命令
@@ -330,6 +329,8 @@ git log --oneline -10
 ```
 
 ## API接口
+
+> 以下接口均经网关 `http://localhost:8080` 访问（Phase 6 收敛路由，路径与单体保持一致）。按服务归属：认证/系统管理 → identity(8101)；产品、工艺路线、机台/日历 → master-data(8102)；客户/订单/订单行 → demand(8103)；批次/任务/派工排程 → planning(8104)；任务事件 → execution(8105)。OpenAPI 文档经网关按服务聚合。文末「代码生成」「通用功能」为单体能力，未随微服务迁移。
 
 ### 认证相关
 
@@ -432,72 +433,46 @@ git log --oneline -10
 
 ## 配置说明
 
-### application.yml 主配置
+### 微服务配置（现役）
 
-- 服务端口：8081
-- 文件上传路径
-- 验证码类型
-- Redis 配置
-- Token 配置
-- MyBatis 配置
-- XSS 防护配置
-- 登录失败锁定配置
-- OSS 配置
-- 排程配置：`product.pps.schedule.batch-size`、`timeout-minutes`、`timeout-scan-delay-ms`
+- 本地默认值在各服务 `application.yml`；远程配置经 `spring.config.import` 从 Nacos 引入（`optional:` 前缀，Nacos 不可用时可用本地默认值启动）。
+- namespace = 环境短名（默认 `dev`，`NACOS_NAMESPACE` 覆盖）；服务发现 group 统一 `PRODUCT_GROUP`。
+- 配置 Data ID / group 一一对应：共享配置 `product-common.yml` / `PRODUCT_COMMON`；服务专属 `product-<service>.yml` / `PRODUCT_<SERVICE>`。
+- 网关 Sentinel 限流规则持久化在 Nacos（`product-gateway-flow-rules.json` / `PRODUCT_GATEWAY`），未发布时回落 application.yml 属性规则。
+- 敏感注入（如 `IDENTITY_JWT_PRIVATE_KEY`）与运维配置见 `product-services/README.md` 与 `docs/微服务运维手册.md`。
 
-### application-druid.yml 数据源配置
+### 单体配置（历史）
 
-- 数据源类型
-- JDBC 驱动
-- 数据库连接地址
-- 账号密码
-- Druid 连接池参数
-- 连接参数支持通过环境变量覆盖，便于 Docker / 生产环境部署
-
-### mybatis-config.xml
-
-- MyBatis 行为设置
-- 日志实现
-- 缓存与执行器配置
-
-### logback-spring.xml
-
-- 控制台日志输出
-- 应用日志、错误日志、审计日志分流
-- JSON 日志格式
-- 日志滚动策略
-- 日志字段包含 `traceId`、`requestId`、`userId`、`username`、`clientIp`、`httpMethod`、`requestUri`
-
-### generator.yml 代码生成配置
-
-- 作者名
-- 包路径
-- 表前缀
-- 是否允许覆盖
+- `application.yml` 主配置：服务端口 8081、文件上传路径、验证码类型、Redis、Token、MyBatis、XSS 防护、登录失败锁定、OSS、排程配置（`product.pps.schedule.batch-size`、`timeout-minutes`、`timeout-scan-delay-ms`）
+- `application-druid.yml` 数据源配置：数据源类型、JDBC 驱动、连接地址、账号密码、Druid 连接池参数，连接参数支持环境变量覆盖
+- `mybatis-config.xml`：MyBatis 行为、日志实现、缓存与执行器配置
+- `logback-spring.xml`：控制台输出、应用/错误/审计日志分流、JSON 格式与滚动策略，字段含 `traceId`、`requestId`、`userId`、`username`、`clientIp`、`httpMethod`、`requestUri`
+- `generator.yml` 代码生成配置：作者名、包路径、表前缀、是否允许覆盖
 
 ### 容器化部署
 
 - MySQL 容器部署说明：`deploy/mysql/README.md`
+- Redis 部署说明：`deploy/redis/README.md`
 - ELK 日志系统部署说明：`deploy/elk/README.md`
-- MySQL 环境变量示例：`deploy/mysql/.env`
+- 告警规则基线：`deploy/alerts/product-microservices-alerts.yml`
 
 ## 项目进度
 
+> 2026-09-14 起项目整体迁移至 `product-services/` 微服务体系（见 `product-services/README.md`），以下进度以微服务体系为准；单体模块代码保留作对照。
+
 ### 已完成模块
 
-- 基础框架搭建
-- 系统管理功能
-- 认证授权功能
-- 代码生成器
-- 产品与订单模块
-- 主数据（机台、日历）管理
+- 基础框架搭建、系统管理、认证授权、代码生成器
+- 产品与订单模块、主数据（机台、日历）管理
+- 生产计划与排程（planning）、任务执行事件（execution）微服务
+- Spring Cloud Alibaba 微服务迁移（phase 0-6）与事件一致性骨架（Outbox/幂等消费/死信审计/重放）
 
 ### 已实现的排程相关能力
 
 - 生产批次管理与释放控制
 - 工序任务生成与生命周期管理（取消、恢复、撤销排程）
 - 基础排程与任务分配，支持四种策略（`EARLIEST_START`、`EARLIEST_FINISH`、`DUE_DATE_PRIORITY`、`LOWEST_COST`）
-- 多资源排程：机台与模具硬约束（资源兼容性过滤）、任务依赖约束
+- 多资源排程：机台、模具、人员、工位硬约束（兼容性过滤与占用计算）、任务依赖约束
 - 换型时间计算（同/异模具、换料、换色规则）
 - 工艺路线闭环：规则注册表、路线 CRUD、产品绑定、`queue_policy`/标准工时模型扩展
 - 任务事件追踪（开始/暂停/恢复/完工）并联动批次、订单行、订单状态
@@ -505,11 +480,11 @@ git log --oneline -10
 
 ### 待开发功能
 
-- 人员、工位、夹具等协同资源从模型层进入排程分配与占用计算
-- 异常事件、资源故障等执行侧事件建模与重排触发
+- 夹具等协同资源：从领域建模到排程分配与占用计算（人员、工位已完成）
+- 异常事件、报工失败等执行侧事件建模，资源状态事件驱动状态机与重排触发
 - 成本模型细化（能耗、换模次数、跨班次损耗等综合因子）
 - 报表统计分析
-- 系统级与集成级测试（跨模块状态联动、并发排程场景）
+- 系统级与集成级测试（跨服务状态联动、跨班次排程、并发排程场景）
 
 ## 开发规范
 
@@ -540,6 +515,8 @@ git log --oneline -10
 - 避免在事务中调用外部 API
 
 ## 常见问题
+
+> 以下问题主要针对单体本地开发（`product-server`）；微服务的启动顺序、健康检查与故障处理见 `docs/微服务运维手册.md`，数据补偿见 `docs/数据补偿手册.md`。
 
 ### 分页查询不生效
 
@@ -575,22 +552,18 @@ git log --oneline -10
 
 ## 文档目录
 
-- `docs/README.md`：项目文档总索引
-- `CLAUDE.md`：Claude Code 项目指南
+- `product-services/README.md`：微服务体系模块、端口、网关路由与事件一致性说明
 - `docs/`：项目文档目录
   - `docs/生产计划与排程计划系统需求说明书.md`
   - `docs/关键配置流程.md`
   - `docs/注塑件加工流程.md`
-  - `docs/自动排程伪代码.md`
-  - `docs/gen-utils-guide.md`
-  - `docs/velocity-utils-guide.md`
-  - `docs/pagination-plugin-issue.md`
-  - `docs/gen-table-sql-fix.md`
-- `docs/生产排程解决方案落地现状.md`
-- `docs/TODO.md`
+  - `docs/微服务运维手册.md`
+  - `docs/数据补偿手册.md`
+  - `docs/TODO.md`：待办与进展记录
 - `deploy/README.md`：部署文档总索引
 - `deploy/mysql/README.md`：MySQL Docker 迁移说明
 - `deploy/elk/README.md`：ELK 日志系统部署说明
+- `deploy/redis/README.md`：Redis 部署说明
 
 ## 贡献指南
 
