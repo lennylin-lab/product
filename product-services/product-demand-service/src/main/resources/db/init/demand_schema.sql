@@ -1,0 +1,168 @@
+-- ----------------------------------------------------------------------------
+-- product-demand-service 数据库初始化脚本（Phase 3，ADR-0005 database per service）
+-- 目标库:demand_db（共享 MySQL 8.4 实例上的独立 database）
+-- 账号:demand_svc（最小权限:仅 demand_db 的 SELECT/INSERT/UPDATE/DELETE）
+-- 来源:根 schema.sql 的需求/订单 3 张表原样提取（表结构与 AUTO 起点未改动）
+-- 幂等性:整体可重复执行 —— 重复执行将 demand_db 重置为已知初始空库
+--         （CREATE DATABASE/USER IF NOT EXISTS + 表级 DROP/CREATE，与根 schema.sql 语义一致）
+-- 回滚点:执行本脚本即恢复"需求库初始备份"的等价状态（implement.md Phase 3 Rollback point）
+-- 边界:order_line.product_id 等跨服务引用为业务 ID + 服务层校验（经 product-master-data
+--       批量契约），不建跨库外键（ADR-0005 §2）；production_batch 等他域表不在本库。
+-- 注意:本脚本不修改根 schema.sql；密码请通过环境变量注入生产环境（此处默认值仅限本地开发）
+-- ----------------------------------------------------------------------------
+
+SET NAMES utf8mb4;
+SET FOREIGN_KEY_CHECKS = 0;
+
+CREATE DATABASE IF NOT EXISTS demand_db DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE demand_db;
+
+-- 独立最小权限账号（ADR-0005 §4:服务账号只能访问自己的 database）
+-- 开发默认密码 demand-dev-pwd（与 .env.example 的 DEMAND_DB_PASSWORD 默认值一致）
+-- 生产环境执行前先替换下行两条语句中的密码。
+CREATE USER IF NOT EXISTS 'demand_svc'@'%' IDENTIFIED BY 'demand-dev-pwd';
+ALTER USER 'demand_svc'@'%' IDENTIFIED BY 'demand-dev-pwd';
+GRANT SELECT, INSERT, UPDATE, DELETE ON demand_db.* TO 'demand_svc'@'%';
+FLUSH PRIVILEGES;
+
+-- ----------------------------
+-- 需求与订单表（与根 schema.sql 逐字段一致）
+-- ----------------------------
+
+DROP TABLE IF EXISTS customer;
+CREATE TABLE customer (
+    customer_id   BIGINT(20)   NOT NULL AUTO_INCREMENT COMMENT '客户ID',
+    customer_name VARCHAR(100) DEFAULT ''              COMMENT '客户名',
+    remark        VARCHAR(500) DEFAULT ''              COMMENT '备注',
+    create_time   DATETIME     DEFAULT NULL            COMMENT '创建时间',
+    update_time   DATETIME     DEFAULT NULL            COMMENT '更新时间',
+    PRIMARY KEY (customer_id)
+) ENGINE=InnoDB AUTO_INCREMENT=100 DEFAULT CHARSET=utf8mb4 COMMENT='客户表';
+
+DROP TABLE IF EXISTS customer_order;
+CREATE TABLE customer_order (
+    order_id    BIGINT(20)      NOT NULL COMMENT '订单ID',
+    customer_id BIGINT(20)  DEFAULT NULL COMMENT '客户ID',
+    due_date    DATETIME    DEFAULT NULL COMMENT '交期',
+    priority    BIGINT(20)  DEFAULT NULL COMMENT '优先级',
+    status      VARCHAR(20) DEFAULT 'NEW' COMMENT '订单状态(NEW未确认 CONFIRMED已确认 IN_PRODUCTION生产中 DONE已完成)',
+    create_time DATETIME    DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME    DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (order_id),
+    KEY idx_customer_order_customer (customer_id),
+    KEY idx_customer_order_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='客户订单表';
+
+DROP TABLE IF EXISTS order_line;
+CREATE TABLE order_line (
+    order_line_id BIGINT(20)  NOT NULL AUTO_INCREMENT COMMENT '订单行ID',
+    order_id      BIGINT(20)      DEFAULT NULL COMMENT '所属订单ID',
+    product_id    BIGINT(20)  DEFAULT NULL COMMENT '产品ID',
+    qty           BIGINT(20)  DEFAULT NULL COMMENT '需求数量',
+    allocated_qty BIGINT(20)  DEFAULT 0    COMMENT '已拆批数量',
+    status        VARCHAR(20) DEFAULT 'NEW' COMMENT '订单行状态(NEW未释放 RELEASE已释放 IN_PRODUCTION生产中 DONE已完成)',
+    PRIMARY KEY (order_line_id),
+    KEY idx_order_line_order (order_id),
+    KEY idx_order_line_product (product_id)
+) ENGINE=InnoDB AUTO_INCREMENT=100 DEFAULT CHARSET=utf8mb4 COMMENT='订单行表';
+
+-- ----------------------------
+-- 契约级 snapshotVersion——订单/订单行任一写事务内单调递增（Phase 4 排程输入漂移检测；
+-- 与 master_data_db 的 master_data_data_version 同款服务权属逻辑，ADR-0005）
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS demand_data_version (
+    scope        VARCHAR(32) NOT NULL COMMENT '版本域(当前仅 DEMAND 单域)',
+    data_version BIGINT(20)  NOT NULL DEFAULT 0 COMMENT '单调递增数据版本号',
+    updated_at   DATETIME     DEFAULT NULL COMMENT '最后递增时间',
+    PRIMARY KEY (scope)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='需求域变更版本表(服务权属,非单体基线表)';
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- ----------------------------
+-- Phase 5 事件基础设施与服务权属表（ADR-0004/0005；根 schema.sql 零改动）
+-- ----------------------------
+
+-- planning 批次状态本域投影（batch.progress.changed 事件的溯源投影；订单行/订单状态
+-- 聚合的本地输入，与单体"行聚合其全部批次状态"查询同构；删除订单行/订单随行清理。
+-- 可重建派生态：重放事件/对账修复即可重建，不作为跨服务事实源）
+CREATE TABLE IF NOT EXISTS planning_batch_state (
+    batch_id      BIGINT       NOT NULL COMMENT '批次ID（planning production_batch.batch_id 投影主键）',
+    order_line_id BIGINT       DEFAULT NULL COMMENT '订单行ID',
+    status        VARCHAR(20)  DEFAULT NULL COMMENT '批次状态(PLANNED/RELEASED/IN_PROCESS/DONE)',
+    last_event_id VARCHAR(64)  DEFAULT NULL COMMENT '承载本状态的最后一个事件ID',
+    occurred_at   DATETIME(3)  DEFAULT NULL COMMENT '事件发生时间（单调性守卫已通过后写入）',
+    updated_at    DATETIME     DEFAULT NULL COMMENT '投影更新时间',
+    PRIMARY KEY (batch_id),
+    KEY idx_pbs_order_line (order_line_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='planning批次状态投影(服务权属,非单体基线表)';
+
+-- 发件箱（order_line.progress.changed 与订单行状态写同事务；OutboxRelay 投递 + confirm）
+CREATE TABLE IF NOT EXISTS event_outbox (
+    id            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '行ID（投递顺序=追加顺序）',
+    event_id      VARCHAR(64)  NOT NULL COMMENT '事件ID（UUID，幂等键；重放为新值）',
+    event_type    VARCHAR(64)  NOT NULL COMMENT '事件类型（= routing key）',
+    aggregate_id  VARCHAR(64)  DEFAULT NULL COMMENT '聚合根ID',
+    correlation_id VARCHAR(64) DEFAULT NULL COMMENT '链路ID（透传上游事件/命令 traceId）',
+    producer      VARCHAR(64)  NOT NULL COMMENT '生产者服务',
+    payload       TEXT         COMMENT 'payload JSON',
+    status        VARCHAR(16)  NOT NULL DEFAULT 'PENDING' COMMENT '状态(PENDING待投递 PUBLISHED已投递 HALTED超限待人工)',
+    retry_count   INT          NOT NULL DEFAULT 0 COMMENT '投递重试次数',
+    next_retry_at DATETIME(3)  DEFAULT NULL COMMENT '下次重试时间（退避）',
+    replayed_from VARCHAR(64)  DEFAULT NULL COMMENT '人工重放来源 eventId',
+    occurred_at   DATETIME(3)  DEFAULT NULL COMMENT '事件发生时间（消费方单调性守卫依据）',
+    created_at    DATETIME(3)  DEFAULT NULL COMMENT '写入时间',
+    published_at  DATETIME(3)  DEFAULT NULL COMMENT '投递确认时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_event_outbox_event (event_id),
+    KEY idx_event_outbox_status (status, next_retry_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='事件发件箱(服务权属,非单体基线表)';
+
+-- 消费流水（batch.progress.changed 的 eventId 去重与同聚合单调性守卫依据）
+CREATE TABLE IF NOT EXISTS consumed_event (
+    id             BIGINT      NOT NULL AUTO_INCREMENT COMMENT '行ID',
+    consumer_group VARCHAR(64) NOT NULL COMMENT '消费组（服务名）',
+    event_id       VARCHAR(64) NOT NULL COMMENT '事件ID（去重键）',
+    event_type     VARCHAR(64) DEFAULT NULL COMMENT '事件类型',
+    aggregate_id   VARCHAR(64) DEFAULT NULL COMMENT '聚合根ID',
+    occurred_at    DATETIME(3) DEFAULT NULL COMMENT '事件发生时间（同聚合单调性守卫）',
+    outcome        VARCHAR(16) NOT NULL DEFAULT 'APPLIED' COMMENT '结果(APPLIED已应用 STALE过期丢弃 UNKNOWN聚合不存在)',
+    payload        TEXT        COMMENT 'payload JSON',
+    consumed_at    DATETIME(3) DEFAULT NULL COMMENT '消费时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_consumed_event (consumer_group, event_id),
+    KEY idx_consumed_event_aggregate (consumer_group, aggregate_id, occurred_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='事件消费流水(服务权属,非单体基线表)';
+
+-- 死信审计（消费重试耗尽 → DLX/DLQ → 审计落库后 ack；人工重放标记 replayed）
+CREATE TABLE IF NOT EXISTS dead_letter_audit (
+    id             BIGINT       NOT NULL AUTO_INCREMENT COMMENT '行ID',
+    consumer_group VARCHAR(64)  NOT NULL COMMENT '消费组（服务名）',
+    source_queue   VARCHAR(128) DEFAULT NULL COMMENT '来源队列（x-death）',
+    event_id       VARCHAR(64)  DEFAULT NULL COMMENT '事件ID',
+    event_type     VARCHAR(64)  DEFAULT NULL COMMENT '事件类型',
+    aggregate_id   VARCHAR(64)  DEFAULT NULL COMMENT '聚合根ID',
+    correlation_id VARCHAR(64)  DEFAULT NULL COMMENT '链路ID',
+    payload        TEXT         COMMENT '原始 envelope JSON（毒消息为原始报文）',
+    failure_reason VARCHAR(1000) DEFAULT NULL COMMENT '死信原因（x-death + 异常摘要）',
+    replayed       TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否已人工重放',
+    replay_event_id VARCHAR(64) DEFAULT NULL COMMENT '重放使用的新 eventId',
+    created_at     DATETIME(3)  DEFAULT NULL COMMENT '死信落库时间',
+    replayed_at    DATETIME(3)  DEFAULT NULL COMMENT '重放时间',
+    PRIMARY KEY (id),
+    KEY idx_dla_group_event (consumer_group, event_id),
+    KEY idx_dla_replayed (consumer_group, replayed)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='死信审计(服务权属,非单体基线表)';
+
+-- 运维审计（对账差异/补偿/人工重放/数量修正留痕）
+CREATE TABLE IF NOT EXISTS ops_audit (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '行ID',
+    action      VARCHAR(64)  NOT NULL COMMENT '动作(RECON_DRIFT/RECON_HEAL/REPLAY_OUTBOX/REPLAY_DLQ/ADJUST_ALLOCATION...)',
+    operator    VARCHAR(64)  DEFAULT NULL COMMENT '操作者（后台任务为 system）',
+    params_json TEXT         COMMENT '参数 JSON',
+    result      VARCHAR(16)  DEFAULT NULL COMMENT '结果(OK/DRIFT/FAIL/NOOP...)',
+    detail      TEXT         COMMENT '详情',
+    created_at  DATETIME(3)  DEFAULT NULL COMMENT '时间',
+    PRIMARY KEY (id),
+    KEY idx_ops_audit_action (action, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='运维审计(服务权属,非单体基线表)';

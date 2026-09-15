@@ -46,6 +46,8 @@ Thumbs.db
 # 忽略临时 SQL,但保留数据库初始化脚本
 *.sql
 !schema.sql
+!deploy/mysql/init/*.sql
+!product-services/*/src/main/resources/db/init/*.sql
 .ace-tool/
 .env
 **/.env
