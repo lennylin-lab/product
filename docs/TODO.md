@@ -30,7 +30,7 @@
 
 - Spring Cloud Alibaba 微服务迁移完成：现役代码迁至 `product-services/`，网关 8080 唯一入口，identity(8101)/master-data(8102)/demand-service(8103)/planning(8104)/execution(8105) 五个业务服务 + cloud-common/cloud-security/cloud-messaging 共享库；排程引擎与事件服务同构迁移并通过 parity 验证。
 - 事件一致性骨架：事务性 Outbox + 中继、`eventId` 幂等消费、死信队列审计、事件重放与运维对账端点；定义 `task.status.changed`、`resource.status.changed`、`batch.progress.changed`、`order_line.progress.changed` 四类跨服务事件。
-- 资源状态事件（资源故障等）登记链路：经内部端点入库并 outbox 出站，planning 侧幂等消费记录（当前仅记录/告警，不驱动状态机）。
+- 资源状态事件（资源故障等）登记链路：经内部端点入库并 outbox 出站，planning 侧幂等消费并回写 master-data 权威资源状态（2026-09-16 KD3 升级，原仅记录/告警；回写 fail-closed 不 ack）。
 - SpringDoc OpenAPI（Swagger）接入，网关按服务聚合 `/v3/api-docs`；接口清单沉淀在 README「API接口」章节。
 
 ### 测试与文档
@@ -44,7 +44,7 @@
 | --- | --- | --- | --- |
 | `product-services` | 现役，已统一切换 | `product-services/product-gateway` 等 | 网关 8080 唯一入口，五业务服务 + 三个共享库；基础设施含 Nacos/RabbitMQ/Jaeger/MySQL/Redis/ELK |
 | `product-planning` | 排程现役 | `com.product.planning.service.impl.TaskSchedulingCalculator` | 覆盖机台/模具/人员/工位/夹具选择与占用（夹具为机台分支协同资源，fixture ↔ mold 显式允许清单）、任务依赖、工艺路线 `queue_policy`、四种策略；换型成本仍取任务需求或机台默认准备时间 |
-| `product-execution` | 执行事件现役 | `com.product.execution.*` | `START/PAUSE/RESUME/FINISH` 四类事件（值冻结）+ 资源状态事件记录；事件经 cloud-messaging outbox 出站 |
+| `product-execution` | 执行事件现役 | `com.product.execution.*` | `START/PAUSE/RESUME/FINISH` 四类事件（值冻结）+ `EXCEPTION` 异常事件（2026-09-16 增量，任务转 PAUSED、落原因码）+ 资源状态事件记录；事件经 cloud-messaging outbox 出站 |
 | `product-cloud-messaging` | 事件一致性骨架 | `product-services/product-cloud-messaging` | Outbox/幂等消费/死信审计/重放已就绪；异常事件建模与重排触发未做 |
 | 旧单体模块（`product-pps`/`product-execute`/`product-demand` 等） | 代码保留，冻结演进 | 仓库根目录各模块 | 自 2026-09-15 起不再是主线，仅作迁移对照；新功能一律在 `product-services` 落地 |
 | `docs` | 主干可用 | `docs/**`、Swagger | 需求说明书、运维手册、补偿手册、接口清单已沉淀；页面稿与业务操作手册仍缺 |
@@ -54,7 +54,7 @@
 | 优先级 | 模块 | 剩余任务 | 主要位置 | 说明 |
 | --- | --- | --- | --- | --- |
 | `P1` | `product-domain` / `product-planning` | 夹具等协同资源：从建模到排程 | 资源相关实体、`TaskSchedulingCalculator.java` | 已完成（2026-09-15 三段推进）：夹具建模（FIXTURE 资源类型、master_data_db `fixture` 扩展表、resources/batch 契约扩展、排程快照装载）；兼容规则（master_data_db `fixture_mold_compatibility` 表、契约 `fixture.moldCompatibilities` 下发、夹具感知规则 RULE_SETUP_MACHINE_FIXTURE / RULE_INJECT_MACHINE_FIXTURE 产出强制 FIXTURE 需求）；分配与占用（排程计算器机台分支模具后第三级夹具选择、fixture ↔ mold 显式允许清单裁决、夹具可用时间纳入 plannedStart/plannedEnd、FIXTURE 独立序号与运行时占用、task_assignment_resource 经泛化路径落 FIXTURE 行；工位分支夹具仍为 MVP 外延） |
-| `P1` | `product-execution` / `product-planning` | 异常事件建模与重排触发 | `TaskEventController`、事件消费者、排程入口 | 事件类型仍冻结四种；异常、报工失败未建模；资源状态事件仅记录不驱动状态机；尚无重排触发链路 |
+| `P1` | `product-execution` / `product-planning` | 异常事件建模与重排触发 | `TaskEventController`、事件消费者、排程入口 | 进行中（2026-09-16 child-1 已落地）：EXCEPTION 事件建模（execution 命令端点 `POST /execute/event/exception/{taskId}` + 直录接受，`record()` 链 EXCEPTION→任务 PAUSED[复用既有状态，KD1]、事件行落 reason_code，`task.status.changed` payload 增加可选 reasonCode[只加不改]）；master-data 资源状态更新契约（`ResourceStatusUpdateApi` + `/internal/master-data/resource-status`，校验/更新/同事务版本 bump，同状态重复回写幂等静默成功不 bump）；planning `resource.status.changed` 消费升级为回写权威状态（fail-closed 不 ack，重试/DLX 兜底）。报工失败建模不做（KD4）；重排触发链路待 child-2（09-16-reschedule-trigger） |
 | `P2` | `product-planning` | 提升成本模型精度 | `TaskSchedulingCalculator.estimateSetupCost` | `LOWEST_COST` 目前仅基于换型/准备时间，未纳入能耗、换模次数、跨班次损耗等综合因子 |
 | `P2` | `product-services/**/src/test` | 补系统级与集成级测试 | planning、execution、demand-service | 服务级契约测试已就位；跨服务数据库状态联动、跨班次排程、并发排程场景仍缺 |
 | `P3` | `docs` | 页面说明与业务操作手册 | `docs/**` | 运维/补偿手册已有；页面稿、面向业务的操作手册未沉淀（README 已于 2026-09-15 重写为微服务视角，单体内容降级为历史对照） |

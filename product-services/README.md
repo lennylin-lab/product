@@ -196,8 +196,8 @@ product-cloud-messaging 在 `product.messaging.enabled=true` 时自动装配；�
 
 | exchange（direct/durable） | 生产者 | routing key（= eventType） | queue（durable） | 消费者 |
 | --- | --- | --- | --- | --- |
-| `execution.events` | product-execution | `task.status.changed` | `product-planning.execution` | product-planning |
-| `execution.events` | product-execution | `resource.status.changed` | `product-planning.execution` | product-planning（仅记录/告警） |
+| `execution.events` | product-execution | `task.status.changed` | `product-planning.execution` | product-planning（2026-09-16 起 eventType 含 EXCEPTION[KD1 增量，目标态复用 PAUSED]；payload 增加可选 reasonCode，只加不改） |
+| `execution.events` | product-execution | `resource.status.changed` | `product-planning.execution` | product-planning（2026-09-16 KD3 起消费回写 master-data 权威资源状态——`ResourceStatusUpdateApi`，fail-closed 不 ack；原仅记录/告警） |
 | `planning.events` | product-planning | `batch.progress.changed` | `product-demand.planning` | product-demand |
 | `demand.events` | product-demand | `order_line.progress.changed`（预留，无消费方） | — | — |
 

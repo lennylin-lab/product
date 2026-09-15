@@ -6,6 +6,7 @@ import com.product.execution.common.core.result.AjaxResult;
 import com.product.execution.common.utils.PageUtils;
 import com.product.execution.core.controller.BaseController;
 import com.product.execution.core.utils.ExcelUtil;
+import com.product.execution.domain.dto.ExceptionReportDTO;
 import com.product.execution.domain.dto.PauseTaskDTO;
 import com.product.execution.domain.entity.TaskEvent;
 import com.product.execution.service.ITaskEventService;
@@ -141,5 +142,14 @@ public class TaskEventController extends BaseController {
     @PostMapping("/complete/{taskId}")
     public AjaxResult complete(@PathVariable Long taskId) {
         return toAjax(taskEventService.complete(taskId));
+    }
+
+    /**
+     * 异常上报（KD1 增量：任务转 PAUSED，事件行落原因码；body reasonCode 必填、remark 可选，
+     * 校验在服务层——空白原因码拒绝）
+     */
+    @PostMapping("/exception/{taskId}")
+    public AjaxResult exception(@PathVariable Long taskId, @RequestBody ExceptionReportDTO reportDTO) {
+        return toAjax(taskEventService.exception(taskId, reportDTO.getReasonCode(), reportDTO.getRemark()));
     }
 }

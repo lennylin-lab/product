@@ -19,6 +19,9 @@ spring:
     # Feign 契约超时（design.md §4：明确超时、禁止无界重试；key 为 @FeignClient contextId）。
     # 重试维持 OpenFeign 默认 Retryer.NEVER_RETRY；排程快照为只读批量查询（单次调用），
     # 超时/不可达按失败处理：排程任务标记 FAILED（输入快照不完整绝不落部分结果）。
+    # resourceStatusUpdateClient 为资源权威状态回写命令（KD3，2026-09-16）：connect 2s / read 3s
+    # 照抄 demand→master-data 既有配置；消费入口为 resource.status.changed 事件，
+    # 超时/拒绝按失败处理：抛错不 ack（消息级重试/DLX 兜底）。
     openfeign:
       client:
         config:
@@ -28,6 +31,9 @@ spring:
           masterDataBatchQueryClient:
             connect-timeout: 2000
             read-timeout: 5000
+          resourceStatusUpdateClient:
+            connect-timeout: 2000
+            read-timeout: 3000
   # 数据源：planning_db（ADR-0005 database per service；独立最小权限账号 planning_svc，
   # 仅 planning_db 的 DML 权限，见 db/init/planning_schema.sql）
   datasource:

@@ -38,7 +38,7 @@ DROP TABLE IF EXISTS task_event;
 CREATE TABLE task_event (
     event_id    BIGINT(20)      NOT NULL COMMENT '事件ID',
     task_id     BIGINT(20)      DEFAULT NULL COMMENT '任务ID',
-    event_type  VARCHAR(20) DEFAULT NULL COMMENT '事件类型(START任务开始 PAUSE任务暂停 RESUME任务恢复 FINISH任务完工)',
+    event_type  VARCHAR(20) DEFAULT NULL COMMENT '事件类型(START任务开始 PAUSE任务暂停 RESUME任务恢复 FINISH任务完工 EXCEPTION任务异常)',
     event_time  DATETIME    DEFAULT NULL COMMENT '事件时间',
     operator_id BIGINT(20)      DEFAULT NULL COMMENT '操作人ID',
     resource_id BIGINT(20)      DEFAULT NULL COMMENT '发生事件的资源',

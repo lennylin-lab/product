@@ -5,6 +5,9 @@ import com.product.cloud.messaging.api.EventTypes;
 import com.product.cloud.messaging.consume.ConsumedEvent;
 import com.product.cloud.messaging.consume.ConsumedEventRecorder;
 import com.product.cloud.messaging.outbox.OutboxPublisher;
+import com.product.masterdata.api.ResourceStatusUpdateApi;
+import com.product.masterdata.api.dto.ResourceStatusUpdateRequest;
+import com.product.masterdata.api.dto.ResourceStatusUpdateResponse;
 import com.product.planning.common.exception.ServiceException;
 import com.product.planning.domain.entity.OperationTask;
 import com.product.planning.domain.entity.ProductionBatch;
@@ -48,11 +51,14 @@ public class PlanningEventConsumerService {
 
     private final ConsumedEventRecorder consumedEventRecorder;
     private final OutboxPublisher outboxPublisher;
+    private final ResourceStatusUpdateApi resourceStatusUpdateApi;
 
     public PlanningEventConsumerService(ConsumedEventRecorder consumedEventRecorder,
-                                        OutboxPublisher outboxPublisher) {
+                                        OutboxPublisher outboxPublisher,
+                                        ResourceStatusUpdateApi resourceStatusUpdateApi) {
         this.consumedEventRecorder = consumedEventRecorder;
         this.outboxPublisher = outboxPublisher;
+        this.resourceStatusUpdateApi = resourceStatusUpdateApi;
     }
 
     /**
@@ -83,7 +89,13 @@ public class PlanningEventConsumerService {
     }
 
     /**
-     * 消费 resource.status.changed（仅记录/告警用途，ADR-0004 §2；不驱动本域状态机）。
+     * 消费 resource.status.changed（KD3 升级，2026-09-16：回写 master-data 权威资源状态，
+     * 原仅记录/告警）。顺序契约：回写成功是后续任何触发的前置（重排触发属
+     * 09-16-reschedule-trigger，本任务仅回写）。
+     *
+     * <p>fail-closed：幂等检查在前（重复事件不重复回写）；回写 Feign 失败/超时/提供方拒绝
+     * → 异常上抛<b>不 ack</b>（既有有界重试 → DLX → 死信审计；对账工具可重放），绝不吞错
+     * 后照常 ack（丢事件 = 丢状态回写）。</p>
      */
     @Transactional(rollbackFor = Exception.class)
     public String consumeResourceStatusChanged(EventEnvelope envelope) {
@@ -94,11 +106,37 @@ public class PlanningEventConsumerService {
             log.info("重复资源事件跳过（幂等）: eventId={}", envelope.getEventId());
             return ConsumedEvent.OUTCOME_APPLIED;
         }
-        log.info("资源状态事件记录（记录/告警用途）: resourceId={} from={} to={} eventId={}",
-                envelope.getPayload().get("resourceId"), envelope.getPayload().get("fromStatus"),
-                envelope.getPayload().get("toStatus"), envelope.getEventId());
+        writeBackResourceStatus(envelope);
         consumedEventRecorder.record(CONSUMER_GROUP, envelope, ConsumedEvent.OUTCOME_APPLIED);
         return ConsumedEvent.OUTCOME_APPLIED;
+    }
+
+    /**
+     * 回写资源权威状态（KD3）：经服务身份令牌（PlanningFeignAuthInterceptor，2s/3s、
+     * NEVER_RETRY）调 master-data /internal/master-data/resource-status。master-data 校验
+     * 资源存在与目标状态合法性；同状态重复回写提供方幂等静默成功（不重复 bump）。
+     *
+     * <p>fail-closed 双通道：Feign 异常直接上抛；提供方业务拒绝走错误契约（200 + 错误体
+     * 反序列化后 resourceId 缺省）→ 响应校验不通过同样抛错——两条路都不 ack。</p>
+     */
+    private void writeBackResourceStatus(EventEnvelope envelope) {
+        Map<String, Object> payload = envelope.getPayload();
+        Long resourceId = requireLong(payload, "resourceId");
+        String toStatus = requireString(payload, "toStatus");
+        Object reasonCode = payload.get("reasonCode");
+        ResourceStatusUpdateRequest request = new ResourceStatusUpdateRequest();
+        request.setResourceId(resourceId);
+        request.setToStatus(toStatus);
+        request.setReasonCode(reasonCode == null ? null : String.valueOf(reasonCode));
+        ResourceStatusUpdateResponse response = resourceStatusUpdateApi.updateResourceStatus(request);
+        if (response == null || !resourceId.equals(response.getResourceId())
+                || !toStatus.equals(response.getStatus())) {
+            // 提供方拒绝（资源不存在/状态非法等错误契约体）→ 视为回写未生效，不 ack
+            throw new ServiceException("资源状态回写响应非法（提供方拒绝或契约异常）: resourceId="
+                    + resourceId + " toStatus=" + toStatus);
+        }
+        log.info("资源状态回写 master-data 成功: resourceId={} toStatus={} snapshotVersion={} eventId={}",
+                resourceId, toStatus, response.getSnapshotVersion(), envelope.getEventId());
     }
 
     /**

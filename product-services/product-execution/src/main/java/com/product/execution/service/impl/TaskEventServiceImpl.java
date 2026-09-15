@@ -215,12 +215,39 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
     }
 
     /**
+     * 异常上报（KD1 增量，2026-09-16）：reasonCode 必填（空白拒绝，ServiceException）、
+     * remark 可选；记录异常事件（事件行落 reason_code/remark）并发布 task.status.changed
+     * （目标 PAUSED，与 PAUSE 同款目标态——消费侧批次/订单行级联走既有 PAUSED 路径，
+     * 零新逻辑）。任务不存在 → 既有「update 影响 0 行」失败语义（返回 false）。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean exception(Long taskId, String reasonCode, String remark) {
+        if (StringUtils.isBlank(reasonCode)) {
+            throw new ServiceException("异常上报必须指定原因码");
+        }
+        return changeTaskStateAndRecordEvent(taskId,
+                com.product.execution.common.constant.StatusConstants.PAUSED_OPERATION_TASK,
+                TaskEventConstants.EXCEPTION_TASK_EVENT, reasonCode, remark);
+    }
+
+    /**
      * 任务状态变更的核心流程（Phase 5 事件链）：契约校验任务 → 记录事件日志 →
      * outbox 发布 task.status.changed（与事件行同一本地事务，ADR-0004 §3）。
      *
      * @return 全部成功返回 true；任务为空/不存在/契约不可达/事件保存失败返回 false
      */
     boolean changeTaskStateAndRecordEvent(Long taskId, String targetStatus, String eventType) {
+        // 既有四事件（START/PAUSE/RESUME/FINISH）：不携带原因（语义冻结，零变化）
+        return changeTaskStateAndRecordEvent(taskId, targetStatus, eventType, null, null);
+    }
+
+    /**
+     * 重载（KD1 异常上报扩展）：事件行落 reason_code/remark；payload 携带可选 reasonCode
+     * （v1 只加不改——为 null 时 payload 不含该键，既有事件信封逐字节一致）。
+     */
+    boolean changeTaskStateAndRecordEvent(Long taskId, String targetStatus, String eventType,
+                                          String reasonCode, String remark) {
         if (taskId == null || StringUtils.isEmpty(targetStatus) || StringUtils.isEmpty(eventType)) {
             return false;
         }
@@ -234,11 +261,13 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
         taskEvent.setEventType(eventType);
         taskEvent.setEventTime(LocalDateTime.now());
         taskEvent.setResourceId(loadMachineIdByTaskId(runtime));
+        taskEvent.setReasonCode(reasonCode);
+        taskEvent.setRemark(remark);
         boolean saved = save(taskEvent);
         if (!saved) {
             return false;
         }
-        publishTaskStatusChanged(taskId, eventType, targetStatus, runtime, taskEvent.getEventId());
+        publishTaskStatusChanged(taskId, eventType, targetStatus, runtime, taskEvent.getEventId(), reasonCode);
         return true;
     }
 
@@ -270,12 +299,21 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
 
     /**
      * 发布 task.status.changed（Execution → Planning；payload 见 EventTypes，
-     * 只包含本域已提交数据 + planning 契约只读字段）。
+     * 只包含本域已提交数据 + planning 契约只读字段）。既有四事件不携带原因（语义冻结）。
      */
     protected void publishTaskStatusChanged(Long taskId, String eventType, String targetStatus,
                                             PlanningContracts.TaskRuntimeDTO runtime, Long occurredEventId) {
+        publishTaskStatusChanged(taskId, eventType, targetStatus, runtime, occurredEventId, null);
+    }
+
+    /**
+     * 重载（KD1 异常上报扩展）：reasonCode 非 null 时 payload 携带该可选字段（v1 只加不改）。
+     */
+    protected void publishTaskStatusChanged(Long taskId, String eventType, String targetStatus,
+                                            PlanningContracts.TaskRuntimeDTO runtime, Long occurredEventId,
+                                            String reasonCode) {
         EventEnvelope envelope = buildTaskStatusEnvelope(taskId, eventType, targetStatus,
-                loadMachineIdByTaskId(runtime), occurredEventId);
+                loadMachineIdByTaskId(runtime), occurredEventId, reasonCode);
         outboxPublisher.append(envelope);
         log.info("task.status.changed 已入发件箱: taskId={} eventType={} targetStatus={} eventId={}",
                 taskId, eventType, targetStatus, envelope.getEventId());
@@ -284,6 +322,15 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
     /** 组装 task.status.changed 信封（纯函数，便于契约单测；payload 字段见 EventTypes）。 */
     protected EventEnvelope buildTaskStatusEnvelope(Long taskId, String eventType, String targetStatus,
                                                     Long machineId, Long occurredEventId) {
+        return buildTaskStatusEnvelope(taskId, eventType, targetStatus, machineId, occurredEventId, null);
+    }
+
+    /**
+     * 组装 task.status.changed 信封（KD1 扩展重载）：reasonCode 非 null 时 payload 追加该
+     * 可选字段；为 null 时 payload 与迁移前逐字节一致（既有四事件零变化）。
+     */
+    protected EventEnvelope buildTaskStatusEnvelope(Long taskId, String eventType, String targetStatus,
+                                                    Long machineId, Long occurredEventId, String reasonCode) {
         EventEnvelope envelope = new EventEnvelope();
         envelope.setEventType(EventTypes.TASK_STATUS_CHANGED);
         envelope.setAggregateId(String.valueOf(taskId));
@@ -294,6 +341,9 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
         payload.put("targetStatus", targetStatus);
         payload.put("resourceId", machineId);
         payload.put("occurredEventId", occurredEventId);
+        if (reasonCode != null) {
+            payload.put("reasonCode", reasonCode);
+        }
         envelope.setPayload(payload);
         envelope.setOccurredAt(EnvelopeCodec.now());
         return envelope;

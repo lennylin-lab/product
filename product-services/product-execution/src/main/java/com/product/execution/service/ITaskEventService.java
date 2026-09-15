@@ -88,4 +88,11 @@ public interface ITaskEventService {
 
     /** 完成任务：记录完成事件并发布 task.status.changed（目标 DONE） */
     boolean complete(Long taskId);
+
+    /**
+     * 异常上报（KD1 增量）：reasonCode 必填（缺失拒绝）、remark 可选；记录异常事件
+     * （事件行落 reason_code/remark）并发布 task.status.changed（目标 PAUSED，
+     * 与 PAUSE 同款目标态——消费侧复用既有暂停级联，零新逻辑）。
+     */
+    boolean exception(Long taskId, String reasonCode, String remark);
 }

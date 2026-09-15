@@ -1,0 +1,29 @@
+{
+  "id": "exception-events-rescheduling",
+  "name": "exception-events-rescheduling",
+  "title": "异常事件建模与重排触发",
+  "description": "在 product-services 体系内建模异常/报工失败事件，打通资源状态事件到资源状态机的刷新链路，并建立异常驱动的重排触发机制",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "lenny",
+  "assignee": "lenny",
+  "createdAt": "2026-09-16",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "09-16-exception-event-modeling",
+    "09-16-reschedule-trigger"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

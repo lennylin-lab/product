@@ -1,0 +1,8 @@
+{"file": "docs/TODO.md", "reason": "P1 缺口定义：异常/报工失败未建模、资源状态事件不驱动状态机、无重排触发链路"}
+{"file": "product-services/product-execution/src/main/java/com/product/execution/service/impl/TaskEventServiceImpl.java", "reason": "record() 命令链：EXCEPTION→PAUSED 扩展点与 payload reasonCode 位置"}
+{"file": "product-services/product-planning/src/main/java/com/product/planning/event/PlanningEventConsumerService.java", "reason": "resource.status.changed 消费体：回写与触发逻辑的插入点；task.status.changed 映射增量"}
+{"file": "product-services/product-cloud-messaging/src/main/java/com/product/cloud/messaging/api/EventTypes.java", "reason": "事件 payload schema v1 只加不改约束与既有四类事件"}
+{"file": "product-services/product-planning/src/main/java/com/product/planning/service/impl/ScheduleJobServiceImpl.java", "reason": "scheduleAllAsync 互斥/超时/幂等：重排触发必须复用的入口"}
+{"file": ".trellis/spec/backend/microservices-platform.md", "reason": "per-service recipe、跨域契约规则、服务身份链路、*.sql 追踪陷阱"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "测试与质量基线"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "错误契约逐字节兼容约束"}

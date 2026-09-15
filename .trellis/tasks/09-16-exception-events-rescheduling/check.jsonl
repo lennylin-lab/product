@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/09-16-exception-events-rescheduling/prd.md", "reason": "AC1-AC6 验收标准与 KD 决议是校验基准"}
+{"file": ".trellis/tasks/09-16-exception-events-rescheduling/design.md", "reason": "回写先于触发的顺序契约、失败矩阵、只加不改约束"}
+{"file": ".trellis/spec/backend/microservices-platform.md", "reason": "跨域规则与记录纪律（无 transcript 不写记录）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "测试基线与禁止模式"}

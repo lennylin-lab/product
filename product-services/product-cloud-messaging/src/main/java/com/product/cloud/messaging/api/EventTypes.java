@@ -7,12 +7,17 @@ package com.product.cloud.messaging.api;
  * <pre>
  * task.status.changed（Execution → Planning，taskId 聚合）:
  *   taskId        Long   任务 ID
- *   eventType     String 任务命令类型（START/PAUSE/RESUME/FINISH，与单体 task_event.event_type 同域）
+ *   eventType     String 任务命令类型（START/PAUSE/RESUME/FINISH 冻结四值 +
+ *                        EXCEPTION 异常上报[2026-09-16 KD1 增量，目标态复用 PAUSED]，
+ *                        与单体 task_event.event_type 同域）
  *   targetStatus  String 目标任务状态（RUNNING/PAUSED/RUNNING/DONE，冻结映射同单体）
  *   resourceId    Long?  事件关联资源（派工机台；单体 task_event.resource_id 同源，可为 null）
  *   occurredEventId Long 任务事件行 ID（task_event.event_id，追溯用）
+ *   reasonCode    String? 可选原因编码（EXCEPTION 上报携带；2026-09-16 增量，
+ *                        只加不改——四类既有事件不含该键，v1 版本号不变）
  *
- * resource.status.changed（Execution → Planning，仅记录/告警用途，ADR-0004 §2）:
+ * resource.status.changed（Execution → Planning；2026-09-16 KD3 起 planning 消费后
+ *                        回写 master-data 权威资源状态，原仅记录/告警）:
  *   resourceId    Long   资源 ID
  *   fromStatus    String? 原状态
  *   toStatus      String? 新状态
@@ -39,7 +44,10 @@ public final class EventTypes {
     /** 任务状态事件（Execution → Planning；触发任务/批次状态推进）。 */
     public static final String TASK_STATUS_CHANGED = "task.status.changed";
 
-    /** 资源状态事件（Execution → Planning；仅记录/告警用途，不驱动状态机）。 */
+    /**
+     * 资源状态事件（Execution → Planning；2026-09-16 KD3 起消费回写 master-data 权威
+     * 资源状态——原仅记录/告警用途，不驱动 planning 本域状态机）。
+     */
     public static final String RESOURCE_STATUS_CHANGED = "resource.status.changed";
 
     /** 批次进度事件（Planning → Demand；触发订单行/订单状态推进）。 */

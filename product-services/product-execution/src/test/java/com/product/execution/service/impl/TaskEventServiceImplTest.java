@@ -203,6 +203,112 @@ class TaskEventServiceImplTest {
         assertEquals(LocalDateTime.of(2026, 9, 15, 8, 0), service.savedEvent.getEventTime());
     }
 
+    // ---- KD1 异常事件建模（2026-09-16 增量）----
+
+    @Test
+    void exceptionShouldPauseTaskRecordReasonAndPublishPayloadReasonCode() {
+        RecordingTaskEventService service = new RecordingTaskEventService(true, 101L);
+
+        boolean result = service.exception(811L, "EQUIP_FAULT", "机台故障停机");
+
+        assertTrue(result);
+        assertEquals(811L, service.taskRuntimeQueried);
+        assertNotNull(service.savedEvent);
+        // KD1：目标状态复用 PAUSED（无新状态值）；事件行落 reason_code/remark
+        assertEquals(TaskEventConstants.EXCEPTION_TASK_EVENT, service.savedEvent.getEventType());
+        assertEquals("EQUIP_FAULT", service.savedEvent.getReasonCode());
+        assertEquals("机台故障停机", service.savedEvent.getRemark());
+        assertEquals(101L, service.savedEvent.getResourceId());
+        // payload 带 reasonCode；目标 PAUSED（消费侧复用既有暂停级联，零新逻辑）
+        assertEquals(1, service.published.size());
+        Published published = service.published.poll();
+        assertEquals(EventTypes.TASK_STATUS_CHANGED, published.envelope.getEventType());
+        assertEquals("811", published.envelope.getAggregateId());
+        assertEquals(TaskEventConstants.EXCEPTION_TASK_EVENT, published.payload.get("eventType"));
+        assertEquals(StatusConstants.PAUSED_OPERATION_TASK, published.payload.get("targetStatus"));
+        assertEquals("EQUIP_FAULT", published.payload.get("reasonCode"));
+    }
+
+    @Test
+    void exceptionShouldRejectBlankReasonCode() {
+        RecordingTaskEventService service = new RecordingTaskEventService(true, 110L);
+
+        for (String badReason : new String[] {null, "", "   "}) {
+            org.junit.jupiter.api.Assertions.assertThrows(
+                    com.product.execution.common.exception.ServiceException.class,
+                    () -> service.exception(812L, badReason, null),
+                    "reasonCode=" + badReason + " 应被拒绝");
+        }
+        // 空白原因码不应触发契约调用，也不落库/发布
+        assertNull(service.taskRuntimeQueried);
+        assertNull(service.savedEvent);
+        assertTrue(service.published.isEmpty());
+    }
+
+    @Test
+    void exceptionShouldReturnFalseWhenTaskUnknown() {
+        // 任务不存在 → 既有「update 影响 0 行」失败语义（与四事件一致），无事件行/无发布
+        RecordingTaskEventService service = new RecordingTaskEventService(false, 111L);
+
+        boolean result = service.exception(813L, "EQUIP_FAULT", null);
+
+        assertFalse(result);
+        assertNull(service.savedEvent);
+        assertTrue(service.published.isEmpty());
+    }
+
+    @Test
+    void frozenFourEventsShouldNotCarryReasonCodeKeyInPayload() {
+        // 事件 schema 只加不改回归：四类既有事件 payload 不含 reasonCode 键
+        // （与迁移前逐字节一致），事件行 reason_code/remark 不落值
+        RecordingTaskEventService service = new RecordingTaskEventService(true, 101L);
+
+        assertTrue(service.start(821L));
+        assertTrue(service.pause(822L));
+        assertTrue(service.resume(823L));
+        assertTrue(service.complete(824L));
+
+        assertEquals(4, service.published.size());
+        for (Published published : service.published) {
+            assertFalse(published.payload().containsKey("reasonCode"),
+                    "既有事件 payload 不应出现 reasonCode 键: " + published.payload().get("eventType"));
+        }
+    }
+
+    @Test
+    void envelopeBuilderShouldCarryOptionalReasonCodeOnlyWhenPresent() {
+        RecordingTaskEventService service = new RecordingTaskEventService(true, 101L);
+
+        EventEnvelope withReason = service.buildTaskStatusEnvelope(831L,
+                TaskEventConstants.EXCEPTION_TASK_EVENT, StatusConstants.PAUSED_OPERATION_TASK, 77L, 9002L,
+                "EQUIP_FAULT");
+        assertEquals(1, withReason.getVersion());
+        assertEquals("EQUIP_FAULT", withReason.getPayload().get("reasonCode"));
+        assertTrue(withReason.getPayload().containsKey("reasonCode"));
+
+        EventEnvelope withoutReason = service.buildTaskStatusEnvelope(832L,
+                TaskEventConstants.PAUSE_TASK_EVENT, StatusConstants.PAUSED_OPERATION_TASK, 77L, 9003L, null);
+        assertFalse(withoutReason.getPayload().containsKey("reasonCode"));
+    }
+
+    @Test
+    void insertTaskEventShouldAcceptExceptionTypeForDirectRecord() {
+        // 直录路径（POST /execute/event）接受 eventType=EXCEPTION（沿用 issue#4 直录校验，
+        // 仅落追溯行、不发布状态事件）
+        RecordingTaskEventService service = new RecordingTaskEventService(true, 112L);
+
+        TaskEvent event = new TaskEvent();
+        event.setTaskId(814L);
+        event.setEventType(TaskEventConstants.EXCEPTION_TASK_EVENT);
+        event.setReasonCode("MATERIAL_SHORT");
+
+        assertTrue(service.insertTaskEvent(event));
+        assertEquals(TaskEventConstants.EXCEPTION_TASK_EVENT, service.savedEvent.getEventType());
+        assertEquals("MATERIAL_SHORT", service.savedEvent.getReasonCode());
+        assertTrue(service.published.isEmpty());
+    }
+
+
     private record Published(EventEnvelope envelope, Map<String, Object> payload) {
     }
 
@@ -254,9 +360,10 @@ class TaskEventServiceImplTest {
 
         @Override
         protected void publishTaskStatusChanged(Long taskId, String eventType, String targetStatus,
-                                                PlanningContracts.TaskRuntimeDTO runtime, Long occurredEventId) {
+                                                PlanningContracts.TaskRuntimeDTO runtime, Long occurredEventId,
+                                                String reasonCode) {
             EventEnvelope envelope = buildTaskStatusEnvelope(taskId, eventType, targetStatus,
-                    loadMachineIdByTaskId(runtime), occurredEventId);
+                    loadMachineIdByTaskId(runtime), occurredEventId, reasonCode);
             published.add(new Published(envelope, envelope.getPayload()));
         }
 
