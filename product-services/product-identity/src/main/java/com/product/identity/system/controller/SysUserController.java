@@ -111,8 +111,12 @@ public class SysUserController extends BaseController
 
     /**
      * 根据用户编号获取详细信息
+     *
+     * <p>userId 限定纯数字（issue #1）：用户 CRUD 端点属冻结范围（与单体现状一致），
+     * 不含 /list 等字面路径映射；无数字约束时字面路径会被 /{userId} 吞掉并以
+     * 「参数类型不匹配」500 返回，现改落入统一 404 语义。</p>
      */
-    @GetMapping(value = { "/", "/{userId}" })
+    @GetMapping(value = { "/", "/{userId:\\d+}" })
     public AjaxResult getInfo(@PathVariable(value = "userId", required = false) Long userId)
     {
         AjaxResult ajax = AjaxResult.success();
