@@ -203,6 +203,35 @@ phases (fresh clones / CI could not initialize service DBs). Whitelist now cover
 When adding NEW source-tree SQL artifacts, check `git check-ignore` or extend the whitelist
 explicitly; never rely on `git add -A` to pick up a new `.sql` file.
 
+## Adding a new collaborative resource type (pattern, established by FIXTURE)
+
+Adding a resource type that participates in scheduling (FIXTURE, Phase fixture-scheduling) is a
+six-touchpoint additive change — follow it for future types instead of inventing shortcuts:
+
+1. Constants: `RESOURCE_TYPE_X` in planning + master-data `ResourceConstants`; schema column
+   comments.
+2. master_data_db: extension table keyed by `resource.resource_id` (mirror `machine`/`mold`);
+   aggregate write path writes resource row + extension row in ONE `@Transactional` and calls
+   `MasterDataVersionService.bump()` in-transaction (drift guard depends on it). Compatibility
+   data = dedicated allow-list table mirroring `machine_mold_compatibility`; note compatibility
+   rows historically have NO master-data write path — new compat entries need an explicit
+   maintenance method.
+3. Contract: nested `XDTO` on `ResourceDTO` (no persistence annotations), loaded in the SAME
+   single batch query pass in `InternalMasterDataController.getResources` (one IN query per
+   extension, attach only for the matching resourceType — orphan-row defense).
+4. Planning model: `domain/model/X.java` + nullable `Resource.x`; `SchedulingSnapshotLoader`
+   maps it inside the existing fixture/machine branch pattern; AVAILABLE filter and drift guard
+   untouched.
+5. Requirements: new `RouteEligibleResourceRule` implementation (Spring auto-registers in
+   `RouteRuleRegistry`) emitting mandatory rows with `resourceId=null`; legacy rules stay
+   byte-identical, pinned by regression tests; add a `default` capability method on the
+   interface if the calculator needs a signal.
+6. Calculator: extend the existing explicit per-type structure (ResourceChoice field, selection
+   stage in the machine branch, main-loop map/update blocks, `resolveSelectedResources` branch)
+   — no default-allow on missing compatibility data, failure reuses the existing
+   resource-unavailable ServiceException path verbatim, persistence stays on the generic
+   requirement path (verify by test before patching anything).
+
 Warning learned twice now: record numbers in the task's implement.md execution record
 (test counts, wiring claims, diff bookkeeping) MUST come from a clean `mvn clean test` run
 and committed scripts — stale target/ reports and edit scripts that print success without

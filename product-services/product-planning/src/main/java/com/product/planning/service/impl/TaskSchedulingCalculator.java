@@ -6,6 +6,7 @@ import com.product.planning.common.exception.ServiceException;
 import com.product.planning.common.utils.StringUtils;
 import com.product.planning.domain.model.Calendar;
 import com.product.planning.domain.model.ChangeoverRule;
+import com.product.planning.domain.model.Fixture;
 import com.product.planning.domain.model.Machine;
 import com.product.planning.domain.model.MachineMoldCompatibility;
 import com.product.planning.domain.entity.OperationTask;
@@ -70,7 +71,7 @@ public class TaskSchedulingCalculator {
      * 计算一批任务的资源分配方案（核心排程算法）。
      *
      * <p>
-     * 算法策略：贪心算法 -- 级联选择 MACHINE -> MOLD -> PERSON。
+     * 算法策略：贪心算法 -- 级联选择 MACHINE -> MOLD -> FIXTURE -> PERSON。
      * 每个任务选择当前最早可用的资源组合，选择后立即更新内存快照。
      * </p>
      *
@@ -130,7 +131,7 @@ public class TaskSchedulingCalculator {
             // 将选中的资源 ID 回写到需求列表，供持久化服务生成 TaskAssignmentResource 明细
             List<TaskResourceRequirement> resolvedRequirements = resolveSelectedResources(
                     task.getResourceRequirementList(), choice.machineId, choice.moldId, choice.personId,
-                    choice.workstationId, choice.changeoverTimeMin);
+                    choice.workstationId, choice.fixtureId, choice.changeoverTimeMin);
             assignment.setResourceRequirementList(resolvedRequirements);
 
             // 记录各资源类型的序号，供持久化服务写入 TaskAssignmentResource
@@ -146,6 +147,9 @@ public class TaskSchedulingCalculator {
             }
             if (choice.workstationSequence != null) {
                 resourceSequenceMap.put(ResourceConstants.RESOURCE_TYPE_WORKSTATION, choice.workstationSequence);
+            }
+            if (choice.fixtureSequence != null) {
+                resourceSequenceMap.put(ResourceConstants.RESOURCE_TYPE_FIXTURE, choice.fixtureSequence);
             }
             assignment.setResourceSequenceMap(resourceSequenceMap);
             assignments.add(assignment);
@@ -170,6 +174,10 @@ public class TaskSchedulingCalculator {
             if (choice.workstationId != null) {
                 runtimeContext.update(ResourceConstants.RESOURCE_TYPE_WORKSTATION,
                         choice.workstationId, choice.plannedEnd, choice.workstationSequence);
+            }
+            if (choice.fixtureId != null) {
+                runtimeContext.update(ResourceConstants.RESOURCE_TYPE_FIXTURE,
+                        choice.fixtureId, choice.plannedEnd, choice.fixtureSequence);
             }
         }
         return new ScheduleBatchResult(assignments, taskIds);
@@ -300,16 +308,17 @@ public class TaskSchedulingCalculator {
     // ========================== 级联资源选择（核心算法） ==========================
 
     /**
-     * 级联选择资源：MACHINE -> MOLD -> PERSON。
+     * 级联选择资源：MACHINE -> MOLD -> FIXTURE -> PERSON。
      *
      * <p>
      * 选择顺序：
      * 1. 先选最优机台（贪心算法，最早可用）
      * 2. 根据任务 MOLD 需求从机台兼容模具中选择最早可用的模具
-     * 3. 根据任务 PERSON 需求通过 opCode 匹配选择最早可用的人员
+     * 3. 根据任务 FIXTURE 需求从 fixture ↔ mold 显式兼容夹具中选择最早可用的夹具
+     * 4. 根据任务 PERSON 需求通过 opCode 匹配选择最早可用的人员
      * </p>
      * <p>
-     * plannedStart = max(机台可用, 模具可用, 人员可用, earliestStart, assignmentStart)
+     * plannedStart = max(机台可用, 模具可用, 夹具可用, 人员可用, earliestStart, assignmentStart)
      * </p>
      */
     private ResourceChoice chooseResources(OperationTask task,
@@ -337,6 +346,8 @@ public class TaskSchedulingCalculator {
         Long moldSequence = null;
         Long personId = null;
         Long personSequence = null;
+        Long fixtureId = null;
+        Long fixtureSequence = null;
 
         // 阶段2: 选择模具（从机台兼容模具中选最早可用）
         if (CollectionUtils.isNotEmpty(task.getResourceRequirementList())) {
@@ -354,7 +365,18 @@ public class TaskSchedulingCalculator {
             }
         }
 
-        // 阶段3: 选择人员（通过 opCode 匹配技能）
+        // 阶段3: 选择夹具（模具选定后，按 fixture ↔ mold 显式允许清单过滤后选最早可用）
+        List<TaskResourceRequirement> fixtureReqs = findMandatoryFixtureReqs(task);
+        if (!fixtureReqs.isEmpty()) {
+            fixtureId = chooseFixture(fixtureReqs, moldId, schedulingContext, runtimeContext);
+            if (fixtureId == null) {
+                log.warn("任务 {} 没有可用夹具(模具 {})", task.getTaskId(), moldId);
+                return null;
+            }
+            fixtureSequence = runtimeContext.getNextSequence(ResourceConstants.RESOURCE_TYPE_FIXTURE, fixtureId);
+        }
+
+        // 阶段4: 选择人员（通过 opCode 匹配技能）
         if (CollectionUtils.isNotEmpty(task.getResourceRequirementList())) {
             List<TaskResourceRequirement> personReqs = task.getResourceRequirementList().stream()
                     .filter(req -> req != null && ResourceConstants.RESOURCE_TYPE_PERSON.equals(req.getResourceType()))
@@ -377,9 +399,12 @@ public class TaskSchedulingCalculator {
         LocalDateTime personNextTime = personId != null
                 ? runtimeContext.getNextAvailableTime(ResourceConstants.RESOURCE_TYPE_PERSON, personId)
                 : null;
+        LocalDateTime fixtureNextTime = fixtureId != null
+                ? runtimeContext.getNextAvailableTime(ResourceConstants.RESOURCE_TYPE_FIXTURE, fixtureId)
+                : null;
 
         LocalDateTime effectiveStart = maxTime(
-                machineChoice.plannedStart, moldNextTime, personNextTime,
+                machineChoice.plannedStart, moldNextTime, personNextTime, fixtureNextTime,
                 effectiveEarliestStart, assignmentStart);
 
         // 如果 effectiveStart 晚于 machineChoice.plannedStart，需要重新计算时间窗口
@@ -405,7 +430,8 @@ public class TaskSchedulingCalculator {
                 machineChoice.machineId, plannedStart, plannedEnd,
                 machineChoice.sequenceOnResource, machineChoice.setupCostMin,
                 machineChoice.changeoverTimeMin, machineChoice.changeoverSourceTaskId,
-                moldId, moldSequence, personId, personSequence, null, null);
+                moldId, moldSequence, personId, personSequence, null, null,
+                fixtureId, fixtureSequence);
     }
 
     private ResourceChoice chooseWorkstationResources(OperationTask task,
@@ -413,6 +439,13 @@ public class TaskSchedulingCalculator {
             ResourceRuntimeContext runtimeContext,
             LocalDateTime assignmentStart,
             LocalDateTime effectiveEarliestStart) {
+        // 夹具是机台分支内、模具之后的协同资源（MVP 两个夹具感知规则均为机台规则）；
+        // 工位任务携带强制 FIXTURE 需求的组合在 MVP 中不存在，防御性按不可排程处理
+        // （与机台分支资源不可用的失败风格一致）
+        if (!findMandatoryFixtureReqs(task).isEmpty()) {
+            log.warn("任务 {} 为工位任务但携带夹具需求，工位分支不支持夹具", task.getTaskId());
+            return null;
+        }
         List<Resource> workstations = schedulingContext.getResourcesByType()
                 .getOrDefault(ResourceConstants.RESOURCE_TYPE_WORKSTATION, List.of());
         Map<Long, Calendar> calendarMap = schedulingContext.getCalendarMap();
@@ -461,7 +494,8 @@ public class TaskSchedulingCalculator {
                 null, window.start, window.end,
                 workstationChoice.sequenceOnResource, 0, null, null,
                 null, null, personId, personSequence,
-                workstationChoice.workstationId, workstationChoice.sequenceOnResource);
+                workstationChoice.workstationId, workstationChoice.sequenceOnResource,
+                null, null);
     }
 
     private boolean requiresMachine(OperationTask task) {
@@ -490,19 +524,22 @@ public class TaskSchedulingCalculator {
      * 将级联选择的结果回写到需求列表中。
      *
      * <p>
-     * 对于需求中未指定 resourceId 的 MOLD/PERSON/MACHINE 类型需求，
+     * 对于需求中未指定 resourceId 的 MOLD/PERSON/MACHINE/FIXTURE 类型需求，
      * 用 calculator 选中资源的 ID 填充，以便持久化服务正确生成 TaskAssignmentResource。
+     * 需求已指定 resourceId 时尊重预指定，不做覆盖。
      * </p>
      *
      * @param requirements 原始需求列表
      * @param machineId    选中的机台ID
      * @param moldId       选中的模具ID（可为 null）
      * @param personId     选中的人员ID（可为 null）
+     * @param fixtureId    选中的夹具ID（可为 null）
      * @return 填充后的需求列表副本
      */
     private List<TaskResourceRequirement> resolveSelectedResources(
             List<TaskResourceRequirement> requirements,
-            Long machineId, Long moldId, Long personId, Long workstationId, Integer changeoverTimeMin) {
+            Long machineId, Long moldId, Long personId, Long workstationId, Long fixtureId,
+            Integer changeoverTimeMin) {
         if (CollectionUtils.isEmpty(requirements)) {
             return List.of();
         }
@@ -536,6 +573,9 @@ public class TaskSchedulingCalculator {
                 } else if (ResourceConstants.RESOURCE_TYPE_WORKSTATION.equals(copy.getResourceType())
                         && workstationId != null) {
                     copy.setResourceId(workstationId);
+                } else if (ResourceConstants.RESOURCE_TYPE_FIXTURE.equals(copy.getResourceType())
+                        && fixtureId != null) {
+                    copy.setResourceId(fixtureId);
                 }
             }
             resolved.add(copy);
@@ -885,6 +925,102 @@ public class TaskSchedulingCalculator {
             }
         }
         return null;
+    }
+
+    // ========================== 夹具选择（2026-09-15 夹具占用任务） ==========================
+
+    /**
+     * 提取任务中强制（mandatory）的 FIXTURE 需求行。
+     *
+     * <p>无 FIXTURE 需求行时返回空列表，夹具路径整体跳过（非夹具任务零变化）。</p>
+     */
+    private List<TaskResourceRequirement> findMandatoryFixtureReqs(OperationTask task) {
+        if (task == null || CollectionUtils.isEmpty(task.getResourceRequirementList())) {
+            return List.of();
+        }
+        return task.getResourceRequirementList().stream()
+                .filter(req -> req != null && ResourceConstants.RESOURCE_TYPE_FIXTURE.equals(req.getResourceType()))
+                .filter(this::isMandatoryRequirement)
+                .toList();
+    }
+
+    /**
+     * 选择可用夹具（fixture ↔ mold 显式允许清单裁决）。
+     *
+     * <p>
+     * 显式允许清单语义（父任务 KD1）：仅 fixture.moldCompatibilityList 中存在
+     * moldId == 所选模具 且 isCompatible=1 的夹具可参与；缺失兼容行或 isCompatible=0
+     * 一律视为不兼容（无默认放行）。候选来自排程快照中可用的 FIXTURE 资源
+     * （可用性过滤口径与机台/模具一致）。
+     * </p>
+     * <p>
+     * 匹配规则：
+     * 1. 需求指定了 resourceId 时，仅当该夹具在可用资源中且兼容所选模具时选中
+     * 2. 未指定时从兼容夹具中选最早可用的
+     * 3. 任务无 MOLD 需求行（moldId 为 null）时无法判定适配，视为不可满足
+     * </p>
+     *
+     * @param fixtureReqs       夹具需求列表（mandatory）
+     * @param moldId            已选定的模具ID（任务无 MOLD 需求时为 null）
+     * @param schedulingContext 排程资源上下文（获取夹具资源列表）
+     * @param runtimeContext    资源运行时上下文
+     * @return 选中的夹具ID，无可用时返回 null
+     */
+    private Long chooseFixture(List<TaskResourceRequirement> fixtureReqs,
+            Long moldId,
+            TaskSchedulingQueryService.SchedulingResourceContext schedulingContext,
+            ResourceRuntimeContext runtimeContext) {
+        if (moldId == null) {
+            // 夹具适配以模具为裁决粒度：无 MOLD 需求的夹具任务按不可满足处理
+            return null;
+        }
+        List<Resource> fixtureResources = schedulingContext.getResourcesByType()
+                .getOrDefault(ResourceConstants.RESOURCE_TYPE_FIXTURE, List.of());
+
+        for (TaskResourceRequirement req : fixtureReqs) {
+            if (req.getResourceId() != null) {
+                // 指定了夹具ID：检查可用性与显式兼容清单
+                boolean usable = fixtureResources.stream()
+                        .filter(r -> r != null && Objects.equals(r.getResourceId(), req.getResourceId()))
+                        .anyMatch(r -> fixtureSupportsMold(r.getFixture(), moldId));
+                return usable ? req.getResourceId() : null;
+            }
+
+            // 未指定夹具ID：从显式兼容夹具中选最早可用的
+            Long bestFixtureId = null;
+            LocalDateTime bestFixtureNext = null;
+            for (Resource fixtureResource : fixtureResources) {
+                if (fixtureResource == null || fixtureResource.getFixture() == null) {
+                    continue;
+                }
+                if (!fixtureSupportsMold(fixtureResource.getFixture(), moldId)) {
+                    continue;
+                }
+                LocalDateTime fixtureNext = runtimeContext.getNextAvailableTime(
+                        ResourceConstants.RESOURCE_TYPE_FIXTURE, fixtureResource.getResourceId());
+                if (bestFixtureNext == null || (fixtureNext == null) || fixtureNext.isBefore(bestFixtureNext)) {
+                    bestFixtureId = fixtureResource.getResourceId();
+                    bestFixtureNext = fixtureNext;
+                }
+            }
+            if (bestFixtureId != null) {
+                return bestFixtureId;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 检查夹具是否兼容指定模具（显式允许清单：isCompatible=1 才兼容）。
+     */
+    private boolean fixtureSupportsMold(Fixture fixture, Long moldId) {
+        if (fixture == null || CollectionUtils.isEmpty(fixture.getMoldCompatibilityList())) {
+            return false;
+        }
+        return fixture.getMoldCompatibilityList().stream()
+                .filter(Objects::nonNull)
+                .anyMatch(item -> Objects.equals(item.getMoldId(), moldId)
+                        && Integer.valueOf(1).equals(item.getIsCompatible()));
     }
 
     // ========================== 人员选择 ==========================
@@ -1350,7 +1486,7 @@ public class TaskSchedulingCalculator {
     }
 
     /**
-     * 资源选择结果（扩展 MachineChoice，包含模具和人员信息）。
+     * 资源选择结果（扩展 MachineChoice，包含模具、人员、工位和夹具信息）。
      */
     public static class ResourceChoice {
         private final Long machineId;
@@ -1366,6 +1502,8 @@ public class TaskSchedulingCalculator {
         private final Long personSequence;
         private final Long workstationId;
         private final Long workstationSequence;
+        private final Long fixtureId;
+        private final Long fixtureSequence;
 
         public ResourceChoice(Long machineId,
                 LocalDateTime plannedStart,
@@ -1379,7 +1517,9 @@ public class TaskSchedulingCalculator {
                 Long personId,
                 Long personSequence,
                 Long workstationId,
-                Long workstationSequence) {
+                Long workstationSequence,
+                Long fixtureId,
+                Long fixtureSequence) {
             this.machineId = machineId;
             this.plannedStart = plannedStart;
             this.plannedEnd = plannedEnd;
@@ -1393,6 +1533,8 @@ public class TaskSchedulingCalculator {
             this.personSequence = personSequence;
             this.workstationId = workstationId;
             this.workstationSequence = workstationSequence;
+            this.fixtureId = fixtureId;
+            this.fixtureSequence = fixtureSequence;
         }
     }
 

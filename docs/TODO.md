@@ -43,7 +43,7 @@
 | 模块 | 当前状态 | 主要位置 | 说明 |
 | --- | --- | --- | --- |
 | `product-services` | 现役，已统一切换 | `product-services/product-gateway` 等 | 网关 8080 唯一入口，五业务服务 + 三个共享库；基础设施含 Nacos/RabbitMQ/Jaeger/MySQL/Redis/ELK |
-| `product-planning` | 排程现役 | `com.product.planning.service.impl.TaskSchedulingCalculator` | 覆盖机台/模具/人员/工位选择与占用、任务依赖、工艺路线 `queue_policy`、四种策略；换型成本仍取任务需求或机台默认准备时间 |
+| `product-planning` | 排程现役 | `com.product.planning.service.impl.TaskSchedulingCalculator` | 覆盖机台/模具/人员/工位/夹具选择与占用（夹具为机台分支协同资源，fixture ↔ mold 显式允许清单）、任务依赖、工艺路线 `queue_policy`、四种策略；换型成本仍取任务需求或机台默认准备时间 |
 | `product-execution` | 执行事件现役 | `com.product.execution.*` | `START/PAUSE/RESUME/FINISH` 四类事件（值冻结）+ 资源状态事件记录；事件经 cloud-messaging outbox 出站 |
 | `product-cloud-messaging` | 事件一致性骨架 | `product-services/product-cloud-messaging` | Outbox/幂等消费/死信审计/重放已就绪；异常事件建模与重排触发未做 |
 | 旧单体模块（`product-pps`/`product-execute`/`product-demand` 等） | 代码保留，冻结演进 | 仓库根目录各模块 | 自 2026-09-15 起不再是主线，仅作迁移对照；新功能一律在 `product-services` 落地 |
@@ -53,7 +53,7 @@
 
 | 优先级 | 模块 | 剩余任务 | 主要位置 | 说明 |
 | --- | --- | --- | --- | --- |
-| `P1` | `product-domain` / `product-planning` | 夹具等协同资源：从建模到排程 | 资源相关实体、`TaskSchedulingCalculator.java` | 人员、工位已进排程；夹具建模已完成（2026-09-15：FIXTURE 资源类型、master_data_db `fixture` 扩展表、resources/batch 契约扩展、排程快照装载）；兼容规则已接入（2026-09-15：master_data_db `fixture_mold_compatibility` 表、契约 `fixture.moldCompatibilities` 下发、夹具感知规则 RULE_SETUP_MACHINE_FIXTURE / RULE_INJECT_MACHINE_FIXTURE 产出强制 FIXTURE 需求）；分配与占用计算待补齐 |
+| `P1` | `product-domain` / `product-planning` | 夹具等协同资源：从建模到排程 | 资源相关实体、`TaskSchedulingCalculator.java` | 已完成（2026-09-15 三段推进）：夹具建模（FIXTURE 资源类型、master_data_db `fixture` 扩展表、resources/batch 契约扩展、排程快照装载）；兼容规则（master_data_db `fixture_mold_compatibility` 表、契约 `fixture.moldCompatibilities` 下发、夹具感知规则 RULE_SETUP_MACHINE_FIXTURE / RULE_INJECT_MACHINE_FIXTURE 产出强制 FIXTURE 需求）；分配与占用（排程计算器机台分支模具后第三级夹具选择、fixture ↔ mold 显式允许清单裁决、夹具可用时间纳入 plannedStart/plannedEnd、FIXTURE 独立序号与运行时占用、task_assignment_resource 经泛化路径落 FIXTURE 行；工位分支夹具仍为 MVP 外延） |
 | `P1` | `product-execution` / `product-planning` | 异常事件建模与重排触发 | `TaskEventController`、事件消费者、排程入口 | 事件类型仍冻结四种；异常、报工失败未建模；资源状态事件仅记录不驱动状态机；尚无重排触发链路 |
 | `P2` | `product-planning` | 提升成本模型精度 | `TaskSchedulingCalculator.estimateSetupCost` | `LOWEST_COST` 目前仅基于换型/准备时间，未纳入能耗、换模次数、跨班次损耗等综合因子 |
 | `P2` | `product-services/**/src/test` | 补系统级与集成级测试 | planning、execution、demand-service | 服务级契约测试已就位；跨服务数据库状态联动、跨班次排程、并发排程场景仍缺 |
