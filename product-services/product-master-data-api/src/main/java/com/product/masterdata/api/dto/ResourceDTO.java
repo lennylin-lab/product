@@ -6,9 +6,9 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * 资源批量查询响应信封条目：resource 主行 + 机台/模具扩展 + 能力矩阵。
+ * 资源批量查询响应信封条目：resource 主行 + 机台/模具/夹具扩展 + 能力矩阵。
  *
- * <p>{@code version} 为 resource 行 update_time epoch 毫秒（null 记 0）。机台/模具扩展行
+ * <p>{@code version} 为 resource 行 update_time epoch 毫秒（null 记 0）。机台/模具/夹具扩展行
  * 与能力矩阵行无时间戳列（单体基线如此），其变化通过信封 {@code snapshotVersion} 体现。</p>
  */
 public class ResourceDTO implements Serializable {
@@ -38,6 +38,9 @@ public class ResourceDTO implements Serializable {
 
     /** 模具扩展（resourceType=MOLD 时存在）。 */
     private MoldDTO mold;
+
+    /** 夹具扩展（2026-09-15 增量；resourceType=FIXTURE 时存在，旧消费者不读取即不受影响）。 */
+    private FixtureDTO fixture;
 
     /** 能力矩阵条目。 */
     private List<CapabilityDTO> capabilities;
@@ -120,6 +123,14 @@ public class ResourceDTO implements Serializable {
 
     public void setMold(MoldDTO mold) {
         this.mold = mold;
+    }
+
+    public FixtureDTO getFixture() {
+        return fixture;
+    }
+
+    public void setFixture(FixtureDTO fixture) {
+        this.fixture = fixture;
     }
 
     public List<CapabilityDTO> getCapabilities() {
@@ -219,6 +230,32 @@ public class ResourceDTO implements Serializable {
 
         public void setNextMaintDue(LocalDate nextMaintDue) {
             this.nextMaintDue = nextMaintDue;
+        }
+    }
+
+    /** 夹具扩展条目（fixture）。 */
+    public static class FixtureDTO implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        private Long fixtureId;
+
+        private String fixtureCode;
+
+        public Long getFixtureId() {
+            return fixtureId;
+        }
+
+        public void setFixtureId(Long fixtureId) {
+            this.fixtureId = fixtureId;
+        }
+
+        public String getFixtureCode() {
+            return fixtureCode;
+        }
+
+        public void setFixtureCode(String fixtureCode) {
+            this.fixtureCode = fixtureCode;
         }
     }
 

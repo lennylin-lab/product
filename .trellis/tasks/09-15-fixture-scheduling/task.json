@@ -1,0 +1,30 @@
+{
+  "id": "fixture-scheduling",
+  "name": "fixture-scheduling",
+  "title": "夹具协同资源接入排程",
+  "description": "按建模、兼容规则、分配与占用的顺序，将夹具接入 product-services 排程计算",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "lenny",
+  "assignee": "lenny",
+  "createdAt": "2026-09-15",
+  "completedAt": null,
+  "branch": "master",
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "09-15-fixture-modeling",
+    "09-15-fixture-compatibility",
+    "09-15-fixture-assignment-occupancy"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

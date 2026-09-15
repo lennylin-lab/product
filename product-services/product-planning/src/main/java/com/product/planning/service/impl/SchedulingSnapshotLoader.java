@@ -23,6 +23,7 @@ import com.product.masterdata.api.dto.ResourceDTO;
 import com.product.planning.common.exception.ServiceException;
 import com.product.planning.domain.model.Calendar;
 import com.product.planning.domain.model.ChangeoverRule;
+import com.product.planning.domain.model.Fixture;
 import com.product.planning.domain.model.Machine;
 import com.product.planning.domain.model.MachineMoldCompatibility;
 import com.product.planning.domain.model.OrderLineSnapshot;
@@ -342,6 +343,14 @@ public class SchedulingSnapshotLoader {
                             .collect(Collectors.toCollection(ArrayList::new));
             machine.setMoldCompatibilityList(compatibilities);
             resource.setMachine(machine);
+        }
+        // 夹具扩展（2026-09-15 增量）：dto.fixture 为 null（旧 master-data 或非夹具资源）时
+        // Resource.fixture 保持 null，非夹具路径零变化；AVAILABLE 过滤/版本漂移守卫不特判夹具
+        if (dto.getFixture() != null) {
+            Fixture fixture = new Fixture();
+            fixture.setFixtureId(dto.getFixture().getFixtureId());
+            fixture.setFixtureCode(dto.getFixture().getFixtureCode());
+            resource.setFixture(fixture);
         }
         List<ResourceCapability> capabilities = dto.getCapabilities() == null
                 ? new ArrayList<>()

@@ -11,4 +11,5 @@ public class ResourceConstants {
     public static final String RESOURCE_TYPE_MOLD = "MOLD";
     public static final String RESOURCE_TYPE_PERSON = "PERSON";
     public static final String RESOURCE_TYPE_WORKSTATION = "WORKSTATION";
+    public static final String RESOURCE_TYPE_FIXTURE = "FIXTURE";
 }

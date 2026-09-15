@@ -29,8 +29,8 @@ public class Resource  extends BaseEntity {
     @TableId(value = "resource_id", type = IdType.ASSIGN_ID )
     private Long resourceId;
 
-    /** 资源类型（MACHINE：注塑机 MOLD：模具 PERSON：人员 WORKSTATION：工位） */
-    @Excel(name = "资源类型", readConverterExp = "MACHINE=注塑机,MOLD=模具,PERSON=人员,WORKSTATION=工位")
+    /** 资源类型（MACHINE：注塑机 MOLD：模具 PERSON：人员 WORKSTATION：工位 FIXTURE：夹具） */
+    @Excel(name = "资源类型", readConverterExp = "MACHINE=注塑机,MOLD=模具,PERSON=人员,WORKSTATION=工位,FIXTURE=夹具")
     @TableField(value = "resource_type")
     private String resourceType;
 
@@ -65,5 +65,9 @@ public class Resource  extends BaseEntity {
     /** 注塑机扩展信息 */
     @TableField(exist = false)
     private Machine machine;
+
+    /** 夹具扩展信息 */
+    @TableField(exist = false)
+    private Fixture fixture;
 
 }

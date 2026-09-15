@@ -79,6 +79,15 @@
   资源扩展表（machine/mold/resource_capability）无时间戳列（单体基线如此），其变化由 snapshotVersion
   体现。该表为服务自建权属表，不属本基线 32 表清单，根 schema.sql 零改动（ADR-0005 服务自建表同款权属逻辑）。
 
+### 2.4 补充记录（夹具建模增量，2026-09-15；原 2.1/2.2/2.3 冻结内容不变）
+
+夹具协同资源建模（09-15-fixture-modeling）在 `master_data_db` 初始化脚本新增服务自建
+夹具扩展表 `fixture`（扩展表主键 = `resource.resource_id`，与 machine/mold 同款约定）：
+master_data_db init 脚本表数 12 → 13（11 张单体主数据表 + master_data_data_version + fixture）。
+该表不属于本基线 32 表清单，根 schema.sql 零改动（ADR-0005 服务自建表同款权属逻辑）；
+`resource.resource_type` 列注释追加 FIXTURE（夹具）枚举值，列定义不变。
+幂等语义不变：业务表 DROP/CREATE 重置，`master_data_data_version` 计数器刻意不清零。
+
 ## 3. 核心 E2E 用例清单（统一切换验收从 Gateway 入口执行）
 
 ### 3.1 认证与权限（identity/gateway）

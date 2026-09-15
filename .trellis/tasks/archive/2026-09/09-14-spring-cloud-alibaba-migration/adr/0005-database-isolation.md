@@ -24,6 +24,10 @@
 
 每个服务另建自己的 outbox / 消费去重表（ADR-0004），归属服务自身 database。
 
+> 增量记录（2026-09-15，夹具建模任务）：`master_data_db` 新增服务自建夹具扩展表
+> `fixture`（主键 = `resource.resource_id`，machine/mold 同款约定），init 脚本表数
+> 12 → 13；上表所列单体基线 11 张不变，根 schema.sql 零改动。
+
 ### 2. 跨服务引用规则
 
 - 表间逻辑关联只保留在所有权内部（如 `order_line.order_id` → `customer_order`）。

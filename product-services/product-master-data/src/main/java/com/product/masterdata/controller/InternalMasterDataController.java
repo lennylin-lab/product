@@ -17,8 +17,10 @@ import com.product.masterdata.api.dto.ResourceBatchQueryRequest;
 import com.product.masterdata.api.dto.ResourceBatchResponse;
 import com.product.masterdata.api.dto.ResourceDTO;
 import com.product.masterdata.common.exception.ServiceException;
+import com.product.masterdata.common.constant.ResourceConstants;
 import com.product.masterdata.domain.entity.Calendar;
 import com.product.masterdata.domain.entity.ChangeoverRule;
+import com.product.masterdata.domain.entity.Fixture;
 import com.product.masterdata.domain.entity.Machine;
 import com.product.masterdata.domain.entity.MachineMoldCompatibility;
 import com.product.masterdata.domain.entity.Mold;
@@ -133,6 +135,12 @@ public class InternalMasterDataController implements com.product.masterdata.api.
                         .list()
                         .stream()
                         .collect(Collectors.toMap(Mold::getMoldId, Function.identity(), (a, b) -> a));
+        Map<Long, Fixture> fixtureById = resourceIds.isEmpty() ? Map.of()
+                : Db.lambdaQuery(Fixture.class)
+                        .in(Fixture::getFixtureId, resourceIds)
+                        .list()
+                        .stream()
+                        .collect(Collectors.toMap(Fixture::getFixtureId, Function.identity(), (a, b) -> a));
         Map<Long, List<ResourceCapability>> capabilityByResource = resourceIds.isEmpty() ? Map.of()
                 : Db.lambdaQuery(ResourceCapability.class)
                         .in(ResourceCapability::getResourceId, resourceIds)
@@ -153,6 +161,7 @@ public class InternalMasterDataController implements com.product.masterdata.api.
                 .map(resource -> toResourceDTO(resource,
                         machineById.get(resource.getResourceId()),
                         moldById.get(resource.getResourceId()),
+                        fixtureById.get(resource.getResourceId()),
                         compatibilityByMachine.getOrDefault(resource.getResourceId(), List.of()),
                         capabilityByResource.get(resource.getResourceId())))
                 .collect(Collectors.toList()));
@@ -285,7 +294,7 @@ public class InternalMasterDataController implements com.product.masterdata.api.
         return dto;
     }
 
-    private ResourceDTO toResourceDTO(Resource resource, Machine machine, Mold mold,
+    private ResourceDTO toResourceDTO(Resource resource, Machine machine, Mold mold, Fixture fixture,
                                       List<MachineMoldCompatibility> compatibilities,
                                       List<ResourceCapability> capabilities) {
         ResourceDTO dto = new ResourceDTO();
@@ -320,6 +329,14 @@ public class InternalMasterDataController implements com.product.masterdata.api.
             moldDTO.setMoldStatus(mold.getMoldStatus());
             moldDTO.setNextMaintDue(mold.getNextMaintDue());
             dto.setMold(moldDTO);
+        }
+        // 夹具扩展仅对 FIXTURE 类型资源挂载（扩展行主键 = resource.resource_id；
+        // 旧 master-data 响应/非夹具资源不含该字段，消费端按 null 处理即可）
+        if (fixture != null && ResourceConstants.RESOURCE_TYPE_FIXTURE.equals(resource.getResourceType())) {
+            ResourceDTO.FixtureDTO fixtureDTO = new ResourceDTO.FixtureDTO();
+            fixtureDTO.setFixtureId(fixture.getFixtureId());
+            fixtureDTO.setFixtureCode(fixture.getFixtureCode());
+            dto.setFixture(fixtureDTO);
         }
         if (CollectionUtils.isNotEmpty(capabilities)) {
             dto.setCapabilities(capabilities.stream().map(capability -> {

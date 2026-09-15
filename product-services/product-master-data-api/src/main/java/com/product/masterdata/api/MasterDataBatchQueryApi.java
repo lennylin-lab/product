@@ -48,9 +48,10 @@ public interface MasterDataBatchQueryApi {
     ProductBatchResponse getProducts(@RequestBody ProductBatchQueryRequest request);
 
     /**
-     * 批量加载资源聚合（resource 行 + 机台/模具扩展 + 兼容矩阵 + 能力矩阵）。
+     * 批量加载资源聚合（resource 行 + 机台/模具/夹具扩展 + 兼容矩阵 + 能力矩阵）。
      * {@code resourceIds} 为 null/空时返回全部资源。机台条目含模具兼容性行
-     * （{@code moldCompatibilities}，Phase 4 增量）。
+     * （{@code moldCompatibilities}，Phase 4 增量）；夹具条目含 fixture 扩展
+     * （{@code fixture}，2026-09-15 增量，resourceType=FIXTURE 时存在）。
      */
     @PostMapping("/resources/batch")
     ResourceBatchResponse getResources(@RequestBody ResourceBatchQueryRequest request);

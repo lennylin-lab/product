@@ -53,7 +53,7 @@
 
 | 优先级 | 模块 | 剩余任务 | 主要位置 | 说明 |
 | --- | --- | --- | --- | --- |
-| `P1` | `product-domain` / `product-planning` | 夹具等协同资源：从建模到排程 | 资源相关实体、`TaskSchedulingCalculator.java` | 人员、工位已进排程；夹具（FIXTURE）连领域模型都没有，需建模、兼容规则、分配与占用计算逐层补齐 |
+| `P1` | `product-domain` / `product-planning` | 夹具等协同资源：从建模到排程 | 资源相关实体、`TaskSchedulingCalculator.java` | 人员、工位已进排程；夹具建模已完成（2026-09-15：FIXTURE 资源类型、master_data_db `fixture` 扩展表、resources/batch 契约扩展、排程快照装载）；兼容规则、分配与占用计算待逐层补齐 |
 | `P1` | `product-execution` / `product-planning` | 异常事件建模与重排触发 | `TaskEventController`、事件消费者、排程入口 | 事件类型仍冻结四种；异常、报工失败未建模；资源状态事件仅记录不驱动状态机；尚无重排触发链路 |
 | `P2` | `product-planning` | 提升成本模型精度 | `TaskSchedulingCalculator.estimateSetupCost` | `LOWEST_COST` 目前仅基于换型/准备时间，未纳入能耗、换模次数、跨班次损耗等综合因子 |
 | `P2` | `product-services/**/src/test` | 补系统级与集成级测试 | planning、execution、demand-service | 服务级契约测试已就位；跨服务数据库状态联动、跨班次排程、并发排程场景仍缺 |

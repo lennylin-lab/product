@@ -77,6 +77,82 @@ class SchedulingSnapshotLoaderTest {
     }
 
     @Test
+    void loadAvailableResourcesShouldMapAvailableFixtureWithExtension() {
+        // 可用夹具资源 + fixture 扩展 → 快照装载 fixture 聚合（与机台扩展同款映射）
+        ResourceDTO dto = new ResourceDTO();
+        dto.setResourceId(301L);
+        dto.setStatus(StatusConstants.AVAILABLE_RESOURCE_STATUS);
+        dto.setResourceType(ResourceConstants.RESOURCE_TYPE_FIXTURE);
+        ResourceDTO.FixtureDTO fixtureDTO = new ResourceDTO.FixtureDTO();
+        fixtureDTO.setFixtureId(301L);
+        fixtureDTO.setFixtureCode("FJ-001");
+        dto.setFixture(fixtureDTO);
+
+        ResourceBatchResponse response = new ResourceBatchResponse();
+        response.setResources(List.of(dto));
+        when(masterDataBatchQueryApi.getResources(any(ResourceBatchQueryRequest.class))).thenReturn(response);
+
+        List<Resource> resources = newLoader().loadAvailableResources(
+                List.of(ResourceConstants.RESOURCE_TYPE_FIXTURE));
+
+        assertEquals(1, resources.size());
+        Resource resource = resources.get(0);
+        assertEquals(301L, resource.getResourceId());
+        assertEquals(ResourceConstants.RESOURCE_TYPE_FIXTURE, resource.getResourceType());
+        assertEquals(301L, resource.getFixture().getFixtureId());
+        assertEquals("FJ-001", resource.getFixture().getFixtureCode());
+    }
+
+    @Test
+    void loadAvailableResourcesShouldFilterNonAvailableFixture() {
+        // 不可用夹具（DOWN）沿用既有 AVAILABLE 过滤，不特判 → 不进入快照
+        ResourceDTO available = new ResourceDTO();
+        available.setResourceId(302L);
+        available.setStatus(StatusConstants.AVAILABLE_RESOURCE_STATUS);
+        available.setResourceType(ResourceConstants.RESOURCE_TYPE_FIXTURE);
+        ResourceDTO.FixtureDTO availableFixture = new ResourceDTO.FixtureDTO();
+        availableFixture.setFixtureId(302L);
+        availableFixture.setFixtureCode("FJ-002");
+        available.setFixture(availableFixture);
+        ResourceDTO down = new ResourceDTO();
+        down.setResourceId(303L);
+        down.setStatus(StatusConstants.DOWN_RESOURCE_STATUS);
+        down.setResourceType(ResourceConstants.RESOURCE_TYPE_FIXTURE);
+
+        ResourceBatchResponse response = new ResourceBatchResponse();
+        response.setResources(List.of(available, down));
+        when(masterDataBatchQueryApi.getResources(any(ResourceBatchQueryRequest.class))).thenReturn(response);
+
+        List<Resource> resources = newLoader().loadAvailableResources(
+                List.of(ResourceConstants.RESOURCE_TYPE_FIXTURE));
+
+        assertEquals(1, resources.size());
+        assertEquals(302L, resources.get(0).getResourceId());
+    }
+
+    @Test
+    void loadAvailableResourcesShouldLeaveFixtureNullWithoutFixtureDto() {
+        // dto.fixture 缺失（旧 master-data 响应、缺扩展行或非夹具资源）→ Resource.fixture 为 null，
+        // 非夹具路径零变化
+        ResourceDTO machineDto = resource(101L, StatusConstants.AVAILABLE_RESOURCE_STATUS,
+                ResourceConstants.RESOURCE_TYPE_MACHINE, 30);
+        ResourceDTO fixtureWithoutExtension = new ResourceDTO();
+        fixtureWithoutExtension.setResourceId(304L);
+        fixtureWithoutExtension.setStatus(StatusConstants.AVAILABLE_RESOURCE_STATUS);
+        fixtureWithoutExtension.setResourceType(ResourceConstants.RESOURCE_TYPE_FIXTURE);
+
+        ResourceBatchResponse response = new ResourceBatchResponse();
+        response.setResources(List.of(machineDto, fixtureWithoutExtension));
+        when(masterDataBatchQueryApi.getResources(any(ResourceBatchQueryRequest.class))).thenReturn(response);
+
+        List<Resource> resources = newLoader().loadAvailableResources(
+                List.of(ResourceConstants.RESOURCE_TYPE_MACHINE, ResourceConstants.RESOURCE_TYPE_FIXTURE));
+
+        assertEquals(2, resources.size());
+        assertTrue(resources.stream().allMatch(item -> item.getFixture() == null));
+    }
+
+    @Test
     void loadProductsShouldMapMoldParamsAndSortedActiveOperations() {
         ProductRouteDTO.RouteOperationDTO op2 = new ProductRouteDTO.RouteOperationDTO();
         op2.setOpCode("INJECT");

@@ -194,6 +194,15 @@ design contract in the task's ADR-0004. Key pitfalls:
   domain version counters) are documented non-baseline additions in each service's schema script;
   business tables stay byte-verbatim from root schema.sql.
 
+## Repo gotcha: `*.sql` is gitignored by a legacy rule
+
+`.gitignore` carries `*.sql` with only `!schema.sql` historically whitelisted — the five
+service init scripts and `deploy/mysql/init/010-schema.sql` were silently untracked for six
+phases (fresh clones / CI could not initialize service DBs). Whitelist now covers
+`!product-services/*/src/main/resources/db/init/*.sql` and `!deploy/mysql/init/*.sql`.
+When adding NEW source-tree SQL artifacts, check `git check-ignore` or extend the whitelist
+explicitly; never rely on `git add -A` to pick up a new `.sql` file.
+
 Warning learned twice now: record numbers in the task's implement.md execution record
 (test counts, wiring claims, diff bookkeeping) MUST come from a clean `mvn clean test` run
 and committed scripts — stale target/ reports and edit scripts that print success without

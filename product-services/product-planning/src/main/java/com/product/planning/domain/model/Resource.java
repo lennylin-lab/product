@@ -28,6 +28,9 @@ public class Resource {
     /** 机台扩展（resourceType=MACHINE 时存在）。 */
     private Machine machine;
 
+    /** 夹具扩展（2026-09-15 增量；resourceType=FIXTURE 时存在，非夹具资源为 null）。 */
+    private Fixture fixture;
+
     /** 能力矩阵（排程 opCode×productId 校验）。 */
     private List<ResourceCapability> capabilityList;
 }

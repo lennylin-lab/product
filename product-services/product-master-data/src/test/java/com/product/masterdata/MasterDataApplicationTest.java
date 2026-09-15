@@ -8,6 +8,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.product.masterdata.mapper.CalendarMapper;
+import com.product.masterdata.mapper.FixtureMapper;
 import com.product.masterdata.mapper.MachineMapper;
 import com.product.masterdata.mapper.MachineMoldCompatibilityMapper;
 import com.product.masterdata.mapper.MasterDataVersionMapper;
@@ -45,6 +46,7 @@ class MasterDataApplicationTest {
 
     /** 数据访问离线替换（MyBatis-Plus 自动装配已排除，Mapper 用 mock 占位）。 */
     @MockitoBean CalendarMapper calendarMapper;
+    @MockitoBean FixtureMapper fixtureMapper;
     @MockitoBean MachineMapper machineMapper;
     @MockitoBean MachineMoldCompatibilityMapper machineMoldCompatibilityMapper;
     @MockitoBean MasterDataVersionMapper masterDataVersionMapper;

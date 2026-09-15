@@ -1,0 +1,7 @@
+{"file": "docs/TODO.md", "reason": "P1 scope and recommended execution order for fixture scheduling"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Fixture scheduling crosses DB/API/snapshot/planning/persistence boundaries"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "New FIXTURE resource type should extend existing resource patterns rather than duplicate logic"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Module placement and controller/service/entity conventions"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "MyBatis-Plus entity/schema/mapper and migration conventions"}
+{"file": ".trellis/spec/backend/microservices-platform.md", "reason": "product-services boundaries, contract enrichment, schema-init and versioning rules"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Testing and service quality expectations for backend changes"}
