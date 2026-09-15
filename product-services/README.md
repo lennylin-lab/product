@@ -197,7 +197,7 @@ product-cloud-messaging 在 `product.messaging.enabled=true` 时自动装配；�
 | exchange（direct/durable） | 生产者 | routing key（= eventType） | queue（durable） | 消费者 |
 | --- | --- | --- | --- | --- |
 | `execution.events` | product-execution | `task.status.changed` | `product-planning.execution` | product-planning（2026-09-16 起 eventType 含 EXCEPTION[KD1 增量，目标态复用 PAUSED]；payload 增加可选 reasonCode，只加不改） |
-| `execution.events` | product-execution | `resource.status.changed` | `product-planning.execution` | product-planning（2026-09-16 KD3 起消费回写 master-data 权威资源状态——`ResourceStatusUpdateApi`，fail-closed 不 ack；原仅记录/告警） |
+| `execution.events` | product-execution | `resource.status.changed` | `product-planning.execution` | product-planning（2026-09-16 KD3 起消费回写 master-data 权威资源状态——`ResourceStatusUpdateApi`，fail-closed 不 ack；原仅记录/告警。KD2/R4 起回写成功后按触发集合自动发起全量重排：`toStatus ∈ {DOWN, AVAILABLE}` → Redis pending 标记（`planning:reschedule:pending`，TTL 30min）+ `scheduleAllAsync` 提交互斥去抖，互斥拒绝标记保留、由超时清扫节拍空闲排空补跑；MAINTENANCE/OFFSHIFT/BUSY 只回写不触发；触发动作不使消费失败） |
 | `planning.events` | product-planning | `batch.progress.changed` | `product-demand.planning` | product-demand |
 | `demand.events` | product-demand | `order_line.progress.changed`（预留，无消费方） | — | — |
 

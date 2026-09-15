@@ -11,7 +11,9 @@ import com.product.masterdata.api.dto.ResourceStatusUpdateResponse;
 import com.product.planning.common.exception.ServiceException;
 import com.product.planning.domain.entity.OperationTask;
 import com.product.planning.domain.entity.ProductionBatch;
+import com.product.planning.service.impl.RescheduleTriggerService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import com.baomidou.mybatisplus.extension.toolkit.Db;
 import org.springframework.stereotype.Service;
@@ -52,13 +54,23 @@ public class PlanningEventConsumerService {
     private final ConsumedEventRecorder consumedEventRecorder;
     private final OutboxPublisher outboxPublisher;
     private final ResourceStatusUpdateApi resourceStatusUpdateApi;
+    private final RescheduleTriggerService rescheduleTriggerService;
 
     public PlanningEventConsumerService(ConsumedEventRecorder consumedEventRecorder,
                                         OutboxPublisher outboxPublisher,
                                         ResourceStatusUpdateApi resourceStatusUpdateApi) {
+        this(consumedEventRecorder, outboxPublisher, resourceStatusUpdateApi, null);
+    }
+
+    @Autowired
+    public PlanningEventConsumerService(ConsumedEventRecorder consumedEventRecorder,
+                                        OutboxPublisher outboxPublisher,
+                                        ResourceStatusUpdateApi resourceStatusUpdateApi,
+                                        RescheduleTriggerService rescheduleTriggerService) {
         this.consumedEventRecorder = consumedEventRecorder;
         this.outboxPublisher = outboxPublisher;
         this.resourceStatusUpdateApi = resourceStatusUpdateApi;
+        this.rescheduleTriggerService = rescheduleTriggerService;
     }
 
     /**
@@ -90,12 +102,13 @@ public class PlanningEventConsumerService {
 
     /**
      * 消费 resource.status.changed（KD3 升级，2026-09-16：回写 master-data 权威资源状态，
-     * 原仅记录/告警）。顺序契约：回写成功是后续任何触发的前置（重排触发属
-     * 09-16-reschedule-trigger，本任务仅回写）。
+     * 原仅记录/告警；KD2/R4 升级，2026-09-16：回写成功后按触发集合自动发起全量重排）。
+     * 顺序契约：回写成功是后续任何触发的前置——回写（fail-closed）→ 触发裁决 → record(APPLIED)。
      *
      * <p>fail-closed：幂等检查在前（重复事件不重复回写）；回写 Feign 失败/超时/提供方拒绝
      * → 异常上抛<b>不 ack</b>（既有有界重试 → DLX → 死信审计；对账工具可重放），绝不吞错
-     * 后照常 ack（丢事件 = 丢状态回写）。</p>
+     * 后照常 ack（丢事件 = 丢状态回写）。触发动作绝不使消费失败（标记即持久化，
+     * 见 {@link #requestRescheduleIfTriggered}）。</p>
      */
     @Transactional(rollbackFor = Exception.class)
     public String consumeResourceStatusChanged(EventEnvelope envelope) {
@@ -107,8 +120,34 @@ public class PlanningEventConsumerService {
             return ConsumedEvent.OUTCOME_APPLIED;
         }
         writeBackResourceStatus(envelope);
+        requestRescheduleIfTriggered(envelope);
         consumedEventRecorder.record(CONSUMER_GROUP, envelope, ConsumedEvent.OUTCOME_APPLIED);
         return ConsumedEvent.OUTCOME_APPLIED;
+    }
+
+    /**
+     * 重排触发裁决（KD2/R4，09-16-reschedule-trigger）：回写成功后、record(APPLIED) 前；
+     * 仅 {@code toStatus ∈ {DOWN, AVAILABLE}} 触发（DOWN 故障排除、AVAILABLE 恢复回归），
+     * MAINTENANCE/OFFSHIFT/BUSY 只回写不触发。EXCEPTION/task.status.changed 消费路径不进本方法
+     * （无容量变化，零改动）。触发动作绝不让消费失败进入重试/DLX：
+     * {@link RescheduleTriggerService#requestReschedule} 内部分级吞错（pending 标记即持久化），
+     * 此处再兜底捕获意外异常（仅记录，照常 record(APPLIED)）。
+     */
+    private void requestRescheduleIfTriggered(EventEnvelope envelope) {
+        if (rescheduleTriggerService == null) {
+            return;
+        }
+        String toStatus = requireString(envelope.getPayload(), "toStatus");
+        if (!RescheduleTriggerService.RESCHEDULE_TRIGGER_STATUSES.contains(toStatus)) {
+            return;
+        }
+        try {
+            rescheduleTriggerService.requestReschedule();
+            log.info("资源状态事件进入重排触发集: toStatus={} eventId={}", toStatus, envelope.getEventId());
+        } catch (Exception ex) {
+            log.error("重排触发异常（不影响事件 ack，pending 标记为持久化兜底）: eventId={}",
+                    envelope.getEventId(), ex);
+        }
     }
 
     /**

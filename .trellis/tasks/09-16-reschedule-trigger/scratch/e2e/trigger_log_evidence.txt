@@ -1,0 +1,12 @@
+2026-09-16T06:09:17.126661054+08:00 INFO 资源状态回写 master-data 成功: resourceId=200 toStatus=DOWN snapshotVersion=120 eventId=99499db6-6907-487c-bb79-4c76be661111
+2026-09-16T06:09:17.135217147+08:00 INFO 资源状态事件触发全量重排: jobId=2099983920549675009（pending 标记已清除）
+2026-09-16T06:09:17.135498806+08:00 INFO 资源状态事件进入重排触发集: toStatus=DOWN eventId=99499db6-6907-487c-bb79-4c76be661111
+2026-09-16T06:09:18.126151391+08:00 INFO 资源状态回写 master-data 成功: resourceId=200 toStatus=AVAILABLE snapshotVersion=121 eventId=8a9d0768-babf-4245-a8e7-5c2092325367
+2026-09-16T06:09:18.133904618+08:00 INFO 资源状态事件触发全量重排: jobId=2099983924739784706（pending 标记已清除）
+2026-09-16T06:09:18.134201829+08:00 INFO 资源状态事件进入重排触发集: toStatus=AVAILABLE eventId=8a9d0768-babf-4245-a8e7-5c2092325367
+2026-09-16T06:10:17.219068089+08:00 INFO 资源状态回写 master-data 成功: resourceId=200 toStatus=DOWN snapshotVersion=122 eventId=03dc5ef2-bc6a-4233-9111-944a46da1749
+2026-09-16T06:10:17.226321288+08:00 INFO 资源状态事件触发全量重排: jobId=2099984172593790977（pending 标记已清除）
+2026-09-16T06:10:17.226496316+08:00 INFO 资源状态事件进入重排触发集: toStatus=DOWN eventId=03dc5ef2-bc6a-4233-9111-944a46da1749
+2026-09-16T06:10:18.222808965+08:00 INFO 资源状态回写 master-data 成功: resourceId=200 toStatus=AVAILABLE snapshotVersion=123 eventId=5f90f1c4-6b55-46b9-a841-76af475a3d4e
+2026-09-16T06:10:18.230024212+08:00 INFO 资源状态事件触发全量重排: jobId=2099984176800677889（pending 标记已清除）
+2026-09-16T06:10:18.230270208+08:00 INFO 资源状态事件进入重排触发集: toStatus=AVAILABLE eventId=5f90f1c4-6b55-46b9-a841-76af475a3d4e

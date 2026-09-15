@@ -37,3 +37,16 @@
 - child-1：消费者分支与命令端点独立回滚（新事件类型无人产生即零影响）。
 - child-2：触发集合/标记逻辑独立回滚（回写保留，自动重排退化为人工触发）。
 - 无 schema 破坏性变更（task_event/resource_status_event 列已在；master-data 无新表）。
+
+## 执行记录（2026-09-16 更新）
+
+- child-1（09-16-exception-event-modeling）：已实施 + check 通过 + 提交（cfde8e5）+ 归档
+  （ab2bc0b）。248 tests 全绿（基准 231 + 17 新增）；根编译 28/28。
+- child-2（09-16-reschedule-trigger）：已实施（`RescheduleTriggerService` 触发链 + 消费侧
+  插入 + sweeper 排空），270 tests 全绿（248 + 22 新增）；根编译 28/28；实机端到端验证通过
+  （DOWN 事件 → 回写 DOWN + 版本 bump + 无人调接口自动全量重排 SUCCESS + DOWN 资源不被
+  选中 → AVAILABLE 恢复事件 → 再次自动重排 + 200 回归派工；MAINTENANCE 只回写不重排；
+  非法状态回写失败通道 fail-closed 不 ack → DLX 死信审计，child-1 check 移交项一并完成）。
+  证据：`.trellis/tasks/09-16-reschedule-trigger/scratch/`（clean-run 日志、E2E transcript、
+  触发链/死信日志摘录）与 `scratch/reschedule-trigger/`（探测脚本、服务日志、pids）。
+- 剩余：父任务收尾（trellis-check 校验 child-2 → 跨子任务端到端评审 → 提交归档）。

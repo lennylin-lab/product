@@ -1,0 +1,6 @@
+{"file": "product-services/product-planning/src/main/java/com/product/planning/event/PlanningEventConsumerService.java", "reason": "回写后的触发插入点（writeBackResourceStatus 之后、record(APPLIED) 的顺序契约）"}
+{"file": "product-services/product-planning/src/main/java/com/product/planning/service/impl/ScheduleJobServiceImpl.java", "reason": "scheduleAllAsync 提交互斥：触发必须复用，互斥拒绝语义决定标记保留策略"}
+{"file": "product-services/product-planning/src/main/java/com/product/planning/service/impl/ScheduleJobTimeoutService.java", "reason": "既有 @Scheduled 清扫节奏：pending 标记排空的宿主"}
+{"file": "product-services/product-cloud-messaging/src/main/java/com/product/cloud/messaging/api/EventTypes.java", "reason": "resource.status.changed payload 字段（toStatus 触发集合裁决依据）"}
+{"file": ".trellis/spec/backend/microservices-platform.md", "reason": "记录纪律与平台约束"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "测试基线"}

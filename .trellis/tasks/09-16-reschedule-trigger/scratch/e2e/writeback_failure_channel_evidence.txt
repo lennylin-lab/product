@@ -1,0 +1,5 @@
+== child-1 check handoff: 回写失败通道实测（提供方错误契约 → fail-closed 不 ack → 3 次重试 → DLX 死信审计） ==
+2026-09-16T06:09:20.655347794+08:00 WARN RejectAndDontRequeueRecoverer Retries exhausted for message (Body:'[B@230569de(byte[414])' MessageProperties [headers={eventId=963de0af-1161-472d-8fc5-4aad209c0119, spring_returned_message_correlation=963de0af-
+2026-09-16T06:09:20.660474929+08:00 WARN DeadLetterAuditor 死信已审计入库: group=product-planning queue=product-planning.execution type=resource.status.changed eventId=963de0af-1161-472d-8fc5-4aad209c0119 reason=x-death reason=rejected at=Wed Sep
+2026-09-16T06:10:20.747350263+08:00 WARN RejectAndDontRequeueRecoverer Retries exhausted for message (Body:'[B@6d9c238f(byte[414])' MessageProperties [headers={eventId=58d277a9-5200-4351-8169-c958c3c45460, spring_returned_message_correlation=58d277a9-
+2026-09-16T06:10:20.75113445+08:00 WARN DeadLetterAuditor 死信已审计入库: group=product-planning queue=product-planning.execution type=resource.status.changed eventId=58d277a9-5200-4351-8169-c958c3c45460 reason=x-death reason=rejected at=Wed Sep

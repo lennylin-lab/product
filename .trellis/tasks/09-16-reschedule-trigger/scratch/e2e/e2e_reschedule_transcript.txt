@@ -1,0 +1,33 @@
+== 09-16-reschedule-trigger 实机端到端 2026-09-16 06:10:15 ==
+stack pids: identity 2040244 8101 | master-data 2040245 8102 | demand-service 2040246 8103 | planning 2040247 8104 | execution 2040248 8105 | gateway 2040249 8080 | 
+PASS 登录网关获取 admin token
+seeded master_data_db / demand_db / planning_db（2 机台 200/201、6 READY 任务）
+起始状态: max(job_id)=2099983924739784706 master_data_data_version=121 consumed_event(agg=200)=6
+PASS 人工基线 scheduleAllAsync 提交成功
+PASS 基线排程 job=2099984168944746498 SUCCESS（6 任务）
+基线派工机台 = 200,201,NULL
+PASS 基线排程同时选用机台 200 与 201
+PASS DOWN 事件登记（execution /internal 直连） accepted
+PASS 自动全量重排被触发（无人调排程接口，新 schedule_job=2099984172593790977 SUCCESS）
+自动重排 job_id=2099984172593790977 status=SUCCESS totalTaskCount=6 errorMessage=NULL
+PASS master_data_db resource 200 状态回写为 DOWN
+PASS master_data_data_version 幂等 bump（121 -> 122）
+DOWN 后重排派工机台（-1=无机台的工位任务） = 201,-1
+PASS 重排后 DOWN 资源 200 未被选中（machine_id=200 派工行数 = 0）
+PASS 重排后任务全部由机台 201 承接
+DOWN 后任务状态分布: SCHEDULED	6
+PASS consumed_event 记录 DOWN 事件 APPLIED（回写成功才 ack，6 -> 7）
+PASS AVAILABLE 恢复事件登记 accepted
+PASS 恢复事件再次自动重排（新 schedule_job=2099984176800677889 SUCCESS）
+恢复重排 job_id=2099984176800677889 status=SUCCESS totalTaskCount=6 errorMessage=NULL
+PASS master_data_db resource 200 恢复为 AVAILABLE
+PASS 恢复回写再次 bump（122 -> 123）
+恢复后重排派工机台 = 200,201,NULL
+PASS 恢复后 200 重新参与派工（200/201 均可选）
+PASS 非法状态事件登记 accepted（登记端点只要求 resourceId）
+PASS consumed_event 无新增流水（fail-closed 不 ack，仍 8）
+PASS dead_letter_audit 死信审计入库（3 -> 4，重试耗尽进 DLX）
+PASS 非法回写后 resource 200 状态不变（仍 AVAILABLE）
+PASS 非法回写未 bump 版本（123 不变）
+
+RESULT: 21/21 PASS

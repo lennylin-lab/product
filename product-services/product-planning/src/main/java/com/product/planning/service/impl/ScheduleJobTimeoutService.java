@@ -7,7 +7,6 @@ import com.product.planning.common.constant.StatusConstants;
 import com.product.planning.domain.entity.ScheduleJob;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -24,6 +23,7 @@ import java.util.stream.Collectors;
  * - 扫描长时间卡在 PENDING/RUNNING 的 schedule_job
  * - 将超时任务兜底标记为 FAILED
  * - 防止脏状态长期占用系统，导致后续排程无法提交
+ * - 排空异常驱动重排的 pending 标记（KD2，2026-09-16）：无运行任务时补跑全量重排
  *
  * 设计说明：
  * - 使用 Redis 分布式锁避免多实例重复清理
@@ -33,20 +33,43 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 public class ScheduleJobTimeoutService {
-    @Value("${product.pps.schedule.timeout-minutes:60}")
-    private long timeoutMinutes;
 
-    @Autowired
-    private PlanningRedisLock redisDistributedLock;
+    private final long timeoutMinutes;
+
+    private final PlanningRedisLock redisDistributedLock;
+
+    /** 重排 pending 标记的排空（KD2）：复用本服务既有清扫节拍，触发链兜底不丢重排。 */
+    private final RescheduleTriggerService rescheduleTriggerService;
+
+    public ScheduleJobTimeoutService(@Value("${product.pps.schedule.timeout-minutes:60}") long timeoutMinutes,
+                                     PlanningRedisLock redisDistributedLock,
+                                     RescheduleTriggerService rescheduleTriggerService) {
+        this.timeoutMinutes = timeoutMinutes;
+        this.redisDistributedLock = redisDistributedLock;
+        this.rescheduleTriggerService = rescheduleTriggerService;
+    }
 
     /**
      * 定时扫描超时排程任务。
      *
-     * 默认每 5 分钟执行一次，扫描阈值由 timeoutMinutes 控制。
+     * 默认每 5 分钟执行一次，扫描阈值由 timeoutMinutes 控制；
+     * 同一节拍内顺带排空重排 pending 标记（标记存在且无运行任务时补跑）。
      */
     @Scheduled(fixedDelayString = "${product.pps.schedule.timeout-scan-delay-ms:300000}")
     public void sweepTimeoutJobs() {
         sweepTimeoutJobsOnce();
+        drainPendingReschedule();
+    }
+
+    /**
+     * 排空 pending 重排标记（KD2）。失败不影响超时清扫主职责（异常仅记录，等下一拍）。
+     */
+    private void drainPendingReschedule() {
+        try {
+            rescheduleTriggerService.drainPendingIfIdle();
+        } catch (Exception ex) {
+            log.error("重排 pending 标记排空失败（等下一拍）", ex);
+        }
     }
 
     /**

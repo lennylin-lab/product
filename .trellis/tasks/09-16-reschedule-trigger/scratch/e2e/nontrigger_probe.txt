@@ -1,0 +1,9 @@
+before: max_job=2099984176800677889 version=123 consumed(200)=8
+MAINTENANCE event accepted: True
+PASS 回写生效: resource 200 status=MAINTENANCE（期望 MAINTENANCE）
+PASS 版本 bump（123 -> 124）
+PASS consumed_event +1（8 -> 9）
+PASS 无新排程任务（非触发集合不重排, new_jobs=0）
+recovery accepted: True
+PASS 恢复事件自动重排 2099984445647175681	SUCCESS
+final resource 200 status=AVAILABLE
