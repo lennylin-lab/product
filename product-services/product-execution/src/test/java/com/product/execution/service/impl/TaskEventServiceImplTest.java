@@ -9,6 +9,7 @@ import com.product.planning.api.PlanningTaskApi;
 import com.product.planning.api.dto.PlanningContracts;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -138,6 +139,68 @@ class TaskEventServiceImplTest {
         assertEquals("DONE", envelope.getPayload().get("targetStatus"));
         assertEquals(77L, envelope.getPayload().get("resourceId"));
         assertEquals(9002L, envelope.getPayload().get("occurredEventId"));
+    }
+
+    @Test
+    void insertTaskEventShouldRejectInvalidTaskId() {
+        RecordingTaskEventService service = new RecordingTaskEventService(true, 106L);
+
+        for (Long badTaskId : new Long[] {null, 0L, -5L}) {
+            TaskEvent event = new TaskEvent();
+            event.setTaskId(badTaskId);
+            event.setEventType(TaskEventConstants.START_TASK_EVENT);
+            org.junit.jupiter.api.Assertions.assertThrows(
+                    com.product.execution.common.exception.ServiceException.class,
+                    () -> service.insertTaskEvent(event),
+                    "taskId=" + badTaskId + " 应被拒绝");
+        }
+        // 非法 taskId 不应触发契约调用，也不应落库
+        assertNull(service.taskRuntimeQueried);
+        assertNull(service.savedEvent);
+    }
+
+    @Test
+    void insertTaskEventShouldRejectUnknownTask() {
+        RecordingTaskEventService service = new RecordingTaskEventService(false, 107L);
+
+        TaskEvent event = new TaskEvent();
+        event.setTaskId(9999L);
+        event.setEventType(TaskEventConstants.START_TASK_EVENT);
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.product.execution.common.exception.ServiceException.class,
+                () -> service.insertTaskEvent(event));
+
+        assertEquals(9999L, service.taskRuntimeQueried);
+        assertNull(service.savedEvent);
+    }
+
+    @Test
+    void insertTaskEventShouldDefaultEventTimeWhenMissing() {
+        RecordingTaskEventService service = new RecordingTaskEventService(true, 108L);
+
+        TaskEvent event = new TaskEvent();
+        event.setTaskId(806L);
+        event.setEventType(TaskEventConstants.START_TASK_EVENT);
+        event.setEventTime(null);
+
+        assertTrue(service.insertTaskEvent(event));
+        assertNotNull(service.savedEvent.getEventTime());
+        // 直录不发布状态事件（与 record() 命令链不同，仅落追溯行）
+        assertTrue(service.published.isEmpty());
+    }
+
+    @Test
+    void insertTaskEventShouldKeepProvidedEventTime() {
+        RecordingTaskEventService service = new RecordingTaskEventService(true, 109L);
+
+        TaskEvent event = new TaskEvent();
+        event.setTaskId(807L);
+        event.setEventType(TaskEventConstants.START_TASK_EVENT);
+        event.setEventTime(LocalDateTime.of(2026, 9, 15, 8, 0));
+
+        assertTrue(service.insertTaskEvent(event));
+        assertEquals(LocalDateTime.of(2026, 9, 15, 8, 0), service.savedEvent.getEventTime());
     }
 
     private record Published(EventEnvelope envelope, Map<String, Object> payload) {

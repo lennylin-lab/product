@@ -9,6 +9,7 @@ import com.product.cloud.messaging.api.EventTypes;
 import com.product.cloud.messaging.codec.EnvelopeCodec;
 import com.product.cloud.messaging.outbox.OutboxPublisher;
 import com.product.execution.common.constant.TaskEventConstants;
+import com.product.execution.common.exception.ServiceException;
 import com.product.execution.common.utils.StringUtils;
 import com.product.execution.domain.entity.TaskEvent;
 import com.product.execution.mapper.TaskEventMapper;
@@ -96,18 +97,28 @@ public class TaskEventServiceImpl extends ServiceImpl<TaskEventMapper, TaskEvent
     }
 
     /**
-     * 新增任务事件日志（全流程追溯核心）
+     * 新增任务事件日志（全流程追溯核心）。
      *
-     * @param taskEvent 任务事件日志（全流程追溯核心）
-     * @return 是否成功
+     * <p>issue #4 决议：REST 直录路径与内部命令链 record() 语义对齐——
+     * taskId 非法（空/非正数）拒绝写入；任务存在性经 planning 只读契约校验
+     * （fail-closed，契约不可达同样拒绝，防止事件挂在不存在任务上）；
+     * eventTime 缺省时由服务端补当前时间。</p>
      */
     @Override
     public boolean insertTaskEvent(TaskEvent taskEvent) {
+        if (taskEvent == null || taskEvent.getTaskId() == null || taskEvent.getTaskId() <= 0) {
+            throw new ServiceException("任务事件必须指定有效的任务ID");
+        }
+        if (loadTaskRuntime(taskEvent.getTaskId()) == null) {
+            throw new ServiceException("任务不存在: taskId=" + taskEvent.getTaskId());
+        }
+        if (taskEvent.getEventTime() == null) {
+            taskEvent.setEventTime(LocalDateTime.now());
+        }
         if (taskEvent.getEventId() == null) {
             taskEvent.setEventId(IdWorker.getId());
         }
-        boolean saved = save(taskEvent);
-        return saved;
+        return save(taskEvent);
     }
 
     /**
