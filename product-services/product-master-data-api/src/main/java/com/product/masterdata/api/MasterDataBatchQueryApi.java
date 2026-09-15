@@ -51,7 +51,9 @@ public interface MasterDataBatchQueryApi {
      * 批量加载资源聚合（resource 行 + 机台/模具/夹具扩展 + 兼容矩阵 + 能力矩阵）。
      * {@code resourceIds} 为 null/空时返回全部资源。机台条目含模具兼容性行
      * （{@code moldCompatibilities}，Phase 4 增量）；夹具条目含 fixture 扩展
-     * （{@code fixture}，2026-09-15 增量，resourceType=FIXTURE 时存在）。
+     * （{@code fixture}，2026-09-15 增量，resourceType=FIXTURE 时存在）及夹具-模具
+     * 兼容性行（{@code fixture.moldCompatibilities}，2026-09-15 夹具兼容增量，
+     * 显式允许清单语义）。
      */
     @PostMapping("/resources/batch")
     ResourceBatchResponse getResources(@RequestBody ResourceBatchQueryRequest request);

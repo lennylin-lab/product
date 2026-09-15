@@ -88,6 +88,13 @@ master_data_db init 脚本表数 12 → 13（11 张单体主数据表 + master_d
 `resource.resource_type` 列注释追加 FIXTURE（夹具）枚举值，列定义不变。
 幂等语义不变：业务表 DROP/CREATE 重置，`master_data_data_version` 计数器刻意不清零。
 
+夹具-模具兼容增量（09-15-fixture-compatibility，2026-09-15）：`master_data_db` init 脚本
+新增服务自建兼容表 `fixture_mold_compatibility`（复合主键 fixture_id+mold_id，结构与
+DROP/CREATE 复位语义镜像 machine_mold_compatibility）：master_data_db init 脚本表数
+13 → 14（11 张单体主数据表 + master_data_data_version + fixture + fixture_mold_compatibility）。
+该表不属于本基线 32 表清单，根 schema.sql 零改动（ADR-0005 服务自建表同款权属逻辑）；
+幂等语义不变（业务表重置、版本计数器不清零）。
+
 ## 3. 核心 E2E 用例清单（统一切换验收从 Gateway 入口执行）
 
 ### 3.1 认证与权限（identity/gateway）

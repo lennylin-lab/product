@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.product.masterdata.domain.dto.FixtureResource;
 import com.product.masterdata.domain.entity.Fixture;
+import com.product.masterdata.domain.entity.FixtureMoldCompatibility;
 import com.product.masterdata.domain.entity.Resource;
 
 import java.util.List;
@@ -68,4 +69,18 @@ public interface IFixtureService extends IService<Fixture> {
      * @return 是否成功
      */
     boolean deleteFixtureByFixtureIds(String[] fixtureIds);
+
+    /**
+     * 维护夹具-模具兼容行（先删后插全量替换，同事务 + 版本递增）。
+     *
+     * <p>machine_mold_compatibility 无独立写路径（兼容矩阵历史上直接落库维护），
+     * 本入口按 fixture 资源聚合写路径同款约定提供最小维护能力：
+     * {@code @Transactional} + 成功后同事务 {@code MasterDataVersionService.bump()}
+     * （事务回滚则计数不递增，快照漂移检测依赖）。</p>
+     *
+     * @param fixtureId       夹具ID
+     * @param compatibilities 兼容行集合（null/空 = 清空该夹具全部兼容行）
+     * @return 是否成功
+     */
+    boolean saveMoldCompatibilities(Long fixtureId, List<FixtureMoldCompatibility> compatibilities);
 }

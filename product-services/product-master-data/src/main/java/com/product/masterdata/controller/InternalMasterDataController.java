@@ -7,6 +7,7 @@ import com.product.masterdata.api.dto.CalendarDTO;
 import com.product.masterdata.api.dto.ChangeoverRuleDTO;
 import com.product.masterdata.api.dto.ChangeoverRuleResponse;
 import com.product.masterdata.api.dto.DataVersionResponse;
+import com.product.masterdata.api.dto.FixtureMoldCompatibilityDTO;
 import com.product.masterdata.api.dto.MachineMoldCompatibilityDTO;
 import com.product.masterdata.api.dto.ProductBatchQueryRequest;
 import com.product.masterdata.api.dto.ProductBatchResponse;
@@ -21,6 +22,7 @@ import com.product.masterdata.common.constant.ResourceConstants;
 import com.product.masterdata.domain.entity.Calendar;
 import com.product.masterdata.domain.entity.ChangeoverRule;
 import com.product.masterdata.domain.entity.Fixture;
+import com.product.masterdata.domain.entity.FixtureMoldCompatibility;
 import com.product.masterdata.domain.entity.Machine;
 import com.product.masterdata.domain.entity.MachineMoldCompatibility;
 import com.product.masterdata.domain.entity.Mold;
@@ -154,6 +156,15 @@ public class InternalMasterDataController implements com.product.masterdata.api.
                         .stream()
                         .filter(item -> item != null && item.getMachineId() != null)
                         .collect(Collectors.groupingBy(MachineMoldCompatibility::getMachineId));
+        // 夹具-模具兼容行（2026-09-15 增量）：与上方各扩展表同款一次 IN 批量查询（无 N+1），
+        // 仅在 FIXTURE 资源的 fixture 扩展块内挂载（孤儿行脏数据不会泄漏到非夹具资源）
+        Map<Long, List<FixtureMoldCompatibility>> fixtureCompatByFixture = resourceIds.isEmpty() ? Map.of()
+                : Db.lambdaQuery(FixtureMoldCompatibility.class)
+                        .in(FixtureMoldCompatibility::getFixtureId, resourceIds)
+                        .list()
+                        .stream()
+                        .filter(item -> item != null && item.getFixtureId() != null)
+                        .collect(Collectors.groupingBy(FixtureMoldCompatibility::getFixtureId));
 
         ResourceBatchResponse response = new ResourceBatchResponse();
         response.setSnapshotVersion(versionService.currentVersion());
@@ -163,6 +174,7 @@ public class InternalMasterDataController implements com.product.masterdata.api.
                         moldById.get(resource.getResourceId()),
                         fixtureById.get(resource.getResourceId()),
                         compatibilityByMachine.getOrDefault(resource.getResourceId(), List.of()),
+                        fixtureCompatByFixture.getOrDefault(resource.getResourceId(), List.of()),
                         capabilityByResource.get(resource.getResourceId())))
                 .collect(Collectors.toList()));
         return response;
@@ -296,6 +308,7 @@ public class InternalMasterDataController implements com.product.masterdata.api.
 
     private ResourceDTO toResourceDTO(Resource resource, Machine machine, Mold mold, Fixture fixture,
                                       List<MachineMoldCompatibility> compatibilities,
+                                      List<FixtureMoldCompatibility> fixtureCompatibilities,
                                       List<ResourceCapability> capabilities) {
         ResourceDTO dto = new ResourceDTO();
         dto.setResourceId(resource.getResourceId());
@@ -336,6 +349,16 @@ public class InternalMasterDataController implements com.product.masterdata.api.
             ResourceDTO.FixtureDTO fixtureDTO = new ResourceDTO.FixtureDTO();
             fixtureDTO.setFixtureId(fixture.getFixtureId());
             fixtureDTO.setFixtureCode(fixture.getFixtureCode());
+            // 夹具-模具兼容行挂载方式与机台兼容一致：无兼容数据时保持 null（2026-09-15 增量）
+            if (CollectionUtils.isNotEmpty(fixtureCompatibilities)) {
+                fixtureDTO.setMoldCompatibilities(fixtureCompatibilities.stream().map(compatibility -> {
+                    FixtureMoldCompatibilityDTO compatibilityDTO = new FixtureMoldCompatibilityDTO();
+                    compatibilityDTO.setFixtureId(compatibility.getFixtureId());
+                    compatibilityDTO.setMoldId(compatibility.getMoldId());
+                    compatibilityDTO.setIsCompatible(compatibility.getIsCompatible());
+                    return compatibilityDTO;
+                }).collect(Collectors.toList()));
+            }
             dto.setFixture(fixtureDTO);
         }
         if (CollectionUtils.isNotEmpty(capabilities)) {

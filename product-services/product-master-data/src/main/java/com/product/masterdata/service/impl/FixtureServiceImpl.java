@@ -9,6 +9,7 @@ import com.product.masterdata.common.constant.ResourceConstants;
 import com.product.masterdata.common.constant.StatusConstants;
 import com.product.masterdata.domain.dto.FixtureResource;
 import com.product.masterdata.domain.entity.Fixture;
+import com.product.masterdata.domain.entity.FixtureMoldCompatibility;
 import com.product.masterdata.domain.entity.Resource;
 import com.product.masterdata.mapper.FixtureMapper;
 import com.product.masterdata.service.IFixtureService;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 夹具扩展信息Service业务层处理（MyBatis-Plus）。
@@ -149,6 +151,36 @@ public class FixtureServiceImpl extends ServiceImpl<FixtureMapper, Fixture> impl
             versionService.bump();
         }
         return removed;
+    }
+
+    /**
+     * 维护夹具-模具兼容行（先删后插全量替换）。
+     *
+     * <p>machine_mold_compatibility 无独立写路径（兼容矩阵历史上直接落库维护），
+     * 本入口沿用 fixture 资源聚合写路径的既有约定：同事务写入，成功后同事务
+     * {@link MasterDataVersionService#bump()} 递增版本计数（事务回滚则计数不递增）；
+     * mold_id 为空的脏入参行直接过滤，不落库。</p>
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean saveMoldCompatibilities(Long fixtureId, List<FixtureMoldCompatibility> compatibilities) {
+        if (fixtureId == null) {
+            return false;
+        }
+        List<FixtureMoldCompatibility> rows = compatibilities == null ? List.of()
+                : compatibilities.stream()
+                        .filter(item -> item != null && item.getMoldId() != null)
+                        .peek(row -> row.setFixtureId(fixtureId))
+                        .collect(Collectors.toList());
+        boolean removed = Db.lambdaUpdate(FixtureMoldCompatibility.class)
+                .eq(FixtureMoldCompatibility::getFixtureId, fixtureId)
+                .remove();
+        boolean saved = rows.isEmpty() || Db.saveBatch(rows);
+        boolean done = removed && saved;
+        if (done) {
+            versionService.bump();
+        }
+        return done;
     }
 
     /**

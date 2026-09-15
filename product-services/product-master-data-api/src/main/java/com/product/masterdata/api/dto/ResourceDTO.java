@@ -242,6 +242,9 @@ public class ResourceDTO implements Serializable {
 
         private String fixtureCode;
 
+        /** 夹具-模具兼容性行（2026-09-15 增量：排程夹具选择消费；无兼容数据时为 null）。 */
+        private List<FixtureMoldCompatibilityDTO> moldCompatibilities;
+
         public Long getFixtureId() {
             return fixtureId;
         }
@@ -256,6 +259,14 @@ public class ResourceDTO implements Serializable {
 
         public void setFixtureCode(String fixtureCode) {
             this.fixtureCode = fixtureCode;
+        }
+
+        public List<FixtureMoldCompatibilityDTO> getMoldCompatibilities() {
+            return moldCompatibilities;
+        }
+
+        public void setMoldCompatibilities(List<FixtureMoldCompatibilityDTO> moldCompatibilities) {
+            this.moldCompatibilities = moldCompatibilities;
         }
     }
 

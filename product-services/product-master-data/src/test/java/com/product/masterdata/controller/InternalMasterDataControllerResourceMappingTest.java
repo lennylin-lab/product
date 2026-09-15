@@ -64,6 +64,7 @@ class InternalMasterDataControllerResourceMappingTest {
             stubQuery(db, Fixture.class, List.of(fixtureRow, orphanRow));
             stubQuery(db, com.product.masterdata.domain.entity.ResourceCapability.class, List.of());
             stubQuery(db, com.product.masterdata.domain.entity.MachineMoldCompatibility.class, List.of());
+            stubQuery(db, com.product.masterdata.domain.entity.FixtureMoldCompatibility.class, List.of());
 
             ResourceBatchQueryRequest request = new ResourceBatchQueryRequest(List.of(101L, 301L));
             ResourceBatchResponse response = controller.getResources(request);
@@ -95,6 +96,7 @@ class InternalMasterDataControllerResourceMappingTest {
             stubQuery(db, Fixture.class, List.of());
             stubQuery(db, com.product.masterdata.domain.entity.ResourceCapability.class, List.of());
             stubQuery(db, com.product.masterdata.domain.entity.MachineMoldCompatibility.class, List.of());
+            stubQuery(db, com.product.masterdata.domain.entity.FixtureMoldCompatibility.class, List.of());
 
             ResourceBatchQueryRequest request = new ResourceBatchQueryRequest(List.of(302L));
             ResourceBatchResponse response = controller.getResources(request);

@@ -12,6 +12,7 @@ import com.product.masterdata.api.dto.CalendarDTO;
 import com.product.masterdata.api.dto.ChangeoverRuleDTO;
 import com.product.masterdata.api.dto.ChangeoverRuleResponse;
 import com.product.masterdata.api.dto.DataVersionResponse;
+import com.product.masterdata.api.dto.FixtureMoldCompatibilityDTO;
 import com.product.masterdata.api.dto.MachineMoldCompatibilityDTO;
 import com.product.masterdata.api.dto.ProductBatchQueryRequest;
 import com.product.masterdata.api.dto.ProductBatchResponse;
@@ -24,6 +25,7 @@ import com.product.planning.common.exception.ServiceException;
 import com.product.planning.domain.model.Calendar;
 import com.product.planning.domain.model.ChangeoverRule;
 import com.product.planning.domain.model.Fixture;
+import com.product.planning.domain.model.FixtureMoldCompatibility;
 import com.product.planning.domain.model.Machine;
 import com.product.planning.domain.model.MachineMoldCompatibility;
 import com.product.planning.domain.model.OrderLineSnapshot;
@@ -350,6 +352,14 @@ public class SchedulingSnapshotLoader {
             Fixture fixture = new Fixture();
             fixture.setFixtureId(dto.getFixture().getFixtureId());
             fixture.setFixtureCode(dto.getFixture().getFixtureCode());
+            // 夹具-模具兼容行（2026-09-15 夹具兼容增量）：随同一 resources/batch 契约响应
+            // 映射进内存模型；缺失（null）时映射为空表——不可满足裁决在排程计算器（child-3）
+            fixture.setMoldCompatibilityList(dto.getFixture().getMoldCompatibilities() == null
+                    ? new ArrayList<>()
+                    : dto.getFixture().getMoldCompatibilities().stream()
+                            .filter(Objects::nonNull)
+                            .map(this::toFixtureCompatibility)
+                            .collect(Collectors.toCollection(ArrayList::new)));
             resource.setFixture(fixture);
         }
         List<ResourceCapability> capabilities = dto.getCapabilities() == null
@@ -365,6 +375,15 @@ public class SchedulingSnapshotLoader {
     private MachineMoldCompatibility toCompatibility(MachineMoldCompatibilityDTO dto) {
         MachineMoldCompatibility model = new MachineMoldCompatibility();
         model.setMachineId(dto.getMachineId());
+        model.setMoldId(dto.getMoldId());
+        model.setIsCompatible(dto.getIsCompatible());
+        return model;
+    }
+
+    /** 夹具-模具兼容行映射（2026-09-15 夹具兼容增量，与机台兼容同款纯内存映射）。 */
+    private FixtureMoldCompatibility toFixtureCompatibility(FixtureMoldCompatibilityDTO dto) {
+        FixtureMoldCompatibility model = new FixtureMoldCompatibility();
+        model.setFixtureId(dto.getFixtureId());
         model.setMoldId(dto.getMoldId());
         model.setIsCompatible(dto.getIsCompatible());
         return model;

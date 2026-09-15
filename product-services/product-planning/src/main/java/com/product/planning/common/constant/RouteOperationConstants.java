@@ -15,6 +15,11 @@ public final class RouteOperationConstants {
     /** 后处理/检验/入库：人员 + 工位 */
     public static final String RULE_POST_WORKSTATION = "RULE_POST_WORKSTATION";
 
+    /** 换模调机（夹具感知，2026-09-15）：人员 + 机台 + 夹具 */
+    public static final String RULE_SETUP_MACHINE_FIXTURE = "RULE_SETUP_MACHINE_FIXTURE";
+    /** 注塑（夹具感知，2026-09-15）：机台 + 夹具 */
+    public static final String RULE_INJECT_MACHINE_FIXTURE = "RULE_INJECT_MACHINE_FIXTURE";
+
     /** INJECT：A2 产能公式 */
     public static final String TM_INJECT_A2 = "TM_INJECT_A2";
     /** SETUP：固定基准时长（分钟/批，×批次数量） */

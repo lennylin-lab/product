@@ -15,6 +15,9 @@
 -- 额外表:fixture 为本服务新增的夹具扩展表（2026-09-15 夹具建模任务；扩展表主键 =
 --         resource.resource_id，与 machine/mold 同款约定），同样不属于单体 32 表基线，
 --         根 schema.sql 零改动。
+-- 额外表:fixture_mold_compatibility 为本服务新增的夹具-模具兼容表（2026-09-15 夹具兼容
+--         任务；复合主键 fixture_id+mold_id，结构与 DROP/CREATE 复位语义镜像
+--         machine_mold_compatibility），同样不属于单体 32 表基线，根 schema.sql 零改动。
 -- 注意:本脚本不修改根 schema.sql；密码请通过环境变量注入生产环境（此处默认值仅限本地开发）
 -- ----------------------------------------------------------------------------
 
@@ -84,6 +87,14 @@ CREATE TABLE machine_mold_compatibility (
     is_compatible INT(1)      DEFAULT 1 COMMENT '是否兼容(1兼容 0不兼容)',
     PRIMARY KEY (machine_id, mold_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='机台模具兼容表';
+
+DROP TABLE IF EXISTS fixture_mold_compatibility;
+CREATE TABLE fixture_mold_compatibility (
+    fixture_id    BIGINT(20)  NOT NULL COMMENT '夹具ID',
+    mold_id       BIGINT(20)  NOT NULL COMMENT '模具ID',
+    is_compatible INT(1)   DEFAULT 1 COMMENT '是否兼容(1兼容 0不兼容)',
+    PRIMARY KEY (fixture_id, mold_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='夹具模具兼容表';
 
 DROP TABLE IF EXISTS resource_capability;
 CREATE TABLE resource_capability (

@@ -7,6 +7,7 @@ import com.product.demand.api.dto.OrderDTO;
 import com.product.demand.api.dto.OrderLineDTO;
 import com.product.masterdata.api.MasterDataBatchQueryApi;
 import com.product.masterdata.api.dto.DataVersionResponse;
+import com.product.masterdata.api.dto.FixtureMoldCompatibilityDTO;
 import com.product.masterdata.api.dto.ProductBatchQueryRequest;
 import com.product.masterdata.api.dto.ProductBatchResponse;
 import com.product.masterdata.api.dto.ProductDTO;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -150,6 +152,72 @@ class SchedulingSnapshotLoaderTest {
 
         assertEquals(2, resources.size());
         assertTrue(resources.stream().allMatch(item -> item.getFixture() == null));
+    }
+
+    @Test
+    void loadAvailableResourcesShouldMapFixtureMoldCompatibilities() {
+        // 夹具-模具兼容行随 resources/batch 契约下发并映射进 Fixture.moldCompatibilityList
+        // （2026-09-15 夹具兼容增量；显式允许清单语义，含不兼容行照原样装载）
+        ResourceDTO dto = new ResourceDTO();
+        dto.setResourceId(301L);
+        dto.setStatus(StatusConstants.AVAILABLE_RESOURCE_STATUS);
+        dto.setResourceType(ResourceConstants.RESOURCE_TYPE_FIXTURE);
+        ResourceDTO.FixtureDTO fixtureDTO = new ResourceDTO.FixtureDTO();
+        fixtureDTO.setFixtureId(301L);
+        fixtureDTO.setFixtureCode("FJ-001");
+        FixtureMoldCompatibilityDTO compatible = new FixtureMoldCompatibilityDTO();
+        compatible.setFixtureId(301L);
+        compatible.setMoldId(201L);
+        compatible.setIsCompatible(1);
+        FixtureMoldCompatibilityDTO incompatible = new FixtureMoldCompatibilityDTO();
+        incompatible.setFixtureId(301L);
+        incompatible.setMoldId(202L);
+        incompatible.setIsCompatible(0);
+        fixtureDTO.setMoldCompatibilities(List.of(compatible, incompatible));
+        dto.setFixture(fixtureDTO);
+
+        ResourceBatchResponse response = new ResourceBatchResponse();
+        response.setResources(List.of(dto));
+        when(masterDataBatchQueryApi.getResources(any(ResourceBatchQueryRequest.class))).thenReturn(response);
+
+        List<Resource> resources = newLoader().loadAvailableResources(
+                List.of(ResourceConstants.RESOURCE_TYPE_FIXTURE));
+
+        assertEquals(1, resources.size());
+        com.product.planning.domain.model.Fixture fixture = resources.get(0).getFixture();
+        assertEquals(2, fixture.getMoldCompatibilityList().size());
+        com.product.planning.domain.model.FixtureMoldCompatibility first = fixture.getMoldCompatibilityList().get(0);
+        assertEquals(301L, first.getFixtureId());
+        assertEquals(201L, first.getMoldId());
+        assertEquals(1, first.getIsCompatible());
+        assertEquals(0, fixture.getMoldCompatibilityList().get(1).getIsCompatible());
+    }
+
+    @Test
+    void loadAvailableResourcesShouldDefaultEmptyFixtureCompatList() {
+        // 契约响应无兼容行（null）→ moldCompatibilityList 映射为空表（不炸、不静默放行），
+        // 机台资源不受影响；不可满足裁决在排程计算器
+        ResourceDTO machineDto = resource(101L, StatusConstants.AVAILABLE_RESOURCE_STATUS,
+                ResourceConstants.RESOURCE_TYPE_MACHINE, 30);
+        ResourceDTO fixtureDto = new ResourceDTO();
+        fixtureDto.setResourceId(305L);
+        fixtureDto.setStatus(StatusConstants.AVAILABLE_RESOURCE_STATUS);
+        fixtureDto.setResourceType(ResourceConstants.RESOURCE_TYPE_FIXTURE);
+        ResourceDTO.FixtureDTO fixtureDTO = new ResourceDTO.FixtureDTO();
+        fixtureDTO.setFixtureId(305L);
+        fixtureDTO.setFixtureCode("FJ-005");
+        fixtureDto.setFixture(fixtureDTO);
+
+        ResourceBatchResponse response = new ResourceBatchResponse();
+        response.setResources(List.of(machineDto, fixtureDto));
+        when(masterDataBatchQueryApi.getResources(any(ResourceBatchQueryRequest.class))).thenReturn(response);
+
+        List<Resource> resources = newLoader().loadAvailableResources(
+                List.of(ResourceConstants.RESOURCE_TYPE_MACHINE, ResourceConstants.RESOURCE_TYPE_FIXTURE));
+
+        assertEquals(2, resources.size());
+        assertTrue(resources.get(1).getFixture().getMoldCompatibilityList().isEmpty());
+        assertNull(resources.get(0).getFixture());
     }
 
     @Test
