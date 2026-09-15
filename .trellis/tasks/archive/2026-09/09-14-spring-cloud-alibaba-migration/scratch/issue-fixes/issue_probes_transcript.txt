@@ -1,0 +1,18 @@
+PASS 登录获取 token
+PASS #1 GET /system/user/list → 统一 404 体（不再 500 类型不匹配）
+PASS #1 服务 404 响应带 X-Trace-Id
+PASS #5 POST /register（冻结不存在）→ 统一 404 体
+PASS #1 GET /system/user/1（数字路径不受正则约束影响）仍 200
+PASS #2 第一次读（DB 加载并回写缓存）200
+PASS #2 第二次读（命中缓存）仍 200 —— 缓存不再自我污染
+PASS #2 两次读返回数据一致
+PASS #4 taskId=0 → 拒绝：任务事件必须指定有效的任务ID
+PASS #4 taskId 不存在 → 拒绝：任务不存在（经 planning 契约校验）
+PASS #3 /identity/v3/api-docs servers 收敛为相对路径
+PASS #3 /identity/v3/api-docs 无内网地址/直连端口泄露
+PASS #3 /master-data/v3/api-docs servers 收敛为相对路径
+PASS #3 /master-data/v3/api-docs 无内网地址/直连端口泄露
+PASS #3 /planning/v3/api-docs servers 收敛为相对路径
+PASS #3 /planning/v3/api-docs 无内网地址/直连端口泄露
+
+RESULT: 16/16 PASS (16 PASS / 0 FAIL)

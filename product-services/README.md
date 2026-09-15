@@ -226,3 +226,15 @@ producer, aggregateId, correlationId(透传命令 traceId), payload}`。新增�
 - 跨域对账/补偿/重放工具：任务 scratch `phase5/recon.py`（report / heal batch|line|order /
   heal allocation / replay outbox|dlq；经服务内部 ops 端点执行，全部动作服务端 ops_audit 留痕：
   `/internal/{planning|demand}/ops/*`、`/internal/execution/ops/*`；网关对 /internal/** 显式拒绝）。
+
+## 与单体的显式行为差异（issue 修复决议，2026-09-15）
+
+以下差异均为远程 issue 提出的目标态修复（单体保持冻结不改动；API 响应除注明外逐字节兼容）：
+
+| Issue | 差异 | 说明 |
+|-------|------|------|
+| #5 | 服务内「路由已匹配但端点缺失」由 200+code 500 改为 200+code 404「请求路径不存在」 | `GlobalServiceExceptionHandler` 映射 `NoResourceFoundException`/`NoHandlerFoundException`；与网关 404 同文案，均带 X-Trace-Id。避免调用方误重试与 5xx 错误率告警误报 |
+| #1 | `/system/user/{userId}` 增加纯数字约束 | 用户 CRUD 属冻结范围（与单体现状一致），字面路径（如 /list）不再被 `/{userId}` 吞掉返回 500 类型不匹配，改落入统一 404 |
+| #2 | 字典缓存读侧容忍未知字段 | `SysDictData.default`（手写 getter 与 @Data 并存所致）序列化写出后缓存读回失败；`RedisConfig.cacheObjectMapper` 关闭 FAIL_ON_UNKNOWN_PROPERTIES，缓存不再自我污染。HTTP 响应 mapper 独立、契约不变 |
+| #4 | `/execute/event` 直录语义与命令链对齐 | taskId 非法/不存在拒绝（存在性经 planning 只读契约 fail-closed）；eventTime 缺省由服务端补当前时间。批量导入路径（batchInsertTaskEvent）语义不变 |
+| #3 | OpenAPI servers 收敛为相对路径 `/` | 各服务与网关的聚合文档不再泄露实例内网 IP + 直连端口（springdoc 不再按请求解析 server url） |
