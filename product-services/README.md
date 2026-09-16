@@ -238,3 +238,48 @@ producer, aggregateId, correlationId(透传命令 traceId), payload}`。新增�
 | #2 | 字典缓存读侧容忍未知字段 | `SysDictData.default`（手写 getter 与 @Data 并存所致）序列化写出后缓存读回失败；`RedisConfig.cacheObjectMapper` 关闭 FAIL_ON_UNKNOWN_PROPERTIES，缓存不再自我污染。HTTP 响应 mapper 独立、契约不变 |
 | #4 | `/execute/event` 直录语义与命令链对齐 | taskId 非法/不存在拒绝（存在性经 planning 只读契约 fail-closed）；eventTime 缺省由服务端补当前时间。批量导入路径（batchInsertTaskEvent）语义不变 |
 | #3 | OpenAPI servers 收敛为相对路径 `/` | 各服务与网关的聚合文档不再泄露实例内网 IP + 直连端口（springdoc 不再按请求解析 server url） |
+
+## LOWEST_COST 综合成本模型（2026-09-16 成本模型精度提升）
+
+`LOWEST_COST` 排程策略的机台选择比较器主键为加权综合成本（仅此策略消费；其余三策略、
+平局键 `plannedEnd → plannedStart → machineId`、`QUEUE_SAME_MOLD_FIRST` 前置规则、
+任务级排序与时间计算均不受影响）：
+
+```
+compositeCost = setup-weight×换型时间(分钟)
+              + changeover-count-penalty×换模次数
+              + cross-shift-penalty×跨班次次数
+              + energy-weight×能耗（预留恒 0）
+```
+
+### 因子口径（全部从现有数据派生，零 DDL）
+
+| 因子 | 口径 | 数据源 |
+|------|------|--------|
+| 换型时间 | 任务声明 `changeoverTimeMin` → 资源需求 `changeoverTimeMin` → 机台 `defaultSetupTimeMin` 三级取值；换型触发时优先取 ChangeoverCalculator 结果 | 现有 `estimateSetupCost`，未修改 |
+| 换模次数 | MachineLastAssignment 链（DB 最近派工预加载 + 本次运行内逐任务覆盖，单槽快照）有历史记 1；本次选择再触发换模（setup 类任务且模具不同，与换型时间判定同口径）再计 1；无历史 → 0 | `ResourceRuntimeContext.machineLastAssignmentMap` |
+| 跨班次次数 | 候选窗口 `[plannedStart, plannedEnd)` 内严格包含的班次边界数（每工作日 `shiftStart`/`shiftEnd` 各一；恰在窗口端点不计）；全在同一班次内/无日历/缺班次字段 → 0 | 所选机台日历的班次结构 |
+| 能耗 | 恒 0（KD1 预留槽位：master-data 尚无能耗字段，权重存在但不影响结果；接入后无需再改公式） | — |
+
+### 权重配置（重启生效；0=关闭该因子，负值启动失败）
+
+```yaml
+product:
+  pps:
+    schedule:
+      cost-model:
+        setup-weight: 1                 # 分钟等效成本/分钟；默认 1 与历史行为等价
+        changeover-count-penalty: 30    # 分钟等效成本/次；一次额外换模 ≈ 30 分钟成本
+        cross-shift-penalty: 60         # 分钟等效成本/次；一次跨班 ≈ 60 分钟成本
+        energy-weight: 0                # KD1 预留；能耗因子接入前恒 0
+```
+
+- 环境变量覆盖：`PRODUCT_PPS_SCHEDULE_COST_MODEL_SETUP_WEIGHT` /
+  `_CHANGEOVER_COUNT_PENALTY` / `_CROSS_SHIFT_PENALTY` / `_ENERGY_WEIGHT`。
+- 配置类：`com.product.planning.config.ProductCostModelProperties`
+  （负值在绑定校验时抛出，服务启动失败，不允许静默取 0）。
+- 默认权重（1/30/60/0）下，无换模历史且窗口不跨班的候选 `compositeCost == setupCostMin`，
+  与升级前行为可对照；权重全 0 即回滚到「仅换型时间」语义（配置级回滚）。
+- 集成验证：`product-integration-tests` 套件 `LowestCostCompositeCostIT`
+  （换模历史驱动的选择反转 + 默认配置不回归）。
+

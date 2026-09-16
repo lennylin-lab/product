@@ -114,6 +114,17 @@ product:
       # 排程任务超时兜底（分钟）与扫描间隔（毫秒）
       timeout-minutes: ${PRODUCT_PPS_SCHEDULE_TIMEOUT_MINUTES:60}
       timeout-scan-delay-ms: ${PRODUCT_PPS_SCHEDULE_TIMEOUT_SCAN_DELAY_MS:300000}
+      # LOWEST_COST 综合成本模型权重（2026-09-16 成本模型精度提升，KD2）：
+      # compositeCost = setup-weight×换型时间(分钟) + changeover-count-penalty×换模次数
+      #               + cross-shift-penalty×跨班次次数 + energy-weight×能耗(预留恒0)。
+      # 权重量纲为「分钟等效成本」；0=关闭该因子；负值启动失败；重启生效。
+      # env 覆盖：PRODUCT_PPS_SCHEDULE_COST_MODEL_SETUP_WEIGHT / _CHANGEOVER_COUNT_PENALTY /
+      # _CROSS_SHIFT_PENALTY / _ENERGY_WEIGHT。
+      cost-model:
+        setup-weight: ${PRODUCT_PPS_SCHEDULE_COST_MODEL_SETUP_WEIGHT:1}
+        changeover-count-penalty: ${PRODUCT_PPS_SCHEDULE_COST_MODEL_CHANGEOVER_COUNT_PENALTY:30}
+        cross-shift-penalty: ${PRODUCT_PPS_SCHEDULE_COST_MODEL_CROSS_SHIFT_PENALTY:60}
+        energy-weight: ${PRODUCT_PPS_SCHEDULE_COST_MODEL_ENERGY_WEIGHT:0}
   # 服务身份令牌（ADR-0003 服务身份最小实现）：异步排程线程无用户请求上下文时，
   # Feign 调用 demand/master-data 内部契约改携带 Identity 签发的服务身份 token。
   # 凭据经环境注入（identity_db 种子账号 planning_svc）；缓存至 token 过期前 60s 自动重签。

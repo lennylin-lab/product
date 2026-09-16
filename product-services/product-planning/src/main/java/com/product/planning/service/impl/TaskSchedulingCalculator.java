@@ -4,6 +4,7 @@ import com.product.planning.common.constant.ResourceConstants;
 import com.product.planning.common.constant.RouteOperationConstants;
 import com.product.planning.common.exception.ServiceException;
 import com.product.planning.common.utils.StringUtils;
+import com.product.planning.config.ProductCostModelProperties;
 import com.product.planning.domain.model.Calendar;
 import com.product.planning.domain.model.ChangeoverRule;
 import com.product.planning.domain.model.Fixture;
@@ -54,6 +55,9 @@ public class TaskSchedulingCalculator {
     private ChangeoverCalculator changeoverCalculator;
     @Autowired
     private RouteRuleRegistry routeRuleRegistry;
+    /** 综合成本权重（仅 LOWEST_COST compositeCost 消费；直建实例未注入时用默认权重）。 */
+    @Autowired
+    private ProductCostModelProperties costModelProperties;
 
     // ========================== 公共 API（Coordinator 调用入口）
     // ==========================
@@ -661,16 +665,25 @@ public class TaskSchedulingCalculator {
                         && Objects.equals(targetMoldId, previousAssignment.getMoldId());
             }
 
+            int setupCostMin = estimateSetupCost(task, machine, changeoverTimeMin);
+            long compositeCost = 0L;
+            if (strategy == SchedulingStrategy.LOWEST_COST) {
+                int changeoverCount = deriveChangeoverCount(task, machine.getResourceId(), runtimeContext);
+                int crossShiftCount = deriveCrossShiftCount(calendar, window.start, window.end);
+                compositeCost = computeCompositeCost(setupCostMin, changeoverCount, crossShiftCount);
+            }
+
             MachineChoice choice = new MachineChoice(
                     machine.getResourceId(),
                     machine,
                     window.start,
                     window.end,
                     sequenceOnResource,
-                    estimateSetupCost(task, machine, changeoverTimeMin),
+                    setupCostMin,
                     changeoverTimeMin,
                     changeoverSourceTaskId,
-                    sameMoldPreferred);
+                    sameMoldPreferred,
+                    compositeCost);
 
             if (best == null || comparator.compare(choice, best) < 0) {
                 best = choice;
@@ -854,6 +867,107 @@ public class TaskSchedulingCalculator {
         Machine machineDetail = machine == null ? null : machine.getMachine();
         return machineDetail == null || machineDetail.getDefaultSetupTimeMin() == null ? 0
                 : machineDetail.getDefaultSetupTimeMin();
+    }
+
+    // ========================== 综合成本因子派生（仅 LOWEST_COST 消费，2026-09-16） ==========================
+
+    /** 能耗因子恒 0（KD1 预留槽位：master-data 无能耗字段，权重存在但不影响结果）。 */
+    private static final int ENERGY_FACTOR_RESERVED_ZERO = 0;
+
+    /**
+     * 综合成本 = wSetup×换型时间(分钟) + wChangeover×换模次数 + wCrossShift×跨班次次数
+     * + wEnergy×能耗（能耗因子恒 0，KD1 预留）。
+     *
+     * <p>权重来自 {@link ProductCostModelProperties}（yml 默认 + env 覆盖，重启生效）；
+     * 直建实例（单测）未注入时退回默认权重（1/30/60/0）。权重为 0 即关闭该因子。</p>
+     */
+    private long computeCompositeCost(int setupCostMin, int changeoverCount, int crossShiftCount) {
+        ProductCostModelProperties weights =
+                costModelProperties == null ? new ProductCostModelProperties() : costModelProperties;
+        return (long) weights.getSetupWeight() * setupCostMin
+                + (long) weights.getChangeoverCountPenalty() * changeoverCount
+                + (long) weights.getCrossShiftPenalty() * crossShiftCount
+                + (long) weights.getEnergyWeight() * ENERGY_FACTOR_RESERVED_ZERO;
+    }
+
+    /**
+     * 派生候选机台的换模次数因子。
+     *
+     * <p>口径（design.md）：数据源为 MachineLastAssignment 链 + {@link ResourceRuntimeContext}
+     * 的实际字段——链为单槽快照（{@code machineLastAssignmentMap}：DB 最近派工预加载 +
+     * 本次运行内逐任务覆盖更新），故「已执行的换模次数」按链上有派工历史记 1；
+     * 本次选择若再触发换模（setup 类任务且模具不同于历史快照，与 {@link ChangeoverCalculator}
+     * 的同模/换模判定同口径）再计 1；首任务无历史 → 0。</p>
+     */
+    private int deriveChangeoverCount(OperationTask task, Long machineId, ResourceRuntimeContext runtimeContext) {
+        if (machineId == null || runtimeContext == null) {
+            return 0;
+        }
+        ChangeoverCalculator.MachineAssignmentSnapshot previous =
+                runtimeContext.getMachineLastAssignment(machineId);
+        if (previous == null) {
+            return 0;
+        }
+        int count = 1;
+        if (triggersMoldChange(task, previous)) {
+            count++;
+        }
+        return count;
+    }
+
+    /**
+     * 本次选择是否再触发一次换模：setup 类任务（与既有换型时间判定 requiresChangeover
+     * 同口径，含路由规则触发）且计划模具与历史快照模具不同（ChangeoverCalculator 口径：
+     * 仅双方模具均非空且相等才算同模）。
+     */
+    private boolean triggersMoldChange(OperationTask task,
+            ChangeoverCalculator.MachineAssignmentSnapshot previous) {
+        if (task == null || previous == null || !requiresChangeover(task)) {
+            return false;
+        }
+        Long plannedMoldId = resolvePlannedMoldId(task);
+        return !(previous.getMoldId() != null && Objects.equals(previous.getMoldId(), plannedMoldId));
+    }
+
+    /**
+     * 派生候选窗口 [plannedStart, plannedEnd) 跨越的班次边界数。
+     *
+     * <p>口径（design.md）：从所选日历的班次切分派生——每个工作日 shiftStart/shiftEnd 各一个
+     * 边界（非工作日无班次，不计）；边界严格落在窗口内部才计数（恰在窗口端点不计，开区间
+     * 语义）；窗口全在同一班次内 → 0；无日历/缺班次字段/解析失败 → 0（沿用现有时间计算
+     * adjustToShiftStart/adjustForShiftEnd 的空值口径）。</p>
+     */
+    private int deriveCrossShiftCount(Calendar calendar, LocalDateTime plannedStart, LocalDateTime plannedEnd) {
+        if (calendar == null || plannedStart == null || plannedEnd == null || !plannedEnd.isAfter(plannedStart)
+                || StringUtils.isEmpty(calendar.getShiftStart()) || StringUtils.isEmpty(calendar.getShiftEnd())) {
+            return 0;
+        }
+        LocalTime shiftStart;
+        LocalTime shiftEnd;
+        try {
+            shiftStart = LocalTime.parse(calendar.getShiftStart());
+            shiftEnd = LocalTime.parse(calendar.getShiftEnd());
+        } catch (Exception ex) {
+            return 0;
+        }
+        int count = 0;
+        LocalDate day = plannedStart.toLocalDate();
+        LocalDate lastDay = plannedEnd.toLocalDate();
+        while (!day.isAfter(lastDay)) {
+            if (isWorkday(calendar.getWorkdayPattern(), day.getDayOfWeek())) {
+                count += countBoundaryIfInside(LocalDateTime.of(day, shiftStart), plannedStart, plannedEnd);
+                if (!shiftEnd.equals(shiftStart)) {
+                    count += countBoundaryIfInside(LocalDateTime.of(day, shiftEnd), plannedStart, plannedEnd);
+                }
+            }
+            day = day.plusDays(1);
+        }
+        return count;
+    }
+
+    /** 边界严格位于窗口内部 (start, end) 才计 1（起点处尚未跨越，终点为开区间不包含）。 */
+    private int countBoundaryIfInside(LocalDateTime boundary, LocalDateTime start, LocalDateTime end) {
+        return boundary.isAfter(start) && boundary.isBefore(end) ? 1 : 0;
     }
 
     // ========================== 模具选择 ==========================
@@ -1120,9 +1234,11 @@ public class TaskSchedulingCalculator {
     private Comparator<MachineChoice> machineChoiceComparator(SchedulingStrategy strategy, OperationTask task) {
         Comparator<MachineChoice> base;
         if (strategy == SchedulingStrategy.LOWEST_COST) {
+            // 2026-09-16 成本模型精度提升：主键 setupCostMin → compositeCost（换型时间 +
+            // 换模次数惩罚 + 跨班次惩罚 + 能耗预留恒 0，权重见 ProductCostModelProperties）；
+            // 平局键 plannedEnd/plannedStart/machineId 与 sameMoldPreferred 前置规则不变。
             base = Comparator
-                    .comparing((MachineChoice item) -> item.setupCostMin,
-                            Comparator.nullsLast(Comparator.naturalOrder()))
+                    .comparingLong((MachineChoice item) -> item.compositeCost)
                     .thenComparing(item -> item.plannedEnd, Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(item -> item.plannedStart, Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(item -> item.machineId, Comparator.nullsLast(Comparator.naturalOrder()));
@@ -1551,6 +1667,8 @@ public class TaskSchedulingCalculator {
         private final Integer changeoverTimeMin;
         private final Long changeoverSourceTaskId;
         private final boolean sameMoldPreferred;
+        /** 综合成本（仅 LOWEST_COST 逐候选计算：换型时间 + 换模次数×30 + 跨班次×60 + 能耗×0，权重可配）。 */
+        private final long compositeCost;
 
         MachineChoice(Long machineId,
                 Resource machineResource,
@@ -1560,7 +1678,8 @@ public class TaskSchedulingCalculator {
                 Integer setupCostMin,
                 Integer changeoverTimeMin,
                 Long changeoverSourceTaskId,
-                boolean sameMoldPreferred) {
+                boolean sameMoldPreferred,
+                long compositeCost) {
             this.machineId = machineId;
             this.machineResource = machineResource;
             this.plannedStart = plannedStart;
@@ -1570,6 +1689,7 @@ public class TaskSchedulingCalculator {
             this.changeoverTimeMin = changeoverTimeMin;
             this.changeoverSourceTaskId = changeoverSourceTaskId;
             this.sameMoldPreferred = sameMoldPreferred;
+            this.compositeCost = compositeCost;
         }
     }
 

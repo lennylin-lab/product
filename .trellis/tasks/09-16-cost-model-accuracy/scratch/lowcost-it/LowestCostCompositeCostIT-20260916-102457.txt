@@ -1,0 +1,19 @@
+== LowestCostCompositeCostIT 2026-09-16T10:24:57.465665261 ==
+stack: gw=http://127.0.0.1:8280 identity=http://127.0.0.1:8201 masterdata=http://127.0.0.1:8202 demand=http://127.0.0.1:8203 planning=http://127.0.0.1:8204 execution=http://127.0.0.1:8205
+[PASS] IT 栈健康检查（6/6 服务 UP）
+[PASS] 运行间清理行数校验（IT 专属段全部归零）
+-- == 轮 1：换模历史驱动 LOWEST_COST 选择反转（743 默认 0+历史惩罚 30 vs 744 默认 20） ==
+-- 共享库 IT 段外 AVAILABLE 机台数=2（无 758 兼容行，不参与候选）
+[PASS] POST /pps/assignment/scheduleAllAsync（LOWEST_COST）受理
+[PASS] 轮 1 排程 SUCCESS（1 被测任务）
+[PASS] 任务 790110001 存在派工主行
+[PASS] 换模历史反转选择：机台 743（0+30×1=30）被无历史机台 744（20）反超（切换前会选 743）
+[PASS] 窗口保持 D 08:00-09:00（成本只改机台选择，时间计算零变化）
+-- == 轮 2：默认配置不回归（无换模历史 → compositeCost == setupCostMin） ==
+[PASS] POST /pps/assignment/scheduleAllAsync（LOWEST_COST）受理
+[PASS] 轮 2 排程 SUCCESS（1 任务）
+[PASS] 任务 790110021 存在派工主行
+[PASS] 默认权重、无历史：默认换型 10 的机台 745 胜出（与切换前 setupCostMin 排序一致）
+[PASS] 运行间清理行数校验（IT 专属段全部归零）
+
+RESULT: LowestCostCompositeCostIT pass=147 fail=0 ALL GREEN

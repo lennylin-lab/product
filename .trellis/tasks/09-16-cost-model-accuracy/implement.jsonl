@@ -1,0 +1,5 @@
+{"file": "product-services/product-planning/src/main/java/com/product/planning/service/impl/TaskSchedulingCalculator.java", "reason": "比较器区/estimateSetupCost/chooseBestMachine：唯一允许触碰的计算器区域"}
+{"file": "product-services/product-planning/src/main/java/com/product/planning/service/impl/TaskSchedulingQueryService.java", "reason": "MachineLastAssignment 与排程上下文数据源（换模次数派生依据）"}
+{"file": ".trellis/tasks/09-16-cost-model-accuracy/design.md", "reason": "成本口径/默认权重/错误矩阵的设计基准"}
+{"file": ".trellis/spec/backend/microservices-platform.md", "reason": "算法冻结红线、记录纪律、per-service recipe"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "测试基线与禁止模式"}

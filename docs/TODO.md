@@ -19,7 +19,7 @@
 - 多资源排程落地（2026-08-30）：人员、工位随任务资源需求进入级联选择（`MACHINE -> MOLD -> PERSON / WORKSTATION -> PERSON`）与占用计算，分配结果回写需求并落 `task_assignment_resource` 明细。
 - 任务依赖约束进入排程，并完成工时口径与资源明细清理（2026-08-30 P0 优化）。
 - 工艺路线闭环（2026-09-06）：规则注册表、路线管理 API、产品绑定，`queue_policy`（含 `QUEUE_SAME_MOLD_FIRST` 同模具优先）与标准工时模型进入排程。
-- `LOWEST_COST` 成本口径：任务换型时间 → 资源需求 `changeoverTimeMin` → 机台 `defaultSetupTimeMin` 三级取值（能耗等综合因子仍未纳入，见剩余缺口）。
+- `LOWEST_COST` 成本口径（2026-09-16 升级为综合成本）：机台比较器主键 `compositeCost = setup-weight×换型时间（三级取值：任务 → 资源需求 → 机台默认） + changeover-count-penalty×换模次数 + cross-shift-penalty×跨班次次数 + energy-weight×能耗（KD1 预留恒 0）`，权重经 `product.pps.schedule.cost-model` 配置（yml 默认 1/30/60/0 + env 覆盖，负值启动失败）。
 
 ### 执行与需求闭环（2026-04-27 校准轮）
 
@@ -43,7 +43,7 @@
 | 模块 | 当前状态 | 主要位置 | 说明 |
 | --- | --- | --- | --- |
 | `product-services` | 现役，已统一切换 | `product-services/product-gateway` 等 | 网关 8080 唯一入口，五业务服务 + 三个共享库；基础设施含 Nacos/RabbitMQ/Jaeger/MySQL/Redis/ELK |
-| `product-planning` | 排程现役 | `com.product.planning.service.impl.TaskSchedulingCalculator` | 覆盖机台/模具/人员/工位/夹具选择与占用（夹具为机台分支协同资源，fixture ↔ mold 显式允许清单）、任务依赖、工艺路线 `queue_policy`、四种策略；换型成本仍取任务需求或机台默认准备时间 |
+| `product-planning` | 排程现役 | `com.product.planning.service.impl.TaskSchedulingCalculator` | 覆盖机台/模具/人员/工位/夹具选择与占用（夹具为机台分支协同资源，fixture ↔ mold 显式允许清单）、任务依赖、工艺路线 `queue_policy`、四种策略；`LOWEST_COST` 机台比较器主键已升级为综合成本（换型时间 + 换模次数 + 跨班次，能耗预留，权重经 cost-model 配置，2026-09-16） |
 | `product-execution` | 执行事件现役 | `com.product.execution.*` | `START/PAUSE/RESUME/FINISH` 四类事件（值冻结）+ `EXCEPTION` 异常事件（2026-09-16 增量，任务转 PAUSED、落原因码）+ 资源状态事件记录；事件经 cloud-messaging outbox 出站 |
 | `product-cloud-messaging` | 事件一致性骨架 | `product-services/product-cloud-messaging` | Outbox/幂等消费/死信审计/重放已就绪；异常事件建模与重排触发未做 |
 | 旧单体模块（`product-pps`/`product-execute`/`product-demand` 等） | 代码保留，冻结演进 | 仓库根目录各模块 | 自 2026-09-15 起不再是主线，仅作迁移对照；新功能一律在 `product-services` 落地 |
@@ -55,7 +55,7 @@
 | --- | --- | --- | --- | --- |
 | `P1` | `product-domain` / `product-planning` | 夹具等协同资源：从建模到排程 | 资源相关实体、`TaskSchedulingCalculator.java` | 已完成（2026-09-15 三段推进）：夹具建模（FIXTURE 资源类型、master_data_db `fixture` 扩展表、resources/batch 契约扩展、排程快照装载）；兼容规则（master_data_db `fixture_mold_compatibility` 表、契约 `fixture.moldCompatibilities` 下发、夹具感知规则 RULE_SETUP_MACHINE_FIXTURE / RULE_INJECT_MACHINE_FIXTURE 产出强制 FIXTURE 需求）；分配与占用（排程计算器机台分支模具后第三级夹具选择、fixture ↔ mold 显式允许清单裁决、夹具可用时间纳入 plannedStart/plannedEnd、FIXTURE 独立序号与运行时占用、task_assignment_resource 经泛化路径落 FIXTURE 行；工位分支夹具仍为 MVP 外延） |
 | `P1` | `product-execution` / `product-planning` | 异常事件建模与重排触发 | `TaskEventController`、事件消费者、排程入口 | 已完成（2026-09-16 两子任务全部落地）：EXCEPTION 事件建模（execution 命令端点 `POST /execute/event/exception/{taskId}` + 直录接受，`record()` 链 EXCEPTION→任务 PAUSED[复用既有状态，KD1]、事件行落 reason_code，`task.status.changed` payload 增加可选 reasonCode[只加不改]）；master-data 资源状态更新契约（`ResourceStatusUpdateApi` + `/internal/master-data/resource-status`，校验/更新/同事务版本 bump，同状态重复回写幂等静默成功不 bump）；planning `resource.status.changed` 消费升级为回写权威状态（fail-closed 不 ack，重试/DLX 兜底）；异常驱动重排触发（KD2/R4，09-16-reschedule-trigger）：回写成功后 `toStatus ∈ {DOWN, AVAILABLE}` 置 Redis pending 标记（TTL 30min）并尝试 `scheduleAllAsync`，互斥拒绝标记保留、既有超时清扫节拍空闲排空补跑（幂等不丢重排），MAINTENANCE/OFFSHIFT/BUSY 只回写不触发，EXCEPTION 不触发（无容量变化）；实机端到端已验证（DOWN 事件 → 回写 + 自动重排 + DOWN 资源不被选中 → 恢复事件 → 再次重排；非法状态回写失败通道不 ack → DLX）。报工失败建模不做（KD4） |
-| `P2` | `product-planning` | 提升成本模型精度 | `TaskSchedulingCalculator.estimateSetupCost` | `LOWEST_COST` 目前仅基于换型/准备时间，未纳入能耗、换模次数、跨班次损耗等综合因子 |
+| `P2` | `product-planning` | 提升成本模型精度 | `TaskSchedulingCalculator.estimateSetupCost` | 已完成（2026-09-16）：`LOWEST_COST` 机台比较器主键从 `setupCostMin` 升级为 `compositeCost`（换型时间 + 换模次数惩罚 + 跨班次惩罚 + 能耗预留恒 0；因子全部从现有数据派生零 DDL——换模次数取 MachineLastAssignment 链 + 运行时快照、跨班次取所选日历班次切分）；权重经 `ProductCostModelProperties`（`product.pps.schedule.cost-model`，yml 默认 1/30/60/0 + `PRODUCT_PPS_SCHEDULE_COST_MODEL_*` env 覆盖，负值启动失败）；其余三策略/平局键/任务排序/时间计算零变化；单测 19 个（因子派生、比较器反转、默认等价、配置绑定）+ IT 套件 `LowestCostCompositeCostIT`（换模历史驱动选择反转 + 默认配置不回归） |
 | `P2` | `product-services/**/src/test` | 补系统级与集成级测试 | `product-services/product-integration-tests` | 已完成（2026-09-16）：新模块 `product-integration-tests`（JUnit 5 + failsafe `*IT`，`mvn test/package` 默认构建零影响，`mvn verify` 执行）；compose+REST 黑盒三套件——跨服务状态联动（异常级联 + DOWN/恢复重排链 + MAINTENANCE 不触发 + 非法状态 DLX，四服务库 JDBC 只读断言）、跨班次排程（真实逗号日历、班次边界、跨班次推迟/承接）、并发排程（真实 Redis 锁 N 并发恰一成功、pending 标记 1s 节拍排空、compare-and-delete 竞态）；一键 `it-up.sh`/`it-down.sh`（独立端口 8201-8205/8280 + Nacos group/Redis db/RabbitMQ vhost 四件套隔离，PID 记录 + 双向清理连跑可重入）；CI `.github/workflows/integration.yml`（workflow_dispatch）。同栈连跑两轮 10 用例全绿（transcript 在任务 scratch） |
 | `P3` | `docs` | 页面说明与业务操作手册 | `docs/**` | 运维/补偿手册已有；页面稿、面向业务的操作手册未沉淀（README 已于 2026-09-15 重写为微服务视角，单体内容降级为历史对照） |
 
