@@ -180,17 +180,20 @@ class ConcurrentSchedulingIT {
         Seed.resetReady(TASK_LO, TASK_HI);
         long watermark = ItSupport.maxJobId();
 
-        // 标记先于提交存在（模拟更早的触发被互斥拒绝后留下的持久化标记）
-        String markerValue = "it-drain-" + System.currentTimeMillis();
-        ItSupport.redisSetTtl(CFG.rescheduleMarkerKey, markerValue, 600);
-        expect("pending 标记置入（Redis db5 IT 栈）", markerValue.equals(ItSupport.redisGet(CFG.rescheduleMarkerKey)),
-                ItSupport.redisGet(CFG.rescheduleMarkerKey));
-
+        // 先让负载 job 进入 RUNNING：RUNNING 会阻止 sweeper 排空，保证随后的置标-断言窗口
+        // 无竞态（否则 1s 节拍 sweeper 会在空闲栈上合法排空刚置入的标记——CI 首跑踩坑）
         long jobId = Seed.scheduleAll(Seed.ts(LocalDate.now().plusDays(1).atTime(8, 0)));
         poll("负载任务进入 RUNNING", Duration.ofSeconds(60), () -> {
             String s = qScalar("planning_db", "SELECT status FROM schedule_job WHERE job_id=" + jobId);
             return "RUNNING".equals(s) ? null : "status=" + s;
         });
+
+        // 标记在负载 RUNNING 期间置入（模拟更早的触发被互斥拒绝后留下的持久化标记）
+        String markerValue = "it-drain-" + System.currentTimeMillis();
+        ItSupport.redisSetTtl(CFG.rescheduleMarkerKey, markerValue, 600);
+        expect("pending 标记置入（Redis db5 IT 栈）", markerValue.equals(ItSupport.redisGet(CFG.rescheduleMarkerKey)),
+                ItSupport.redisGet(CFG.rescheduleMarkerKey));
+
         for (int i = 0; i < 3; i++) {
             String status = qScalar("planning_db", "SELECT status FROM schedule_job WHERE job_id=" + jobId);
             boolean active = "RUNNING".equals(status) || "PENDING".equals(status);
@@ -328,8 +331,10 @@ class ConcurrentSchedulingIT {
     }
 
     private static long masterVersion() {
-        return Long.parseLong(qScalar("master_data_db",
-                "SELECT data_version FROM master_data_data_version WHERE scope='MASTER_DATA'"));
+        // 全新库计数器表可能尚无行（首条 bump 才 INSERT）：无行按 0 起算
+        String version = qScalar("master_data_db",
+                "SELECT data_version FROM master_data_data_version WHERE scope='MASTER_DATA'");
+        return version == null ? 0L : Long.parseLong(version);
     }
 
     private static void await(CountDownLatch latch) {

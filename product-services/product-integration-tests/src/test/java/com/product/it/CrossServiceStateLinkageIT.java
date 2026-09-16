@@ -422,8 +422,10 @@ class CrossServiceStateLinkageIT {
     }
 
     private static long masterVersion() {
-        return Long.parseLong(qScalar("master_data_db",
-                "SELECT data_version FROM master_data_data_version WHERE scope='MASTER_DATA'"));
+        // 全新库计数器表可能尚无行（首条 bump 才 INSERT）：无行按 0 起算
+        String version = qScalar("master_data_db",
+                "SELECT data_version FROM master_data_data_version WHERE scope='MASTER_DATA'");
+        return version == null ? 0L : Long.parseLong(version);
     }
 
     private static long consumedTaskEvents(long taskId) {
