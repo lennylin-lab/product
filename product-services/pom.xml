@@ -29,6 +29,8 @@
         <module>product-demand-service</module>
         <module>product-planning</module>
         <module>product-execution</module>
+        <!-- 系统/集成级测试宿主（failsafe *IT；mvn test 不执行，mvn verify 起栈后执行） -->
+        <module>product-integration-tests</module>
     </modules>
 
     <properties>

@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-failsafe-plugin/xsd/failsafe-test-report-3.0.xsd" version="3.0" name="com.product.it.CrossShiftSchedulingIT" time="3.208" tests="3" errors="0" skipped="0" failures="0">
+  <properties>
+    <property name="java.specification.version" value="27"/>
+    <property name="sun.jnu.encoding" value="UTF-8"/>
+    <property name="java.class.path" value="/home/lenny/Projects/pps/product/product-services/product-integration-tests/target/test-classes:/home/lenny/Projects/pps/product/product-services/product-integration-tests/target/product-integration-tests-0.0.1-SNAPSHOT.jar:/home/lenny/.m2/repository/org/junit/jupiter/junit-jupiter/5.12.2/junit-jupiter-5.12.2.jar:/home/lenny/.m2/repository/org/junit/jupiter/junit-jupiter-api/5.12.2/junit-jupiter-api-5.12.2.jar:/home/lenny/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/lenny/.m2/repository/org/junit/platform/junit-platform-commons/1.12.2/junit-platform-commons-1.12.2.jar:/home/lenny/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/lenny/.m2/repository/org/junit/jupiter/junit-jupiter-params/5.12.2/junit-jupiter-params-5.12.2.jar:/home/lenny/.m2/repository/org/junit/jupiter/junit-jupiter-engine/5.12.2/junit-jupiter-engine-5.12.2.jar:/home/lenny/.m2/repository/org/junit/platform/junit-platform-engine/1.12.2/junit-platform-engine-1.12.2.jar:/home/lenny/.m2/repository/org/junit/platform/junit-platform-suite/1.12.2/junit-platform-suite-1.12.2.jar:/home/lenny/.m2/repository/org/junit/platform/junit-platform-suite-api/1.12.2/junit-platform-suite-api-1.12.2.jar:/home/lenny/.m2/repository/org/junit/platform/junit-platform-suite-engine/1.12.2/junit-platform-suite-engine-1.12.2.jar:/home/lenny/.m2/repository/org/junit/platform/junit-platform-suite-commons/1.12.2/junit-platform-suite-commons-1.12.2.jar:/home/lenny/.m2/repository/org/junit/platform/junit-platform-launcher/1.12.2/junit-platform-launcher-1.12.2.jar:/home/lenny/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.21.4/jackson-databind-2.21.4.jar:/home/lenny/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.21/jackson-annotations-2.21.jar:/home/lenny/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.21.4/jackson-core-2.21.4.jar:/home/lenny/.m2/repository/com/mysql/mysql-connector-j/9.7.0/mysql-connector-j-9.7.0.jar:"/>
+    <property name="java.vm.vendor" value="Oracle Corporation"/>
+    <property name="sun.arch.data.model" value="64"/>
+    <property name="java.vendor.url" value="https://java.oracle.com/"/>
+    <property name="user.timezone" value="Asia/Shanghai"/>
+    <property name="os.name" value="Linux"/>
+    <property name="java.vm.specification.version" value="27"/>
+    <property name="sun.java.launcher" value="SUN_STANDARD"/>
+    <property name="user.country" value="US"/>
+    <property name="sun.boot.library.path" value="/home/lenny/.local/share/mise/installs/java/27.0.0/lib"/>
+    <property name="sun.java.command" value="/home/lenny/Projects/pps/product/product-services/product-integration-tests/target/surefire/surefirebooter-20260916082333878_3.jar /home/lenny/Projects/pps/product/product-services/product-integration-tests/target/surefire 2026-09-16T08-23-33_832-jvmRun1 surefire-20260916082333878_1tmp surefire_0-20260916082333878_2tmp"/>
+    <property name="jdk.debug" value="release"/>
+    <property name="surefire.test.class.path" value="/home/lenny/Projects/pps/product/product-services/product-integration-tests/target/test-classes:/home/lenny/Projects/pps/product/product-services/product-integration-tests/target/product-integration-tests-0.0.1-SNAPSHOT.jar:/home/lenny/.m2/repository/org/junit/jupiter/junit-jupiter/5.12.2/junit-jupiter-5.12.2.jar:/home/lenny/.m2/repository/org/junit/jupiter/junit-jupiter-api/5.12.2/junit-jupiter-api-5.12.2.jar:/home/lenny/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/lenny/.m2/repository/org/junit/platform/junit-platform-commons/1.12.2/junit-platform-commons-1.12.2.jar:/home/lenny/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/lenny/.m2/repository/org/junit/jupiter/junit-jupiter-params/5.12.2/junit-jupiter-params-5.12.2.jar:/home/lenny/.m2/repository/org/junit/jupiter/junit-jupiter-engine/5.12.2/junit-jupiter-engine-5.12.2.jar:/home/lenny/.m2/repository/org/junit/platform/junit-platform-engine/1.12.2/junit-platform-engine-1.12.2.jar:/home/lenny/.m2/repository/org/junit/platform/junit-platform-suite/1.12.2/junit-platform-suite-1.12.2.jar:/home/lenny/.m2/repository/org/junit/platform/junit-platform-suite-api/1.12.2/junit-platform-suite-api-1.12.2.jar:/home/lenny/.m2/repository/org/junit/platform/junit-platform-suite-engine/1.12.2/junit-platform-suite-engine-1.12.2.jar:/home/lenny/.m2/repository/org/junit/platform/junit-platform-suite-commons/1.12.2/junit-platform-suite-commons-1.12.2.jar:/home/lenny/.m2/repository/org/junit/platform/junit-platform-launcher/1.12.2/junit-platform-launcher-1.12.2.jar:/home/lenny/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.21.4/jackson-databind-2.21.4.jar:/home/lenny/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.21/jackson-annotations-2.21.jar:/home/lenny/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.21.4/jackson-core-2.21.4.jar:/home/lenny/.m2/repository/com/mysql/mysql-connector-j/9.7.0/mysql-connector-j-9.7.0.jar:"/>
+    <property name="sun.cpu.endian" value="little"/>
+    <property name="user.home" value="/home/lenny"/>
+    <property name="user.language" value="en"/>
+    <property name="java.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.version.date" value="2026-09-15"/>
+    <property name="java.home" value="/home/lenny/.local/share/mise/installs/java/27.0.0"/>
+    <property name="file.separator" value="/"/>
+    <property name="basedir" value="/home/lenny/Projects/pps/product/product-services/product-integration-tests"/>
+    <property name="java.vm.compressedOopsMode" value="Zero based"/>
+    <property name="line.separator" value="&#10;"/>
+    <property name="java.specification.name" value="Java Platform API Specification"/>
+    <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
+    <property name="surefire.real.class.path" value="/home/lenny/Projects/pps/product/product-services/product-integration-tests/target/surefire/surefirebooter-20260916082333878_3.jar"/>
+    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
+    <property name="java.runtime.version" value="27+35-2325"/>
+    <property name="user.name" value="lenny"/>
+    <property name="stdout.encoding" value="UTF-8"/>
+    <property name="path.separator" value=":"/>
+    <property name="os.version" value="7.2.3-arch1-3"/>
+    <property name="java.runtime.name" value="OpenJDK Runtime Environment"/>
+    <property name="file.encoding" value="UTF-8"/>
+    <property name="java.vm.name" value="OpenJDK 64-Bit Server VM"/>
+    <property name="localRepository" value="/home/lenny/.m2/repository"/>
+    <property name="java.vendor.url.bug" value="https://bugreport.java.com/bugreport/"/>
+    <property name="java.io.tmpdir" value="/tmp"/>
+    <property name="java.version" value="27"/>
+    <property name="user.dir" value="/home/lenny/Projects/pps/product/product-services/product-integration-tests"/>
+    <property name="os.arch" value="amd64"/>
+    <property name="java.vm.specification.name" value="Java Virtual Machine Specification"/>
+    <property name="native.encoding" value="UTF-8"/>
+    <property name="java.library.path" value="/usr/java/packages/lib:/usr/lib64:/lib64:/lib:/usr/lib"/>
+    <property name="java.vm.info" value="mixed mode, sharing"/>
+    <property name="stderr.encoding" value="UTF-8"/>
+    <property name="java.vendor" value="Oracle Corporation"/>
+    <property name="java.vm.version" value="27+35-2325"/>
+    <property name="stdin.encoding" value="UTF-8"/>
+    <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
+    <property name="java.class.version" value="71.0"/>
+  </properties>
+  <testcase name="shiftBoundaryAndOvernightDeferral" classname="com.product.it.CrossShiftSchedulingIT" time="1.487">
+    <system-out><![CDATA[== CrossShiftSchedulingIT 2026-09-16T08:24:11.001704930 ==
+stack: gw=http://127.0.0.1:8280 identity=http://127.0.0.1:8201 masterdata=http://127.0.0.1:8202 demand=http://127.0.0.1:8203 planning=http://127.0.0.1:8204 execution=http://127.0.0.1:8205
+[PASS] IT 栈健康检查（6/6 服务 UP）
+[PASS] 运行间清理行数校验（IT 专属段全部归零）
+-- == 轮 1：班次边界占用（720min 占满班次 / 700min 溢出跨班次） ==
+[PASS] POST /pps/assignment/scheduleAllAsync 受理
+[PASS] 轮 1 排程 SUCCESS（2 任务）
+[PASS] 任务 790100001 存在派工主行
+[PASS] 边界任务 720min 占满班次：开始于 D 08:00
+[PASS] 边界任务恰好结束于班次边界 D 20:00（不推日）
+[PASS] 任务 790100002 存在派工主行
+[PASS] 700min 任务溢出 20:00 → 推迟到次日班首 08:00（隔夜 break 不占用）
+[PASS] 次日承接后 08:00+700min=19:40 当班完成
+]]></system-out>
+  </testcase>
+  <testcase name="multiTaskChainDefersAcrossShiftTogether" classname="com.product.it.CrossShiftSchedulingIT" time="0.523">
+    <system-out><![CDATA[-- == 轮 2：SETUP→INJECT→POST 链跨班次整体承接（工位分支） ==
+[PASS] POST /pps/assignment/scheduleAllAsync 受理
+[PASS] 轮 2 排程 SUCCESS（3 任务链）
+[PASS] 任务 790100011 存在派工主行
+[PASS] 链首 SETUP 于 19:50 开工（班次尾部）
+[PASS] 链首 SETUP 恰好 20:00 收在边界
+[PASS] 任务 790100012 存在派工主行
+[PASS] 依赖任务 INJECT 跨班次推迟至次日 08:00 开工
+[PASS] INJECT 60min 次日 09:00 完成
+[PASS] 任务 790100013 存在派工主行
+[PASS] 工位分支 POST 紧随 INJECT 于次日 09:00 开工
+[PASS] POST 30min 次日 09:30 完成
+[PASS] 工位需求落派工资源行（WORKSTATION 分支库级证据）
+]]></system-out>
+  </testcase>
+  <testcase name="commaCalendarSkipsExcludedWorkday" classname="com.product.it.CrossShiftSchedulingIT" time="0.621">
+    <system-out><![CDATA[-- == 轮 3：逗号日历 Mon,Wed 排除周二（非工作日跳过） ==
+[PASS] POST /pps/assignment/scheduleAllAsync 受理
+[PASS] 轮 3 排程 SUCCESS（1 任务）
+[PASS] 任务 790100021 存在派工主行
+[PASS] 机台选中 Mon,Wed 日历机台 732
+[PASS] 120min 任务周一 19:00 溢出 20:00 → 跳过周二（模式排除）推迟至周三 08:00
+[PASS] 周三 10:00 完成（120min 单班次内）
+]]></system-out>
+  </testcase>
+</testsuite>

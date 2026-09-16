@@ -1,0 +1,36 @@
+== CrossShiftSchedulingIT 2026-09-16T08:24:11.001704930 ==
+stack: gw=http://127.0.0.1:8280 identity=http://127.0.0.1:8201 masterdata=http://127.0.0.1:8202 demand=http://127.0.0.1:8203 planning=http://127.0.0.1:8204 execution=http://127.0.0.1:8205
+[PASS] IT 栈健康检查（6/6 服务 UP）
+[PASS] 运行间清理行数校验（IT 专属段全部归零）
+-- == 轮 1：班次边界占用（720min 占满班次 / 700min 溢出跨班次） ==
+[PASS] POST /pps/assignment/scheduleAllAsync 受理
+[PASS] 轮 1 排程 SUCCESS（2 任务）
+[PASS] 任务 790100001 存在派工主行
+[PASS] 边界任务 720min 占满班次：开始于 D 08:00
+[PASS] 边界任务恰好结束于班次边界 D 20:00（不推日）
+[PASS] 任务 790100002 存在派工主行
+[PASS] 700min 任务溢出 20:00 → 推迟到次日班首 08:00（隔夜 break 不占用）
+[PASS] 次日承接后 08:00+700min=19:40 当班完成
+-- == 轮 2：SETUP→INJECT→POST 链跨班次整体承接（工位分支） ==
+[PASS] POST /pps/assignment/scheduleAllAsync 受理
+[PASS] 轮 2 排程 SUCCESS（3 任务链）
+[PASS] 任务 790100011 存在派工主行
+[PASS] 链首 SETUP 于 19:50 开工（班次尾部）
+[PASS] 链首 SETUP 恰好 20:00 收在边界
+[PASS] 任务 790100012 存在派工主行
+[PASS] 依赖任务 INJECT 跨班次推迟至次日 08:00 开工
+[PASS] INJECT 60min 次日 09:00 完成
+[PASS] 任务 790100013 存在派工主行
+[PASS] 工位分支 POST 紧随 INJECT 于次日 09:00 开工
+[PASS] POST 30min 次日 09:30 完成
+[PASS] 工位需求落派工资源行（WORKSTATION 分支库级证据）
+-- == 轮 3：逗号日历 Mon,Wed 排除周二（非工作日跳过） ==
+[PASS] POST /pps/assignment/scheduleAllAsync 受理
+[PASS] 轮 3 排程 SUCCESS（1 任务）
+[PASS] 任务 790100021 存在派工主行
+[PASS] 机台选中 Mon,Wed 日历机台 732
+[PASS] 120min 任务周一 19:00 溢出 20:00 → 跳过周二（模式排除）推迟至周三 08:00
+[PASS] 周三 10:00 完成（120min 单班次内）
+[PASS] 运行间清理行数校验（IT 专属段全部归零）
+
+RESULT: CrossShiftSchedulingIT pass=135 fail=0 ALL GREEN

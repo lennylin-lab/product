@@ -1,0 +1,45 @@
+== ConcurrentSchedulingIT 2026-09-16T08:22:39.601312691 ==
+stack: gw=http://127.0.0.1:8280 identity=http://127.0.0.1:8201 masterdata=http://127.0.0.1:8202 demand=http://127.0.0.1:8203 planning=http://127.0.0.1:8204 execution=http://127.0.0.1:8205
+[PASS] IT 栈健康检查（6/6 服务 UP）
+[PASS] GET /captchaImage 匿名可访问并返回 uuid
+[PASS] Redis 可读到服务端验证码（identity:captcha_codes）
+[PASS] POST /login（验证码校验）返回 token
+[PASS] 运行间清理行数校验（IT 专属段全部归零）
+-- == 8 线程并发提交：恰好 1 受理 + 7 互斥拒绝 ==
+[PASS] 恰好 1 个并发提交受理成功
+[PASS] 其余 7 个提交互斥拒绝（真实 Redis 锁语义）
+[PASS] 并发窗口内只产生一行新 schedule_job
+[PASS] 获胜排程任务 SUCCESS（90 任务负载）
+[PASS] 受理任务数 ≥ 90（IT 负载全部入排）
+-- == pending 标记：运行任务期间保留，完成后 1s 节拍排空补跑 ==
+[PASS] pending 标记置入（Redis db5 IT 栈）
+[PASS] POST /pps/assignment/scheduleAllAsync 受理
+[PASS] 负载任务进入 RUNNING
+[PASS] 任务运行中标记保留且无补跑（sweeper 不排空活跃栈，第 1 次观测）
+[PASS] 任务运行中标记保留且无补跑（sweeper 不排空活跃栈，第 2 次观测）
+[PASS] 任务运行中标记保留且无补跑（sweeper 不排空活跃栈，第 3 次观测）
+[PASS] 负载任务 SUCCESS
+[PASS] 完成后 1s 节拍 sweeper 排空标记（比较清除）
+[PASS] 排空补跑全量重排 SUCCESS（恰好一行新任务）
+-- == 标记 compare-and-delete：陈旧标记被覆盖；并发双触发不丢重排 ==
+[PASS] 资源状态事件登记 accepted（resourceId=741 AVAILABLE→DOWN）
+[PASS] master_data_db 741 回写 DOWN（回写收敛）
+[PASS] DOWN 触发受理 + 陈旧标记被覆盖清除
+[PASS] DOWN 回写版本 bump +1
+[PASS] 资源状态事件登记 accepted（resourceId=741 DOWN→AVAILABLE）
+[PASS] 741 恢复触发重排 SUCCESS
+[PASS] 741 恢复 AVAILABLE（回写收敛）
+[PASS] 资源状态事件登记 accepted（resourceId=740 AVAILABLE→DOWN）
+[PASS] 资源状态事件登记 accepted（resourceId=741 AVAILABLE→DOWN）
+[PASS] 并发双触发收敛：标记清除且 ≥1 次重排成功
+[PASS] 双触发两笔回写各自 bump（版本 +2）
+[PASS] 静默期后无幻影标记残留（sweeper 比较清除收敛）
+[PASS] 资源状态事件登记 accepted（resourceId=740 DOWN→AVAILABLE）
+[PASS] 机台 740 恢复 AVAILABLE（回写收敛）
+[PASS] 机台 740 恢复触发重排 SUCCESS
+[PASS] 资源状态事件登记 accepted（resourceId=741 DOWN→AVAILABLE）
+[PASS] 机台 741 恢复 AVAILABLE（回写收敛）
+[PASS] 机台 741 恢复触发重排 SUCCESS
+[PASS] 运行间清理行数校验（IT 专属段全部归零）
+
+RESULT: ConcurrentSchedulingIT pass=38 fail=0 ALL GREEN

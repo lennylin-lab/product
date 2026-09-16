@@ -1,0 +1,76 @@
+== CrossServiceStateLinkageIT 2026-09-16T08:22:57.460842220 ==
+stack: gw=http://127.0.0.1:8280 identity=http://127.0.0.1:8201 masterdata=http://127.0.0.1:8202 demand=http://127.0.0.1:8203 planning=http://127.0.0.1:8204 execution=http://127.0.0.1:8205
+[PASS] IT 栈健康检查（6/6 服务 UP）
+[PASS] 运行间清理行数校验（IT 专属段全部归零）
+-- == 异常链：start → 三域联动；exception → PAUSED 级联 ==
+[PASS] POST /demand/product 建产品（模具参数 + 3 工序启用路线）
+[PASS] GET /demand/product/list 可查到 IT 产品
+[PASS] 产品 id 取自 API 响应
+[PASS] API 建订单成功
+[PASS] API 建订单行成功（产品跨域校验通过）
+[PASS] PUT /demand/order/check 确认
+[PASS] PUT /demand/orderLine/release 释放
+[PASS] POST /pps/batch 拆批
+[PASS] PUT /pps/batch/release 释放批次
+[PASS] POST /pps/batch/generateTask 生成工序任务
+[PASS] generateTask 生成 3 道工序任务
+[PASS] POST /pps/assignment/scheduleAllAsync 受理
+[PASS] 基线排程 job SUCCESS
+[PASS] 排程任务行数水位推进
+[PASS] 3 任务排程后 SCHEDULED
+[PASS] POST /execute/event/start 受理
+[PASS] planning_db 任务 RUNNING（事件消费落库）
+[PASS] demand_db 订单行 IN_PRODUCTION + 订单 IN_PRODUCTION（级联推进）
+[PASS] planning_db 批次 IN_PROCESS（批次重算级联）
+[PASS] demand_db.planning_batch_state 投影 IN_PROCESS（第四处库级证据）
+[PASS] planning_db.consumed_event 记录 task.status.changed（APPLIED 才有流水）
+[PASS] demand_db.consumed_event 记录 batch.progress.changed
+[PASS] POST /execute/event/exception（reasonCode 必填契约）受理
+[PASS] planning_db 任务 PAUSED（异常事件消费）
+[PASS] 批次保持 IN_PROCESS（PAUSED 与 PAUSE 同款批次级联）
+[PASS] 订单行保持 IN_PRODUCTION（PAUSED 不回退需求域状态）
+[PASS] execution_db.task_event EXCEPTION 行含 reason_code
+[PASS] planning_db.consumed_event 异常事件流水 +1
+[PASS] 业务响应携带 X-Trace-Id（轨迹基线抽查）
+-- == 资源链：DOWN → 回写+版本bump+自动重排排除；AVAILABLE → 回归 ==
+[PASS] POST /pps/assignment/scheduleAllAsync 受理
+[PASS] 资源链基线排程 SUCCESS（6 任务）
+[PASS] 基线排程同时选用机台 720 与 721（两个 SETUP 各自指派约束）
+[PASS] 资源状态事件登记 accepted（resourceId=720 AVAILABLE→DOWN）
+[PASS] master_data_db resource 720 状态回写 DOWN
+[PASS] master_data_db resource 720 状态回写 DOWN
+[PASS] master_data_db 版本幂等 bump +1（回写同事务）
+[PASS] DOWN 触发自动全量重排（无人调排程接口）
+[PASS] 自动重排出现在 DOWN 事件之后且 SUCCESS
+[PASS] 重排后 DOWN 资源 720 分配行为 0
+[PASS] 重排后任务由 721 承接（721 仍在派工）
+[PASS] planning_db.consumed_event 记录 resource.status.changed（APPLIED 才 ack）
+[PASS] 资源状态事件登记 accepted（resourceId=720 DOWN→AVAILABLE）
+[PASS] master_data_db resource 720 恢复 AVAILABLE
+[PASS] master_data_db resource 720 恢复 AVAILABLE
+[PASS] 恢复回写版本再 bump（累计 +2）
+[PASS] AVAILABLE 恢复事件再次自动重排
+[PASS] 恢复事件 consumed_event 流水 +1
+[PASS] POST /pps/assignment/scheduleAllAsync 受理
+[PASS] 恢复后指派 720 的重排 SUCCESS
+[PASS] 恢复后 720 重新参与派工（指派 720 的任务成功落派工）
+-- == MAINTENANCE 只回写不重排 ==
+[PASS] 资源状态事件登记 accepted（resourceId=723 AVAILABLE→MAINTENANCE）
+[PASS] master_data_db resource 723 回写 MAINTENANCE
+[PASS] master_data_db resource 723 回写 MAINTENANCE
+[PASS] MAINTENANCE 回写版本 bump +1
+[PASS] MAINTENANCE 不触发自动重排（无新 schedule_job）
+[PASS] MAINTENANCE 不置重排 pending 标记
+[PASS] 资源状态事件登记 accepted（resourceId=723 MAINTENANCE→AVAILABLE）
+[PASS] 723 恢复 AVAILABLE
+[PASS] 723 恢复 AVAILABLE
+[PASS] 恢复重排 SUCCESS（触发集语义对照）
+-- == 非法 toStatus（BROKEN）→ 回写失败不 ack → 重试耗尽 DLX ==
+[PASS] 资源状态事件登记 accepted（resourceId=722 AVAILABLE→BROKEN）
+[PASS] planning_db.dead_letter_audit 死信审计入库（重试耗尽进 DLX）
+[PASS] consumed_event 无新增流水（fail-closed 不 ack）
+[PASS] 非法回写后 resource 722 状态不变
+[PASS] 非法回写未 bump 版本
+[PASS] 运行间清理行数校验（IT 专属段全部归零）
+
+RESULT: CrossServiceStateLinkageIT pass=106 fail=0 ALL GREEN

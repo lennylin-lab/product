@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.product</groupId>
+        <artifactId>product-services</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>product-integration-tests</artifactId>
+    <packaging>jar</packaging>
+
+    <name>product-integration-tests</name>
+    <description>
+        系统级/集成级测试宿主（compose + REST 黑盒）：JUnit 5 + failsafe，用例命名 *IT。
+        mvn test/package 默认构建零影响（failsafe 绑定 integration-test/verify 阶段，
+        surefire 默认 includes 不含 *IT）；先运行 scripts/it-up.sh 起独立 IT 栈，
+        再 mvn verify（或 -Dit.test=...）执行。前置缺失时用例显式失败，禁止静默跳过。
+    </description>
+
+    <properties>
+        <java.version>17</java.version>
+        <!-- 与 Maven 3.9 内置 surefire 同代；本地仓库已存在（避免默认 super-pom 古老版本） -->
+        <maven-failsafe.version>3.2.5</maven-failsafe.version>
+    </properties>
+
+    <dependencies>
+        <!-- 全部 test scope：本模块不参与任何生产类路径 -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- @Suite 聚合入口（类间顺序受控：并发 → 跨服务联动 → 跨班次） -->
+        <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-suite</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- REST JSON 解析（零框架风格：JDK HttpClient + Jackson，与归档 probe 脚本同形态） -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- 跨服务库级状态断言（只读 SELECT；种子/清理走 docker exec mysql 与既有 probe 一致） -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>${maven-failsafe.version}</version>
+                <configuration>
+                    <!-- 默认只跑聚合套件（类间顺序受控：并发 → 跨服务联动 → 跨班次）；
+                        单类调试用 -Dit.test=XxxIT 覆盖 -->
+                    <includes>
+                        <include>IntegrationSuiteIT.java</include>
+                    </includes>
+                    <!-- 保守全局兜底：整次 fork 挂死时失败而非永久占用 CI -->
+                    <forkedProcessTimeoutInSeconds>3600</forkedProcessTimeoutInSeconds>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

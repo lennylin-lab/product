@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/09-16-system-integration-tests/design.md", "reason": "宿主形态/三场景流/CI 策略的设计基准"}
+{"file": ".trellis/tasks/archive/2026-09/09-14-spring-cloud-alibaba-migration/scratch/phase6/scripts/e2e_full_chain.py", "reason": "全链 E2E probe 模式（登录/REST/断言/清理）沉淀来源"}
+{"file": ".trellis/tasks/archive/2026-09/09-16-reschedule-trigger/scratch/e2e/e2e_reschedule_probe.py", "reason": "DOWN/恢复重排链探测模式沉淀来源"}
+{"file": ".trellis/tasks/archive/2026-09/09-16-reschedule-trigger/scratch/e2e/e2e_reschedule_transcript.txt", "reason": "21 项断言的期望结果参照"}
+{"file": "product-services/product-planning/src/main/java/com/product/planning/service/impl/ScheduleJobTimeoutService.java", "reason": "sweeper 节拍与排空宿主（并发/排空场景的环境变量缩短依据）"}
+{"file": ".trellis/spec/backend/microservices-platform.md", "reason": "平台约束与记录纪律"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "测试基线"}
