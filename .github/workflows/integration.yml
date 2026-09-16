@@ -12,6 +12,7 @@ jobs:
     env:
       # compose 四件套凭据（对齐 .env.example 基线；服务 schema 默认值同源）
       MYSQL_ROOT_PASSWORD: "123456"
+      MYSQL_PASSWORD: "123456"
       REDIS_PASSWORD: "123456"
       TZ: Asia/Taipei
     steps:

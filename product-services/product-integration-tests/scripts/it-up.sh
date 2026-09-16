@@ -43,8 +43,8 @@ for c in product-mysql product-redis product-nacos product-rabbitmq; do
   if [ "$st" != "true healthy" ]; then echo "  $c 不可用（$st）→ 需要 compose 拉起"; need_compose=1; else echo "  $c healthy → 复用"; fi
 done
 if [ "$need_compose" = "1" ]; then
-  cd "$BASE"
-  docker compose up -d nacos rabbitmq mysql redis
+  # compose.dev.yml 不在 docker compose 默认搜索列表，必须显式 -f（CI 首跑踩坑）
+  docker compose -f "$BASE/compose.dev.yml" up -d nacos rabbitmq mysql redis
   echo "  等待容器健康…"
   for i in $(seq 1 60); do
     ok=1

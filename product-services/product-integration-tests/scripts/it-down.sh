@@ -35,8 +35,7 @@ else
 fi
 
 if [ "${IT_STOP_INFRA:-0}" = "1" ]; then
-  cd "$BASE"
-  docker compose stop mysql redis nacos rabbitmq
+  docker compose -f "$BASE/compose.dev.yml" stop mysql redis nacos rabbitmq
   echo "infra 四件套已停止（IT_STOP_INFRA=1）"
 else
   echo "infra 容器保持运行（默认不触碰；IT_STOP_INFRA=1 可停）"
