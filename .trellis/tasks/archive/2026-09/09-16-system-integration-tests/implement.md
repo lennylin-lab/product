@@ -110,3 +110,14 @@
   任务运行中置标记 + 三次观测「标记保留且无补跑」+ 完成后 1s 节拍排空（ConcurrentSchedulingIT
   sweeperDrainsPendingMarkerWithShortenedCadence），并留 compare-and-delete 收敛场景。
 - 单体回滚点 28/28 已成为历史值；新模块入库后为 29/29（实际记录见上）。
+
+### CI 首跑补记（2026-09-16，推送后实测）
+
+- Run 1（失败）：`it-up.sh` 的 `docker compose up` 未带 `-f compose.dev.yml`（默认搜索列表不含
+  该文件名，本地因 infra 常驻健康走复用分支从未暴露）→ 已修；workflow 补导出 compose 必需变量
+  `MYSQL_PASSWORD`。
+- Run 2（失败，10 用例中 2 失败）：全新库暴露两处测试健壮性问题——① `masterVersion()` 在计数器
+  表无行时 `parseLong(null)` 崩溃（本地库始终有历史行）；② 标记用例"先置标后提交负载"与 1s 节拍
+  sweeper 在空闲栈上的合法排空竞态。修复：计数器无行按 0 起算；置标移到负载 job RUNNING 之后。
+  本地验证：修复套件 3/3 绿 + 全套件连续两轮 10/10。
+- Run 3（成功）：远端端到端全绿，AC6 关闭。教训已印证记录纪律：CI 首跑就是最好的新鲜环境测试。
