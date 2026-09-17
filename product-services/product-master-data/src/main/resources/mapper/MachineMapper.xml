@@ -26,9 +26,11 @@
 
     <select id="selectMachinePage" resultMap="MachineResouceMap">
         <include refid="selectMachineResourceVO"></include>
+        where r.resource_type = 'MACHINE'
     </select>
     <select id="selectMachineByMachineId" resultMap="MachineResouceMap">
         <include refid="selectMachineResourceVO"></include>
-        where resource_id = #{machineId}
+        where r.resource_type = 'MACHINE'
+          and r.resource_id = #{machineId}
     </select>
 </mapper>
