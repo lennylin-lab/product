@@ -30,7 +30,7 @@
 | /system/user/**,/system/menu/**,/system/dict/** | product-identity | system 管理 |
 | /demand/product,/demand/product/** | product-master-data | 产品（baselines §1.2 路径冻结） |
 | /pps/product-route,/pps/product-route/** | product-master-data | 工艺路线 |
-| /master/calendar,/master/calendar/**；/master/resource/machine,/master/resource/machine/** | product-master-data | 日历/机台（Phase 6 补齐的正式路由） |
+| /master/calendar,/master/calendar/**；/master/resource/machine,/master/resource/machine/**；/master/resource/fixture,/master/resource/fixture/** | product-master-data | 日历/机台/夹具（Phase 6 补齐的正式路由，夹具为 issue #6 补齐） |
 | /pps/batch,/pps/task,/pps/assignment（含 /**） | product-planning | 批次/工序任务/派工 |
 | /demand/** | product-demand | 客户/订单/订单行 |
 | /execute/event,/execute/event/** | product-execution | 任务事件 |

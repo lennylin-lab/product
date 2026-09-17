@@ -69,7 +69,8 @@ spring:
                 - Path=/system/user/**,/system/menu/**,/system/dict/**
             # ---- Master Data（Phase 3/6）：产品与工艺路线归 master-data 所有，
             # /demand/product 必须声明在下方 /demand/** 之前（SCG 按声明顺序匹配）；
-            # 日历与机台扩展为 Phase 6 补齐的正式路由（baselines.md §1.2 原路径）。----
+            # 日历与机台扩展为 Phase 6 补齐的正式路由（baselines.md §1.2 原路径），
+            # 夹具为 issue #6 补齐的正式路由。----
             - id: master-data-product
               uri: lb://product-master-data
               predicates:
@@ -86,6 +87,10 @@ spring:
               uri: lb://product-master-data
               predicates:
                 - Path=/master/resource/machine,/master/resource/machine/**
+            - id: master-data-fixture
+              uri: lb://product-master-data
+              predicates:
+                - Path=/master/resource/fixture,/master/resource/fixture/**
             # ---- Planning（Phase 4）：批次/工序任务/派工 ----
             - id: planning-batch
               uri: lb://product-planning
