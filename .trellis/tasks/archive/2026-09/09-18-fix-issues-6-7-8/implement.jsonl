@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "R3 用 ServiceException 抛业务错误，须遵循统一错误契约（HTTP 200 + code，禁止 controller 捕获）"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "MachineMapper.xml 查询修改与 MyBatis-Plus 实体/mapper 约定"}
+{"file": ".trellis/spec/backend/microservices-platform.md", "reason": "网关路由契约、product-services 骨架与已知坑（R1 网关路由）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "测试与必需/禁止模式，单测对齐 ResourceStatusUpdateServiceTest 离线 Mockito 约定"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "模块布局与 controller/service/mapper 分层位置确认"}

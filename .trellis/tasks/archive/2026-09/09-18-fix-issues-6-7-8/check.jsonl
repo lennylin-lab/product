@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对 ServiceException 使用与错误契约一致性"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "核对 mapper XML 修改符合数据库层规范"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对测试覆盖与质量门要求"}
+{"file": ".trellis/spec/backend/microservices-platform.md", "reason": "核对网关配置与微服务契约无回归"}
