@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.baomidou.mybatisplus.extension.toolkit.Db;
 import com.product.masterdata.common.constant.ResourceConstants;
 import com.product.masterdata.common.constant.StatusConstants;
+import com.product.masterdata.common.exception.ServiceException;
 import com.product.masterdata.common.utils.StringUtils;
 import com.product.masterdata.domain.dto.MachineResource;
 import com.product.masterdata.domain.entity.Calendar;
@@ -177,8 +178,10 @@ public class MachineServiceImpl extends ServiceImpl<MachineMapper, Machine> impl
         if (machineIds == null || machineIds.length == 0) {
             return false;
         }
-        boolean removeMachine = removeByIds(Arrays.asList(machineIds));
-        boolean removeResource = Db.removeByIds(Arrays.asList(machineIds), Resource.class);
+        List<Long> ids = Arrays.stream(machineIds).map(Long::valueOf).collect(Collectors.toList());
+        validateMachineExists(ids);
+        boolean removeMachine = removeByIds(ids);
+        boolean removeResource = Db.removeByIds(ids, Resource.class);
         boolean removed = removeMachine && removeResource;
         if (removed) {
             versionService.bump();
@@ -193,10 +196,16 @@ public class MachineServiceImpl extends ServiceImpl<MachineMapper, Machine> impl
      * @return 是否成功
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean deleteMachineByMachineId(Long machineId) {
+        validateMachineExists(Collections.singletonList(machineId));
         boolean removeMachine = removeById(machineId);
         boolean removeResource = Db.removeById(machineId, Resource.class);
-        return removeMachine && removeResource;
+        boolean removed = removeMachine && removeResource;
+        if (removed) {
+            versionService.bump();
+        }
+        return removed;
     }
 
     @Override
@@ -233,6 +242,21 @@ public class MachineServiceImpl extends ServiceImpl<MachineMapper, Machine> impl
             versionService.bump();
         }
         return updated;
+    }
+
+    /**
+     * 校验机台存在性，任一缺失即抛业务异常（不做任何删除）
+     */
+    private void validateMachineExists(List<Long> machineIds) {
+        Set<Long> found = listByIds(machineIds).stream()
+                .map(Machine::getMachineId)
+                .collect(Collectors.toSet());
+        List<Long> missing = machineIds.stream()
+                .filter(id -> !found.contains(id))
+                .collect(Collectors.toList());
+        if (!missing.isEmpty()) {
+            throw new ServiceException("机台不存在: " + missing);
+        }
     }
 
     /**
