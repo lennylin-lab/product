@@ -119,3 +119,27 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 6: 修复远程 issue #6/#7/#8（网关夹具路由/机台类型过滤/删除机台事务性）
+<!-- trellis-session: v=2 fp=1cde4fd2f4e3dba6 -->
+
+**Date**: 2026-09-18
+**Task**: 修复远程 issue #6/#7/#8（网关夹具路由/机台类型过滤/删除机台事务性）
+**Branch**: `master`
+
+### Summary
+
+核实 lennylin-lab/product 全部 11 个 issue 与代码现状后，修复 3 个 P1：#6 网关补 master-data-fixture 正式路由并同步 README 路由表；#7 MachineMapper 两个查询补 resource_type='MACHINE' 过滤（共享 SQL 片段不动，getInfo 对非机台 id 由错数据变 data:null 已在 PRD 记为接受项）；#8 两个删除路径先校验 machine 存在性（缺失抛 ServiceException 不触碰 resource 表），单数方法补 @Transactional 与 versionService.bump 对齐批量版——关键发现是控制器单 id 请求实际走批量方法，且批量版事务因无异常不会回滚，只加事务无效。新增 MachineServiceImplDeleteTest 5 条离线单测；trellis-check 全项 PASS，gateway+master-data mvn test 全绿（25+10 用例）。未动单体 product-master（同款 mapper 缺陷待 follow-up）；issue 关闭留给用户确认。踩坑记录：Trellis ZCode hooks 用相对路径解析脚本，Bash 会话里 cd 会让后续所有 Bash 调用被 hook 失败阻断，本会话内已改用绝对路径规避。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b7587ec` | fix(gateway): add missing /master/resource/fixture route |
+| `32a41e4` | fix(master-data): filter machine list/detail by resource_type=MACHINE |
+| `e0940bb` | fix(master-data): validate machine existence before deletion |
+
+### Status
+
+[OK] **Completed**
