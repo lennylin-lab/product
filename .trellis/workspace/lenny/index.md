@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
+- **Total Sessions**: 7
 - **Last Active**: 2026-09-18
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~145 | Active |
+| `journal-1.md` | ~169 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 7 | 2026-09-18 | 修复远程 issue #9/#10/#11（密码脱敏/路径数字约束/分页缺省分支），远程 issue 全清零 | `c0006b4`, `644851f`, `20e68f0` | `master` |
 | 6 | 2026-09-18 | 修复远程 issue #6/#7/#8（网关夹具路由/机台类型过滤/删除机台事务性） | `b7587ec`, `32a41e4`, `e0940bb` | `master` |
 | 5 | 2026-09-15 | Spring Cloud Alibaba 微服务化改造：Phase 0–6 全程实施与验收 | `8d4fb64`, `40baafb`, `8eff448`, `4ea022d`, `1ea8ca5`, `c4cea14`, `3544a1b`, `0ecd860` | `master` |
 | 4 | 2026-09-10 | 修复新环境引导链:schema.sql 补交与 README 刷新 | `3d26512`, `5462a99` | `master` |

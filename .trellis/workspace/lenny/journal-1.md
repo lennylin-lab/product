@@ -143,3 +143,27 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 7: 修复远程 issue #9/#10/#11（密码脱敏/路径数字约束/分页缺省分支），远程 issue 全清零
+<!-- trellis-session: v=2 fp=0efd7fb67c028efc -->
+
+**Date**: 2026-09-18
+**Task**: 修复远程 issue #9/#10/#11（密码脱敏/路径数字约束/分页缺省分支），远程 issue 全清零
+**Branch**: `master`
+
+### Summary
+
+修复最后三个 OPEN issue：#9 SysUser.password 加 @JsonProperty(WRITE_ONLY)（核实 Redis 无 SysUser 缓存、写端点为死代码、登录用 DB 现查用户，零波及），JacksonContractTest 增序列化/反序列化双向用例；#10 全部 41 处单 id 路径变量加 \d+ 约束（17 控制器 5 服务，含质检发现的 TaskEventController 5 个 POST 动作子路径），复数 {xxxIds}/{dictCodes} 14 处（7 String[] + 7 Long[]）有意不动并在 issue 评论说明残留机制；#11 Customer/Product list 删除无参全量分支（TableSupport 缺省 1/10），无参 selectCustomerPage 四处删除并清 import。README 决议表补 #10/#9/#11 行并补录 #7/#8。trellis-check 全项 PASS（抓出清单遗漏与复数计数笔误，已修正）；五模块 mvn test 两轮全绿。三 commit 已推送，#9/#10/#11 已评论关闭——远程仓库 11 个 issue 全部关闭。踩坑重犯：Bash 会话里又带了一次 cd（写 jsonl 命令开头），hook 相对路径问题再次卡死会话，靠占位脚本恢复；hook 绝对路径修复（041a806）下个会话生效，本会话仍需守 '禁止 cd' 纪律。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c0006b4` | fix(identity): drop password from user serialization |
+| `644851f` | fix(api): require numeric single-id path variables across controllers |
+| `20e68f0` | fix(demand,master-data): list endpoints always apply filters with default paging |
+
+### Status
+
+[OK] **Completed**
