@@ -167,3 +167,25 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 8: 修复远程 issue #12（时长模型去批量线性占位）
+<!-- trellis-session: v=2 fp=197f102543edcfa3 -->
+
+**Date**: 2026-09-19
+**Task**: 修复远程 issue #12（时长模型去批量线性占位）
+**Branch**: `master`
+
+### Summary
+
+查证并修复 #12：SetupBaseTimeModel/PostUnitTimeModel/RouteRuleRegistry 兜底三处 ×batchQty 全部移除，SETUP=60min/次换型、POST=120min/批（TM_POST_UNIT 码已落库不改名），INJECT 产能公式不动；关键设计依据是 RouteDurationContext 无机台字段、generateTask 时机台未分配，机台间换型差值由排程期 ChangeoverCalculator 独立叠加。RouteRuleRegistryTest 改 1 增 3（含 qty=100 三工序 ≤720min 窗口回归），planning 133 测试全绿；README 决议表补 #12 行（单体冻结不修）。trellis-check PASS。已推送并评论关闭 #12，后续项（窗口预校验/链路 IT/作业降级选项）已在评论列明。剩余 OPEN：#13（快照契约上限）、#14（init 运行表残留）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `54f57fa` | fix(planning): stop scaling SETUP/POST task durations by batch quantity |
+
+### Status
+
+[OK] **Completed**
