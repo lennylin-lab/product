@@ -166,3 +166,16 @@ CREATE TABLE IF NOT EXISTS ops_audit (
     PRIMARY KEY (id),
     KEY idx_ops_audit_action (action, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='运维审计(服务权属,非单体基线表)';
+
+-- ----------------------------
+-- 运行时/审计表重置（issue #14：IF NOT EXISTS 表不随重跑重建，须显式清空，
+-- 保持「可重复执行 = 重置为种子空库」语义）。demand_data_version 刻意保留：
+-- 数据清空而版本计数回退会掩盖输入漂移（ADR-0005 服务权属单调计数）
+-- ----------------------------
+SET FOREIGN_KEY_CHECKS = 0;
+TRUNCATE TABLE planning_batch_state;
+TRUNCATE TABLE event_outbox;
+TRUNCATE TABLE consumed_event;
+TRUNCATE TABLE dead_letter_audit;
+TRUNCATE TABLE ops_audit;
+SET FOREIGN_KEY_CHECKS = 1;
