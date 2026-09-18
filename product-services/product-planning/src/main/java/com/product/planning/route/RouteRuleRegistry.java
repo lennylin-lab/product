@@ -91,10 +91,10 @@ public class RouteRuleRegistry {
             return requireModel(RouteOperationConstants.TM_INJECT_A2).calculateDurationMin(context);
         }
         int opIndex = OperationTaskConstants.OP_CODE.indexOf(context.opCode());
-        long baseDuration = opIndex >= 0
+        // 兜底基准不随批量放大（与 SETUP/POST 模型同语义，issue #12）
+        return opIndex >= 0
                 ? OperationTaskConstants.STD_DURATION_MIM.get(opIndex)
                 : OperationTaskConstants.STD_DURATION_MIM.get(1);
-        return baseDuration * context.batchQty();
     }
 
     private Map<String, RouteEligibleResourceRule> indexRules(List<RouteEligibleResourceRule> rules) {

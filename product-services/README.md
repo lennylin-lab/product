@@ -243,6 +243,7 @@ producer, aggregateId, correlationId(透传命令 traceId), payload}`。新增�
 | #11 | 列表接口缺省分页参数改为默认第 1 页 10 条且条件生效 | 删除 Customer/Product list 的无参全量分支（TableSupport 缺省 1/10）；全量导出走既有 `/export` |
 | #7 | 机台列表/详情仅返回 MACHINE 类型资源 | MachineMapper 两查询补 `resource_type='MACHINE'` 过滤；非机台资源 id 详情返回 `data:null` |
 | #8 | 删除机台先校验存在性，缺失拒绝且不动 resource 表 | 消除「失败响应掩盖 resource 行已删」的半执行；单数删除补 `@Transactional` 与版本 bump |
+| #12 | 任务标准时长不再随批量线性放大（SETUP/POST 固定基准，INJECT 产能公式不变） | 60×qty/120×qty 占位模型使 batchQty≥7 任务超 720min 班次窗口、整作业 FAILED；时长语义回归「每次换型基准/按批活动」，实际换型差值仍由排程期 ChangeoverCalculator 叠加 |
 
 ## LOWEST_COST 综合成本模型（2026-09-16 成本模型精度提升）
 
