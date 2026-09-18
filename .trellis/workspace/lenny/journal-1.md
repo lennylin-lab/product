@@ -189,3 +189,26 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 9: 修复远程 issue #13/#14（快照分块加载/init 运行表重置），远程 issue 再次清零
+<!-- trellis-session: v=2 fp=b4a2f31ddadfe122 -->
+
+**Date**: 2026-09-19
+**Task**: 修复远程 issue #13/#14（快照分块加载/init 运行表重置），远程 issue 再次清零
+**Branch**: `master`
+
+### Summary
+
+修复最后两个 OPEN issue：#13 SchedulingSnapshotLoader 四个 ID 集合方法统一分块（去重→MAX_IDS=1000 切片→合并），错误文案区分暂时性（保留请稍后重试）与确定性形态异常（指向提供方日志），删除死防御器 requireBoundedIds，新增 3 条分块用例（2501 行 3 分块/去重/1500 日历 2 分块）；#14 demand/planning/execution init 脚本补运行时/审计表 TRUNCATE（ops_audit 一并清），*_data_version 单调计数刻意保留（ADR-0005），运维手册步骤 4 标注。首轮编译暴露 fetch/key 泛型不匹配已修正；trellis-check PASS 且抓到漏改的类 javadoc 并自行补上。planning 136 测试全绿，已推送并关闭 #13/#14——远程 14 个 issue 全部关闭。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b6143e7` | fix(planning): chunk snapshot contract loads by MAX_IDS |
+| `4fdcf52` | fix(dev-env): reset runtime/audit tables on init script re-run |
+
+### Status
+
+[OK] **Completed**

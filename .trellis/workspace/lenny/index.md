@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
+- **Total Sessions**: 9
 - **Last Active**: 2026-09-19
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~191 | Active |
+| `journal-1.md` | ~214 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-09-19 | 修复远程 issue #13/#14（快照分块加载/init 运行表重置），远程 issue 再次清零 | `b6143e7`, `4fdcf52` | `master` |
 | 8 | 2026-09-19 | 修复远程 issue #12（时长模型去批量线性占位） | `54f57fa` | `master` |
 | 7 | 2026-09-18 | 修复远程 issue #9/#10/#11（密码脱敏/路径数字约束/分页缺省分支），远程 issue 全清零 | `c0006b4`, `644851f`, `20e68f0` | `master` |
 | 6 | 2026-09-18 | 修复远程 issue #6/#7/#8（网关夹具路由/机台类型过滤/删除机台事务性） | `b7587ec`, `32a41e4`, `e0940bb` | `master` |
