@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "#10 的 404 语义与统一错误契约、#9 的响应序列化契约背景"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "测试约定（离线单测/Jackson 契约测试）"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "controller/service 分层与改动文件定位"}
+{"file": ".trellis/spec/backend/microservices-platform.md", "reason": "统一错误契约与网关/服务 404 行为口径"}
