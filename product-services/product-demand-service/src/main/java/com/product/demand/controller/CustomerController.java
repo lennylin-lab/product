@@ -4,8 +4,6 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.product.demand.common.core.page.TableDataInfo;
 import com.product.demand.common.core.result.AjaxResult;
 import com.product.demand.common.utils.PageUtils;
-import com.product.demand.common.utils.ServletUtils;
-import com.product.demand.common.utils.StringUtils;
 import com.product.demand.core.controller.BaseController;
 import com.product.demand.core.utils.ExcelUtil;
 import com.product.demand.domain.entity.Customer;
@@ -17,9 +15,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
 import java.util.List;
-
-import static com.product.demand.common.core.page.TableSupport.PAGE_NUM;
-import static com.product.demand.common.core.page.TableSupport.PAGE_SIZE;
 
 /**
  * 客户Controller（单体 product-demand CustomerController 移植）
@@ -38,9 +33,6 @@ public class CustomerController extends BaseController {
      */
     @GetMapping("/list")
     public TableDataInfo list(Customer customer) {
-        if (!StringUtils.hasText(ServletUtils.getParameter(PAGE_NUM)) || !StringUtils.hasText(ServletUtils.getParameter(PAGE_SIZE))) {
-            return getDataTable(customerService.selectCustomerPage());
-        }
         Page<Customer> page = PageUtils.buildPage();
         return getDataTable(customerService.selectCustomerPage(page, customer));
     }
@@ -80,7 +72,7 @@ public class CustomerController extends BaseController {
     /**
      * 获取客户详细信息
      */
-    @GetMapping(value = "/{customerId}")
+    @GetMapping(value = "/{customerId:\\d+}")
     public AjaxResult getInfo(@PathVariable("customerId") Long customerId) {
         return success(customerService.selectCustomerByCustomerId(customerId));
     }

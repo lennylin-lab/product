@@ -36,18 +36,18 @@ public class ProductRouteController extends BaseController {
         return getDataTable(productRouteService.selectProductRoutePage(page, productRoute));
     }
 
-    @GetMapping("/product/{productId}")
+    @GetMapping("/product/{productId:\\d+}")
     public AjaxResult listByProduct(@PathVariable Long productId) {
         List<ProductRoute> routes = productRouteService.listByProductId(productId);
         return success(routes);
     }
 
-    @GetMapping("/product/{productId}/active")
+    @GetMapping("/product/{productId:\\d+}/active")
     public AjaxResult getActiveByProduct(@PathVariable Long productId) {
         return success(productRouteService.getActiveByProductId(productId));
     }
 
-    @GetMapping("/{routeId}")
+    @GetMapping("/{routeId:\\d+}")
     public AjaxResult getInfo(@PathVariable Long routeId) {
         return success(productRouteService.getByRouteId(routeId));
     }
@@ -66,13 +66,13 @@ public class ProductRouteController extends BaseController {
         return success();
     }
 
-    @PutMapping("/{routeId}/activate")
+    @PutMapping("/{routeId:\\d+}/activate")
     public AjaxResult activate(@PathVariable Long routeId) {
         productRouteService.activateRoute(routeId);
         return success();
     }
 
-    @DeleteMapping("/{routeId}")
+    @DeleteMapping("/{routeId:\\d+}")
     public AjaxResult remove(@PathVariable Long routeId) {
         productRouteService.deleteRoute(routeId);
         return success();

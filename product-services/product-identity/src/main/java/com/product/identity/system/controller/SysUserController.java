@@ -227,7 +227,7 @@ public class SysUserController extends BaseController
      * 根据用户编号获取授权角色
      */
 /*     @PreAuthorize("@ss.hasPermi('system:user:query')")
-    @GetMapping("/authRole/{userId}")
+    @GetMapping("/authRole/{userId:\\d+}")
     public AjaxResult authRole(@PathVariable("userId") Long userId)
     {
         AjaxResult ajax = AjaxResult.success();

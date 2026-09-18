@@ -77,7 +77,7 @@ public class ProductionBatchController extends BaseController {
     /**
      * 获取生产批次（订单行拆批）详细信息
      */
-    @GetMapping(value = "/{batchId}")
+    @GetMapping(value = "/{batchId:\\d+}")
     public AjaxResult getInfo(@PathVariable("batchId") Long batchId) {
         return success(productionBatchService.selectProductionBatchByBatchId(batchId));
     }
@@ -109,7 +109,7 @@ public class ProductionBatchController extends BaseController {
     /**
      * 释放生产批次
      */
-    @PutMapping("/release/{batchId}")
+    @PutMapping("/release/{batchId:\\d+}")
     public AjaxResult release(@PathVariable("batchId") Long batchId) {
         return toAjax(productionBatchService.release(batchId));
     }
@@ -117,7 +117,7 @@ public class ProductionBatchController extends BaseController {
     /**
      * 取消释放生产批次
      */
-    @PutMapping("/cancelRelease/{batchId}")
+    @PutMapping("/cancelRelease/{batchId:\\d+}")
     public AjaxResult cancelRelease(@PathVariable("batchId") Long batchId) {
         return toAjax(productionBatchService.cancelRelease(batchId));
     }
@@ -133,7 +133,7 @@ public class ProductionBatchController extends BaseController {
     /**
      * 重新生成生产任务
      */
-    @PutMapping("/retryGenerateTask/{batchId}")
+    @PutMapping("/retryGenerateTask/{batchId:\\d+}")
     public AjaxResult retryGenerateTask(@PathVariable Long batchId) {
         return operationTaskService.retryGenerateTask(batchId);
     }

@@ -85,7 +85,7 @@ public class TaskAssignmentController extends BaseController {
     /**
      * 获取派工/排程结果详细信息
      */
-    @GetMapping(value = "/{assignmentId}")
+    @GetMapping(value = "/{assignmentId:\\d+}")
     public AjaxResult getInfo(@PathVariable("assignmentId") Long assignmentId) {
         return success(taskAssignmentService.selectTaskAssignmentByAssignmentId(assignmentId));
     }
@@ -142,7 +142,7 @@ public class TaskAssignmentController extends BaseController {
         return AjaxResult.success("排程任务已提交", jobId);
     }
 
-    @GetMapping("/scheduleJob/{jobId}")
+    @GetMapping("/scheduleJob/{jobId:\\d+}")
     public AjaxResult getScheduleJob(@PathVariable("jobId") Long jobId) {
         // 供前端轮询异步排程任务状态（PENDING/RUNNING/SUCCESS/FAILED）。
         ScheduleJob scheduleJob = taskAssignmentService.selectScheduleJobByJobId(jobId);

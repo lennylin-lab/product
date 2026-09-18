@@ -46,7 +46,7 @@ public class FixtureController extends BaseController {
     /**
      * 获取夹具资源聚合详细信息
      */
-    @GetMapping(value = "/{fixtureId}")
+    @GetMapping(value = "/{fixtureId:\\d+}")
     public AjaxResult getInfo(@PathVariable("fixtureId") Long fixtureId) {
         return success(fixtureService.selectFixtureByFixtureId(fixtureId));
     }

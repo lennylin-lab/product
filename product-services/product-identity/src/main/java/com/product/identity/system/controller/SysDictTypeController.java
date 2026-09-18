@@ -66,7 +66,7 @@ public class SysDictTypeController extends BaseController
      * 查询字典类型详细
      */
     @PreAuthorize("@ss.hasPermi('system:dict:query')")
-    @GetMapping(value = "/{dictId}")
+    @GetMapping(value = "/{dictId:\\d+}")
     public AjaxResult getInfo(@PathVariable Long dictId)
     {
         return success(dictTypeService.selectDictTypeById(dictId));

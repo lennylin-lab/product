@@ -83,7 +83,7 @@ public class TaskEventController extends BaseController {
     /**
      * 获取任务事件日志（全流程追溯核心）详细信息
      */
-    @GetMapping(value = "/{eventId}")
+    @GetMapping(value = "/{eventId:\\d+}")
     public AjaxResult getInfo(@PathVariable("eventId") Long eventId) {
         return success(taskEventService.selectTaskEventByEventId(eventId));
     }
@@ -115,7 +115,7 @@ public class TaskEventController extends BaseController {
     /**
      * 开工
      */
-    @PostMapping("/start/{taskId}")
+    @PostMapping("/start/{taskId:\\d+}")
     public AjaxResult start(@PathVariable Long taskId) {
         return toAjax(taskEventService.start(taskId));
     }
@@ -123,7 +123,7 @@ public class TaskEventController extends BaseController {
     /**
      * 暂停
      */
-    @PostMapping("/pause/{taskId}")
+    @PostMapping("/pause/{taskId:\\d+}")
     public AjaxResult pause(@PathVariable Long taskId, @RequestBody PauseTaskDTO pauseTaskDTO) {
         return toAjax(taskEventService.pause(taskId));
     }
@@ -131,7 +131,7 @@ public class TaskEventController extends BaseController {
     /**
      * 恢复
      */
-    @PostMapping("/resume/{taskId}")
+    @PostMapping("/resume/{taskId:\\d+}")
     public AjaxResult resume(@PathVariable Long taskId) {
         return toAjax(taskEventService.resume(taskId));
     }
@@ -139,7 +139,7 @@ public class TaskEventController extends BaseController {
     /**
      * 完工
      */
-    @PostMapping("/complete/{taskId}")
+    @PostMapping("/complete/{taskId:\\d+}")
     public AjaxResult complete(@PathVariable Long taskId) {
         return toAjax(taskEventService.complete(taskId));
     }
@@ -148,7 +148,7 @@ public class TaskEventController extends BaseController {
      * 异常上报（KD1 增量：任务转 PAUSED，事件行落原因码；body reasonCode 必填、remark 可选，
      * 校验在服务层——空白原因码拒绝）
      */
-    @PostMapping("/exception/{taskId}")
+    @PostMapping("/exception/{taskId:\\d+}")
     public AjaxResult exception(@PathVariable Long taskId, @RequestBody ExceptionReportDTO reportDTO) {
         return toAjax(taskEventService.exception(taskId, reportDTO.getReasonCode(), reportDTO.getRemark()));
     }

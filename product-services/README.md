@@ -238,6 +238,11 @@ producer, aggregateId, correlationId(透传命令 traceId), payload}`。新增�
 | #2 | 字典缓存读侧容忍未知字段 | `SysDictData.default`（手写 getter 与 @Data 并存所致）序列化写出后缓存读回失败；`RedisConfig.cacheObjectMapper` 关闭 FAIL_ON_UNKNOWN_PROPERTIES，缓存不再自我污染。HTTP 响应 mapper 独立、契约不变 |
 | #4 | `/execute/event` 直录语义与命令链对齐 | taskId 非法/不存在拒绝（存在性经 planning 只读契约 fail-closed）；eventTime 缺省由服务端补当前时间。批量导入路径（batchInsertTaskEvent）语义不变 |
 | #3 | OpenAPI servers 收敛为相对路径 `/` | 各服务与网关的聚合文档不再泄露实例内网 IP + 直连端口（springdoc 不再按请求解析 server url） |
+| #10 | 全部单 id 路径变量加 `\d` 纯数字约束（36 处，复数 `{xxxIds}` 除外） | 字面路径不再被 `/{xxxId}` 吞掉抛 500 类型不匹配，改落入统一 404；与 #1 的 user 控制器方案一致 |
+| #9 | 用户信息响应不再输出 password 字段 | `SysUser.password` 加 `@JsonProperty(WRITE_ONLY)`，序列化脱敏、反序列化不受影响；Redis 无 SysUser 缓存链路，登录校验用 DB 现查用户 |
+| #11 | 列表接口缺省分页参数改为默认第 1 页 10 条且条件生效 | 删除 Customer/Product list 的无参全量分支（TableSupport 缺省 1/10）；全量导出走既有 `/export` |
+| #7 | 机台列表/详情仅返回 MACHINE 类型资源 | MachineMapper 两查询补 `resource_type='MACHINE'` 过滤；非机台资源 id 详情返回 `data:null` |
+| #8 | 删除机台先校验存在性，缺失拒绝且不动 resource 表 | 消除「失败响应掩盖 resource 行已删」的半执行；单数删除补 `@Transactional` 与版本 bump |
 
 ## LOWEST_COST 综合成本模型（2026-09-16 成本模型精度提升）
 

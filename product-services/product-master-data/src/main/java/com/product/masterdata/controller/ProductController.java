@@ -4,8 +4,6 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.product.masterdata.common.core.page.TableDataInfo;
 import com.product.masterdata.common.core.result.AjaxResult;
 import com.product.masterdata.common.utils.PageUtils;
-import com.product.masterdata.common.utils.ServletUtils;
-import com.product.masterdata.common.utils.StringUtils;
 import com.product.masterdata.core.controller.BaseController;
 import com.product.masterdata.core.utils.ExcelUtil;
 import com.product.masterdata.domain.entity.Product;
@@ -25,9 +23,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.InputStream;
 import java.util.List;
 
-import static com.product.masterdata.common.core.page.TableSupport.PAGE_NUM;
-import static com.product.masterdata.common.core.page.TableSupport.PAGE_SIZE;
-
 /**
  * 产品Controller（单体 product-demand ProductController 移植；产品归 master-data 所有，
  * 对外路由保持 /demand/product——baselines.md §1.2，Gateway 显式路由至此服务）。
@@ -43,9 +38,6 @@ public class ProductController extends BaseController {
      */
     @GetMapping("/list")
     public TableDataInfo list(Product product) {
-        if (!StringUtils.hasText(ServletUtils.getParameter(PAGE_NUM)) || !StringUtils.hasText(ServletUtils.getParameter(PAGE_SIZE))) {
-            return getDataTable(productService.selectCustomerPage());
-        }
         Page<Product> page = PageUtils.buildPage();
         return getDataTable(productService.selectProductPage(page, product));
     }
@@ -85,7 +77,7 @@ public class ProductController extends BaseController {
     /**
      * 获取产品详细信息
      */
-    @GetMapping(value = "/{productId}")
+    @GetMapping(value = "/{productId:\\d+}")
     public AjaxResult getInfo(@PathVariable("productId") Long productId) {
         return success(productService.selectProductByProductId(productId));
     }
