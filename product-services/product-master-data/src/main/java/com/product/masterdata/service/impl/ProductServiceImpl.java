@@ -1,7 +1,6 @@
 package com.product.masterdata.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.baomidou.mybatisplus.extension.toolkit.Db;
@@ -144,11 +143,6 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
             versionService.bump();
         }
         return removed;
-    }
-
-    @Override
-    public IPage<Product> selectCustomerPage() {
-        return page(new Page<>());
     }
 
     private List<ProductMoldParam> loadMoldParams(Long productId) {

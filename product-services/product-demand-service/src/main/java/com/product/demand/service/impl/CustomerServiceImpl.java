@@ -1,7 +1,6 @@
 package com.product.demand.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.product.demand.common.utils.StringUtils;
@@ -125,11 +124,6 @@ public class CustomerServiceImpl extends ServiceImpl<CustomerMapper, Customer> i
     @Override
     public boolean deleteCustomerByCustomerId(Long customerId) {
         return removeById(customerId);
-    }
-
-    @Override
-    public IPage<Customer> selectCustomerPage() {
-        return page(new Page<>());
     }
 
     /**

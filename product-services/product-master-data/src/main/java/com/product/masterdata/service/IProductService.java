@@ -1,6 +1,5 @@
 package com.product.masterdata.service;
 
-import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.product.masterdata.domain.entity.Product;
@@ -20,5 +19,4 @@ public interface IProductService extends IService<Product> {
     boolean updateProduct(Product product);
     boolean deleteProductByProductIds(Long[] productIds);
     boolean deleteProductByProductId(Long productId);
-    IPage<Product> selectCustomerPage();
 }

@@ -1,6 +1,5 @@
 package com.product.demand.service;
 
-import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.product.demand.domain.entity.Customer;
@@ -79,6 +78,4 @@ public interface ICustomerService extends IService<Customer> {
      * @return 是否成功
      */
     boolean deleteCustomerByCustomerId(Long customerId);
-
-    IPage<Customer> selectCustomerPage();
 }
