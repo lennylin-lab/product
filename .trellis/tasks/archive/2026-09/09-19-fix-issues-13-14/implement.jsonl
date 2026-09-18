@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "ServiceException 文案口径与错误契约"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "测试约定（MockitoExtension 单测）"}
+{"file": ".trellis/spec/backend/microservices-platform.md", "reason": "跨服务契约与 outbox/consumed 运行表语义"}
