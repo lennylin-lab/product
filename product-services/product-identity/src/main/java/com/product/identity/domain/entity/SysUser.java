@@ -49,6 +49,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.product.identity.common.annotation.Excel;
 import com.product.identity.common.annotation.Excel.ColumnType;
 import com.product.identity.common.annotation.Excel.Type;
@@ -107,6 +108,7 @@ public class SysUser extends BaseEntity {
     private String avatar;
 
     /** 密码 */
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
 
     /** 账号状态（0正常 1停用） */

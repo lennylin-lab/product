@@ -62,4 +62,23 @@ class JacksonContractTest {
         String json = mapperWithCustomizer().writeValueAsString(payload);
         assertEquals("{\"permissions\":[\"*:*:*\"]}", json);
     }
+
+    @Test
+    void passwordShouldNotAppearInSerializedResponse() throws Exception {
+        // issue #9：/getInfo、/system/user/{id}、/system/user/profile 响应体不得泄露 BCrypt 哈希
+        SysUser user = new SysUser();
+        user.setUserId(1L);
+        user.setPassword("$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2");
+        String json = mapperWithCustomizer().writeValueAsString(user);
+        assertTrue(!json.contains("password"), json);
+        assertTrue(!json.contains("$2a$"), json);
+    }
+
+    @Test
+    void passwordShouldStillDeserializeFromRequestBody() throws Exception {
+        // issue #9 回归：WRITE_ONLY 只关序列化，请求体读入不受影响（未来恢复写端点时语义不变）
+        SysUser user = mapperWithCustomizer().readValue(
+                "{\"userId\":\"1\",\"password\":\"$2a$10$abc\"}", SysUser.class);
+        assertEquals("$2a$10$abc", user.getPassword());
+    }
 }
