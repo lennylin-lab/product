@@ -338,6 +338,97 @@ class SchedulingSnapshotLoaderTest {
         loader.verifyUnchanged(baseline);
     }
 
+    @Test
+    void loadOrderLinesShouldChunkWhenIdsExceedContractLimit() {
+        // issue #13：>1000 行按契约 MAX_IDS 分块（旧实现单次调用被提供方拒绝，整作业 FAILED）
+        List<Long> ids = new java.util.ArrayList<>();
+        for (long i = 1; i <= 2501; i++) {
+            ids.add(i);
+        }
+        List<DemandQueryRequests.OrderLineBatchQueryRequest> requests = new java.util.ArrayList<>();
+        when(demandBatchQueryApi.getOrderLines(any(DemandQueryRequests.OrderLineBatchQueryRequest.class)))
+                .thenAnswer(invocation -> orderLineBatchResponse(requests, invocation.getArgument(0)));
+
+        Map<Long, com.product.planning.domain.model.OrderLineSnapshot> lines =
+                newLoader().loadOrderLines(ids);
+
+        assertEquals(2501, lines.size());
+        assertEquals(3, requests.size());
+        assertTrue(requests.stream().allMatch(request -> request.getOrderLineIds().size() <= 1000));
+        assertEquals(2501L, lines.get(2501L).getOrderLineId());
+    }
+
+    @Test
+    void loadOrderLinesShouldDeduplicateIdsBeforeChunking() {
+        // 提供方拒绝重复 ID：分块前先去重，重复入参不产生重复下发
+        List<Long> ids = List.of(1001L, 1001L, 1002L);
+        List<DemandQueryRequests.OrderLineBatchQueryRequest> requests = new java.util.ArrayList<>();
+        when(demandBatchQueryApi.getOrderLines(any(DemandQueryRequests.OrderLineBatchQueryRequest.class)))
+                .thenAnswer(invocation -> orderLineBatchResponse(requests, invocation.getArgument(0)));
+
+        Map<Long, com.product.planning.domain.model.OrderLineSnapshot> lines =
+                newLoader().loadOrderLines(ids);
+
+        assertEquals(2, lines.size());
+        assertEquals(1, requests.size());
+        assertEquals(List.of(1001L, 1002L), requests.get(0).getOrderLineIds());
+    }
+
+    @Test
+    void loadCalendarsShouldChunkByContractLimit() {
+        // master-data 契约同 MAX_IDS 规则：1500 个日历 → 2 次调用
+        List<Long> ids = new java.util.ArrayList<>();
+        for (long i = 1; i <= 1500; i++) {
+            ids.add(i);
+        }
+        List<com.product.masterdata.api.dto.CalendarBatchQueryRequest> requests = new java.util.ArrayList<>();
+        when(masterDataBatchQueryApi.getCalendars(any(com.product.masterdata.api.dto.CalendarBatchQueryRequest.class)))
+                .thenAnswer(invocation -> {
+                    com.product.masterdata.api.dto.CalendarBatchQueryRequest request = invocation.getArgument(0);
+                    requests.add(request);
+                    List<com.product.masterdata.api.dto.CalendarDTO> rows = new java.util.ArrayList<>();
+                    for (Long id : request.getCalendarIds()) {
+                        com.product.masterdata.api.dto.CalendarDTO dto =
+                                new com.product.masterdata.api.dto.CalendarDTO();
+                        dto.setCalendarId(id);
+                        dto.setCalendarName("C" + id);
+                        dto.setWorkdayPattern("MON-SUN");
+                        dto.setShiftStart("08:00");
+                        dto.setShiftEnd("20:00");
+                        rows.add(dto);
+                    }
+                    com.product.masterdata.api.dto.CalendarBatchResponse response =
+                            new com.product.masterdata.api.dto.CalendarBatchResponse();
+                    response.setCalendars(rows);
+                    return response;
+                });
+
+        Map<Long, com.product.planning.domain.model.Calendar> calendars = newLoader().loadCalendars(ids);
+
+        assertEquals(1500, calendars.size());
+        assertEquals(2, requests.size());
+        assertTrue(requests.stream().allMatch(request -> request.getCalendarIds().size() <= 1000));
+    }
+
+    /** 回显桩：按请求中的 id 生成订单行 DTO（分块测试用）。 */
+    private OrderDTO.OrderLineBatchResponse orderLineBatchResponse(
+            List<DemandQueryRequests.OrderLineBatchQueryRequest> requests,
+            DemandQueryRequests.OrderLineBatchQueryRequest request) {
+        requests.add(request);
+        List<OrderLineDTO> rows = new java.util.ArrayList<>();
+        for (Long id : request.getOrderLineIds()) {
+            OrderLineDTO dto = new OrderLineDTO();
+            dto.setOrderLineId(id);
+            dto.setOrderId(9000L + id);
+            dto.setProductId(100L);
+            dto.setStatus("RELEASED");
+            rows.add(dto);
+        }
+        OrderDTO.OrderLineBatchResponse response = new OrderDTO.OrderLineBatchResponse();
+        response.setOrderLines(rows);
+        return response;
+    }
+
     private ResourceDTO resource(Long id, String status, String type, Integer defaultSetupTimeMin) {
         ResourceDTO dto = new ResourceDTO();
         dto.setResourceId(id);

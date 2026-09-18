@@ -38,7 +38,6 @@ import com.product.planning.domain.model.ResourceCapability;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -47,7 +46,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -57,8 +55,8 @@ import java.util.stream.Collectors;
  * product_route/route_operation/resource/machine/mold/machine_mold_compatibility/
  * resource_capability/calendar/changeover_rule（master-data 权属）。服务化后该读取
  * 全部改为批量契约（{@link DemandBatchQueryApi} / {@link MasterDataBatchQueryApi}）：
- * 每次排程运行的远程调用次数与任务数无关（有界 ≤10 次），禁止算法循环内 N+1 RPC，
- * 禁止跨库访问。</p>
+ * 每次排程运行的远程调用次数与任务数无关（基础 ≤10 次 + 按 MAX_IDS 的分块数，
+ * 仍与任务数无关，issue #13），禁止算法循环内 N+1 RPC，禁止跨库访问。</p>
  *
  * <p><b>版本化快照规则（显式声明，替代单体同库读一致性）：</b></p>
  * <ol>
@@ -99,6 +97,41 @@ public class SchedulingSnapshotLoader {
             return second;
         }
         return second;
+    }
+
+    /** 契约单次批量 ID 上限（demand 与 master-data 同规则，issue #13 分块依据）。 */
+    private static final int CONTRACT_MAX_IDS = DemandQueryRequests.MAX_IDS;
+
+    /**
+     * 按 {@link #CONTRACT_MAX_IDS} 分块执行批量契约并按 key 合并（issue #13：订单行
+     * >1000 时单次调用被提供方 MAX_IDS 校验拒绝，整作业确定性 FAILED）。入参先去重
+     * （提供方拒绝重复 ID），fetch 负责单分块的契约调用、认证重试与错误映射。
+     */
+    private <V> Map<Long, V> loadByIdsInChunks(Collection<Long> ids, String label,
+            java.util.function.Function<List<Long>, List<V>> fetch,
+            java.util.function.Function<V, Long> key) {
+        List<Long> distinct = ids.stream().filter(Objects::nonNull).distinct()
+                .collect(Collectors.toList());
+        if (distinct.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, V> merged = new HashMap<>();
+        for (int from = 0; from < distinct.size(); from += CONTRACT_MAX_IDS) {
+            List<Long> chunk = distinct.subList(from, Math.min(from + CONTRACT_MAX_IDS, distinct.size()));
+            List<V> rows = fetch.apply(chunk);
+            if (rows == null) {
+                continue;
+            }
+            for (V row : rows) {
+                if (row != null) {
+                    merged.putIfAbsent(key.apply(row), row);
+                }
+            }
+        }
+        if (merged.size() < distinct.size()) {
+            log.warn("{}批量加载部分ID无返回: expected={} found={}", label, distinct.size(), merged.size());
+        }
+        return merged;
     }
 
     // ========================== 版本基线 ==========================
@@ -155,61 +188,57 @@ public class SchedulingSnapshotLoader {
 
     // ========================== 需求域（demand_db） ==========================
 
-    /** 按订单行 ID 批量加载订单行快照（1 次契约调用）。 */
+    /** 按订单行 ID 批量加载订单行快照（按契约 MAX_IDS 分块）。 */
     public Map<Long, OrderLineSnapshot> loadOrderLines(Collection<Long> orderLineIds) {
-        if (CollectionUtils.isEmpty(orderLineIds)) {
-            return Map.of();
-        }
-        OrderDTO.OrderLineBatchResponse response;
-        try {
-            response = callWithAuthRetry(
-                    () -> demandBatchQueryApi.getOrderLines(
-                            new DemandQueryRequests.OrderLineBatchQueryRequest(List.copyOf(orderLineIds))),
-                    r -> r == null || r.getOrderLines() == null);
-        } catch (FeignException e) {
-            log.error("订单行批量加载失败，排程输入快照不可用: ids={} status={}",
-                    orderLineIds.size(), e.status(), e);
-            throw new ServiceException("需求服务不可用，无法加载排程输入快照，请稍后重试");
-        }
-        if (response == null || response.getOrderLines() == null) {
-            throw new ServiceException("需求服务响应异常，无法加载排程输入快照，请稍后重试");
-        }
-        return response.getOrderLines().stream()
-                .filter(Objects::nonNull)
-                .map(this::toOrderLineSnapshot)
-                .collect(Collectors.toMap(OrderLineSnapshot::getOrderLineId, item -> item, (a, b) -> a));
+        return loadByIdsInChunks(orderLineIds, "订单行", chunk -> {
+            try {
+                OrderDTO.OrderLineBatchResponse response = callWithAuthRetry(
+                        () -> demandBatchQueryApi.getOrderLines(
+                                new DemandQueryRequests.OrderLineBatchQueryRequest(chunk)),
+                        r -> r == null || r.getOrderLines() == null);
+                if (response == null || response.getOrderLines() == null) {
+                    throw new ServiceException("需求服务响应异常，无法加载排程输入快照（请检查提供方日志与服务版本）");
+                }
+                return response.getOrderLines().stream()
+                        .filter(Objects::nonNull)
+                        .map(this::toOrderLineSnapshot)
+                        .collect(Collectors.toList());
+            } catch (FeignException e) {
+                log.error("订单行批量加载失败，排程输入快照不可用: chunkSize={} status={}",
+                        chunk.size(), e.status(), e);
+                throw new ServiceException("需求服务不可用，无法加载排程输入快照，请稍后重试");
+            }
+        }, OrderLineSnapshot::getOrderLineId);
     }
 
-    /** 按订单 ID 批量加载订单快照（交期/优先级，1 次契约调用）。 */
+    /** 按订单 ID 批量加载订单快照（交期/优先级，按契约 MAX_IDS 分块）。 */
     public Map<Long, OrderSnapshot> loadOrders(Collection<Long> orderIds) {
-        if (CollectionUtils.isEmpty(orderIds)) {
-            return Map.of();
-        }
-        OrderDTO.OrderBatchResponse response;
-        try {
-            response = callWithAuthRetry(
-                    () -> demandBatchQueryApi.getOrders(
-                            new DemandQueryRequests.OrderBatchQueryRequest(List.copyOf(orderIds))),
-                    r -> r == null || r.getOrders() == null);
-        } catch (FeignException e) {
-            log.error("订单批量加载失败，排程输入快照不可用: ids={} status={}",
-                    orderIds.size(), e.status(), e);
-            throw new ServiceException("需求服务不可用，无法加载排程输入快照，请稍后重试");
-        }
-        if (response == null || response.getOrders() == null) {
-            throw new ServiceException("需求服务响应异常，无法加载排程输入快照，请稍后重试");
-        }
-        return response.getOrders().stream()
-                .filter(Objects::nonNull)
-                .map(order -> {
-                    OrderSnapshot snapshot = new OrderSnapshot();
-                    snapshot.setOrderId(order.getOrderId());
-                    snapshot.setDueDate(order.getDueDate());
-                    snapshot.setPriority(order.getPriority());
-                    snapshot.setStatus(order.getStatus());
-                    return snapshot;
-                })
-                .collect(Collectors.toMap(OrderSnapshot::getOrderId, item -> item, (a, b) -> a));
+        return loadByIdsInChunks(orderIds, "订单", chunk -> {
+            try {
+                OrderDTO.OrderBatchResponse response = callWithAuthRetry(
+                        () -> demandBatchQueryApi.getOrders(
+                                new DemandQueryRequests.OrderBatchQueryRequest(chunk)),
+                        r -> r == null || r.getOrders() == null);
+                if (response == null || response.getOrders() == null) {
+                    throw new ServiceException("需求服务响应异常，无法加载排程输入快照（请检查提供方日志与服务版本）");
+                }
+                return response.getOrders().stream()
+                        .filter(Objects::nonNull)
+                        .map(order -> {
+                            OrderSnapshot snapshot = new OrderSnapshot();
+                            snapshot.setOrderId(order.getOrderId());
+                            snapshot.setDueDate(order.getDueDate());
+                            snapshot.setPriority(order.getPriority());
+                            snapshot.setStatus(order.getStatus());
+                            return snapshot;
+                        })
+                        .collect(Collectors.toList());
+            } catch (FeignException e) {
+                log.error("订单批量加载失败，排程输入快照不可用: chunkSize={} status={}",
+                        chunk.size(), e.status(), e);
+                throw new ServiceException("需求服务不可用，无法加载排程输入快照，请稍后重试");
+            }
+        }, OrderSnapshot::getOrderId);
     }
 
     private OrderLineSnapshot toOrderLineSnapshot(OrderLineDTO dto) {
@@ -252,28 +281,28 @@ public class SchedulingSnapshotLoader {
                 .collect(Collectors.toCollection(ArrayList::new));
     }
 
-    /** 批量加载资源关联班次日历（1 次契约调用；ids 为空返回空表）。 */
+    /** 批量加载资源关联班次日历（按契约 MAX_IDS 分块；ids 为空返回空表）。 */
     public Map<Long, Calendar> loadCalendars(Collection<Long> calendarIds) {
-        if (CollectionUtils.isEmpty(calendarIds)) {
-            return new HashMap<>();
-        }
-        CalendarBatchResponse response;
-        try {
-            response = callWithAuthRetry(
-                    () -> masterDataBatchQueryApi.getCalendars(
-                            new CalendarBatchQueryRequest(List.copyOf(calendarIds))),
-                    r -> r == null || r.getCalendars() == null);
-        } catch (FeignException e) {
-            log.error("日历批量加载失败，排程输入快照不可用: status={}", e.status(), e);
-            throw new ServiceException("主数据服务不可用，无法加载排程输入快照，请稍后重试");
-        }
-        if (response == null || response.getCalendars() == null) {
-            throw new ServiceException("主数据服务响应异常，无法加载排程输入快照，请稍后重试");
-        }
-        return response.getCalendars().stream()
-                .filter(Objects::nonNull)
-                .map(this::toCalendar)
-                .collect(Collectors.toMap(Calendar::getCalendarId, item -> item, (a, b) -> a));
+        Map<Long, Calendar> merged = loadByIdsInChunks(calendarIds, "日历", chunk -> {
+            try {
+                CalendarBatchResponse response = callWithAuthRetry(
+                        () -> masterDataBatchQueryApi.getCalendars(
+                                new CalendarBatchQueryRequest(chunk)),
+                        r -> r == null || r.getCalendars() == null);
+                if (response == null || response.getCalendars() == null) {
+                    throw new ServiceException("主数据服务响应异常，无法加载排程输入快照（请检查提供方日志与服务版本）");
+                }
+                return response.getCalendars().stream()
+                        .filter(Objects::nonNull)
+                        .map(this::toCalendar)
+                        .collect(Collectors.toList());
+            } catch (FeignException e) {
+                log.error("日历批量加载失败，排程输入快照不可用: chunkSize={} status={}",
+                        chunk.size(), e.status(), e);
+                throw new ServiceException("主数据服务不可用，无法加载排程输入快照，请稍后重试");
+            }
+        }, Calendar::getCalendarId);
+        return new HashMap<>(merged);
     }
 
     /** 当前默认换型规则（1 次契约调用；单体 changeover_rule limit 1 语义，空表返回 null）。 */
@@ -299,28 +328,27 @@ public class SchedulingSnapshotLoader {
         return model;
     }
 
-    /** 按产品 ID 批量加载产品（材料/颜色编码 + 模具参数 + 启用路线工序，1 次契约调用）。 */
+    /** 按产品 ID 批量加载产品（材料/颜色编码 + 模具参数 + 启用路线工序，按契约 MAX_IDS 分块）。 */
     public Map<Long, Product> loadProducts(Collection<Long> productIds) {
-        if (CollectionUtils.isEmpty(productIds)) {
-            return Map.of();
-        }
-        ProductBatchResponse response;
-        try {
-            response = callWithAuthRetry(
-                    () -> masterDataBatchQueryApi.getProducts(
-                            new ProductBatchQueryRequest(List.copyOf(productIds))),
-                    r -> r == null || r.getProducts() == null);
-        } catch (FeignException e) {
-            log.error("产品批量加载失败，排程输入快照不可用: ids={} status={}", productIds.size(), e.status(), e);
-            throw new ServiceException("主数据服务不可用，无法加载排程输入快照，请稍后重试");
-        }
-        if (response == null || response.getProducts() == null) {
-            throw new ServiceException("主数据服务响应异常，无法加载排程输入快照，请稍后重试");
-        }
-        return response.getProducts().stream()
-                .filter(Objects::nonNull)
-                .map(this::toProduct)
-                .collect(Collectors.toMap(Product::getProductId, item -> item, (a, b) -> a));
+        return loadByIdsInChunks(productIds, "产品", chunk -> {
+            try {
+                ProductBatchResponse response = callWithAuthRetry(
+                        () -> masterDataBatchQueryApi.getProducts(
+                                new ProductBatchQueryRequest(chunk)),
+                        r -> r == null || r.getProducts() == null);
+                if (response == null || response.getProducts() == null) {
+                    throw new ServiceException("主数据服务响应异常，无法加载排程输入快照（请检查提供方日志与服务版本）");
+                }
+                return response.getProducts().stream()
+                        .filter(Objects::nonNull)
+                        .map(this::toProduct)
+                        .collect(Collectors.toList());
+            } catch (FeignException e) {
+                log.error("产品批量加载失败，排程输入快照不可用: chunkSize={} status={}",
+                        chunk.size(), e.status(), e);
+                throw new ServiceException("主数据服务不可用，无法加载排程输入快照，请稍后重试");
+            }
+        }, Product::getProductId);
     }
 
     // ========================== DTO → 排程模型映射 ==========================
@@ -458,16 +486,5 @@ public class SchedulingSnapshotLoader {
         model.setYieldRate(dto.getYieldRate());
         model.setUtilization(dto.getUtilization());
         return model;
-    }
-
-    /**
-     * 断言 ID 集合不超契约上限（快照批量调用的入参防御；与 demand 契约同规则）。
-     */
-    static Set<Long> requireBoundedIds(Collection<Long> ids, String label) {
-        if (ids != null && ids.size() > DemandQueryRequests.MAX_IDS) {
-            throw new ServiceException(label + "批量加载数超限: " + ids.size()
-                    + " > " + DemandQueryRequests.MAX_IDS + "（快照须分批，禁止无界契约调用）");
-        }
-        return ids == null ? Set.of() : ids.stream().filter(Objects::nonNull).collect(Collectors.toSet());
     }
 }
